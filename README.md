@@ -1,6 +1,6 @@
 # Controllable Mechs
 
-A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game's robotic NPCs (mechs, androids, drones and spiderbots) through a Robot Link terminal built with TerminalKit, and pilot a Militech Minotaur directly: its sensor feed, its legs and both MK.31 HMGs. Quest NPCs are refused so a link can't break a story scene.
+A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game's robotic NPCs (mechs, androids, drones and spiderbots) through a Robot Link terminal built on TerminalKit, and pilot a Militech Minotaur directly: its sensor feed, its legs and both MK.31 HMGs. Quest NPCs are refused so a link can't break a story scene.
 
 Early build. It compiles against the game; Pilot Mode has not been tested in game yet.
 
@@ -49,15 +49,15 @@ Early build. It compiles against the game; Pilot Mode has not been tested in gam
   - `Pilot/CMPilotRig.reds`: the weighted camera math (no game calls).
   - `Pilot/CMPilotGuns.reds`: the two HMGs: discovery, fire modes, cadence and heat.
   - `Pilot/CMPilotHud.reds`: the Militech overlay on the HUD layer.
-  - `UI/CMContent.reds`: the Robot Link pages (a TerminalKit `TKContent`).
-  - `UI/CMTerminal.reds`: the terminal frame (a Codeware `InGamePopup` with a `TKView`).
+  - `UI/CMContent.reds`: the Robot Link pages (a TerminalKit `TKContent`): LINK, SETTINGS (fire mode, disconnect-when-hit, palette), and TOOLS (TerminalKit Tools: inspect, spawn, TweakDB).
+  - `UI/CMTerminal.reds`: the terminal, a subclass of TerminalKit's ready-made `TKPopup` frame.
   - `Core/CMInput.reds`: the keys.
-- `r6/scripts/TerminalKit`: TerminalKit, copied unchanged from `Lxzkmm-dev/Night-City-Empires-assets` (branch `main`, commit b0033b7).
 - `r6/input/ControllableMechs.xml`: the key bindings (Input Loader).
 
 ## Requirements
 
 - redscript
+- **TerminalKit** (the standalone TerminalKIT mod, with TerminalKit Tools). This mod doesn't ship its own copy, so there is only ever one TerminalKit in the load order.
 - Codeware
 - RedFunctions (TerminalKit uses it)
 - Input Loader
@@ -81,7 +81,3 @@ Early build. It compiles against the game; Pilot Mode has not been tested in gam
 2. **Pilot Mode (first build, Minotaur):** direct control with the weighted camera, HUD and both HMGs.
 3. **Attack orders:** send the robot after the target you look at.
 4. **Your own mech:** spawn one, persist it in the save, and call it in.
-
-## TerminalKit and other mods
-
-redscript stops with duplicate definitions if two different paths define the same `TerminalKit` classes. So every mod has to ship TerminalKit at exactly `r6/scripts/TerminalKit`, where the copies overwrite each other, and the versions have to be compatible. A cleaner long-term option is to publish TerminalKit as its own dependency.

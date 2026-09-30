@@ -1,16 +1,24 @@
 // =============================================================================
-// CONTROLLABLE MECHS - MECH LINK PAGES (TerminalKit content provider)
-// Every page is built fresh from CMLinkSystem when it's shown, so the terminal
-// holds no state of its own and costs nothing while closed.
+// CONTROLLABLE MECHS - ROBOT LINK PAGES (TerminalKit content provider)
+// Every page is built fresh from CMLinkSystem / CMPilotSystem when it's shown,
+// so the terminal holds no state of its own and costs nothing while closed.
+// The TOOLS tab is TerminalKit Tools (inspect what V looks at, spawn records,
+// log positions): handy for finding robot records to test.
 // =============================================================================
 module ControllableMechs
 
 import TerminalKit.*
+import TerminalKit.Tools.*
 
 public class CMContent extends TKContent {
   public let game: GameInstance;
 
   public func Request(p: ref<TKPage>, page: String, arg: String) -> Void {
+    p.SetTheme(CMPilotSystem.Get(this.game).Theme());
+    if TKTools.Request(p, page, arg) {
+      p.SetSection("tk_tools");
+      return;
+    }
     switch page {
       case "settings":
         this.Settings(p);
@@ -22,6 +30,9 @@ public class CMContent extends TKContent {
   }
 
   public func Act(p: ref<TKPage>, action: String, arg: String) -> Void {
+    if TKTools.Act(p, action, arg) {
+      return;
+    }
     let link = CMLinkSystem.Get(this.game);
     let pilot = CMPilotSystem.Get(this.game);
     switch action {
@@ -45,16 +56,13 @@ public class CMContent extends TKContent {
         p.SetMessage("*MOVING TO TARGET");
         break;
       case "pilot":
-        let why = pilot.CanPilot();
-        if StrLen(why) > 0 && NotEquals(why, "!NOT NOW") {
+        let why = pilot.CanPilot(true);
+        if StrLen(why) > 0 {
           p.SetMessage(why);
           break;
         }
         // the terminal has to close before the view can switch
-        let state = CMTerminalState.Get(this.game);
-        if IsDefined(state.open) {
-          state.open.Close();
-        }
+        CMTerminal.CloseOpen(this.game);
         pilot.RequestEnter(0.4);
         break;
       case "spawntest":
@@ -65,18 +73,19 @@ public class CMContent extends TKContent {
         p.SetMessage("TEST MECH REMOVED");
         break;
       case "firemode":
-        pilot.SetFireMode(StringToInt(arg));
+        pilot.SetFireMode(StringToInt(arg, 0));
         break;
-      case "stayhit":
-        pilot.ToggleStayWhenHit();
+      case "dropwhenhit":
+        pilot.SetStayWhenHit(!Equals(arg, "1"));
         break;
       case "theme":
+        pilot.SetTheme(arg);
         p.SetTheme(arg);
         break;
     }
   }
 
-  // ---- LINK: status and orders ----
+  // ---- LINK: status, direct control, orders ----
   private func Link(p: ref<TKPage>) -> Void {
     let link = CMLinkSystem.Get(this.game);
     p.SetTitle("ROBOT LINK", "REMOTE OPERATION // NEURAL UPLINK");
@@ -95,11 +104,11 @@ public class CMContent extends TKContent {
     p.Stat("ORDER", CMContent.OrderName(link.Order()), "", -1.0);
     if Equals(link.UnitKind(), "MECH") {
       p.Heading("DIRECT CONTROL");
-      p.Button("PILOT THE MECH  [L]", "pilot", "", true);
-      p.SetTip("Takes the mech's sensor feed: WASD walks, the mouse turns the torso, LMB fires the MK.31s. L disconnects.");
+      p.Item("PILOT THE MECH", "Take its sensor feed: WASD walks, the mouse turns the torso, LMB fires the MK.31s, L disconnects.", "", "PILOT  [L]", "pilot", "", true);
     }
     p.Heading("ORDERS");
     p.Buttons("Command the linked unit", "", "", "FOLLOW|HOLD|MOVE TO TARGET", "follow|hold|move", "||");
+    p.SetTip("MOVE TO TARGET sends the unit to what you look at when you press it, or 15 m ahead of you.");
     p.Gap();
     p.Button("CLOSE LINK", "unlink", "", true);
     this.Test(p, link);
@@ -120,24 +129,32 @@ public class CMContent extends TKContent {
     let pilot = CMPilotSystem.Get(this.game);
     p.SetTitle("SETTINGS", "PILOT AND DISPLAY");
     p.SetSection("settings");
-    p.Heading("FIRE MODE");
-    let mode = pilot.FireMode();
-    let i = 0;
-    while i < 3 {
-      let note = "";
-      if i == CMFireMode.Stagger() { note = "LMB fires both guns, barrels alternating."; }
-      if i == CMFireMode.Together() { note = "LMB fires both guns at once."; }
-      if i == CMFireMode.Split() { note = "LMB fires the left gun, RMB the right. MMB for optics."; }
-      p.Item(CMFireMode.Name(i), note, i == mode ? "*ACTIVE" : "", "USE", "firemode", IntToString(i), i != mode);
-      i += 1;
-    }
-    p.Heading("LINK");
-    let stay = pilot.StayWhenHit();
-    p.Item("DISCONNECT WHEN V IS HIT", stay ? "Off: you stay in the mech while V takes damage." : "On: like hacking a camera, damage to V pulls you out.", stay ? "OFF" : "*ON", "TOGGLE", "stayhit", "", true);
+    p.Heading("PILOT");
+    p.Dropdown("FIRE MODE", "How LMB / RMB fire the two MK.31s (B cycles it while piloting)",
+      IntToString(pilot.FireMode()),
+      CMFireMode.Name(0) + "|" + CMFireMode.Name(1) + "|" + CMFireMode.Name(2), "0|1|2", "firemode", "");
+    p.SetTip("STAGGERED: LMB fires both, barrels alternating. LINKED SALVO: LMB fires both at once. SPLIT: LMB left gun, RMB right gun, MMB optics.");
+    p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
     p.Heading("PALETTE");
-    for id in TKTheme.Ids() {
-      p.Item(StrUpper(id), "", "", "USE", "theme", id, true);
+    p.Dropdown("TERMINAL PALETTE", "The terminal's colours", pilot.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
+  }
+
+  public static func ThemeLabels() -> String {
+    let ids = TKTheme.Ids();
+    let s = "";
+    for id in ids {
+      s += (StrLen(s) > 0 ? "|" : "") + StrUpper(id);
     }
+    return s;
+  }
+
+  public static func ThemeValues() -> String {
+    let ids = TKTheme.Ids();
+    let s = "";
+    for id in ids {
+      s += (StrLen(s) > 0 ? "|" : "") + id;
+    }
+    return s;
   }
 
   public static func OrderName(order: Int32) -> String {

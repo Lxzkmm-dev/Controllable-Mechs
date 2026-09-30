@@ -1,23 +1,33 @@
 // =============================================================================
-// CONTROLLABLE MECHS - ROBOT LINK TERMINAL (the TerminalKit frame)
-// A Codeware popup over the world: brand bar,
-// tabs on the left, the page on the right. TerminalKit draws the pages from
-// CMContent. Opened with K (CM_OpenLink, Input Loader) or CMTerminal.Toggle.
-// Not available in combat or over a menu.
+// CONTROLLABLE MECHS - ROBOT LINK TERMINAL (on TerminalKit's ready-made frame)
+// TKPopup gives the lens, brand bar, sidebar tabs, scrolling page, tooltips,
+// right-click back and Esc close; CMContent fills the pages. Opened with K
+// (CM_OpenLink, Input Loader) through CMTerminal.Toggle. Not available in combat
+// or over a menu. TerminalKit comes from the TerminalKIT mod (a requirement).
 // =============================================================================
 module ControllableMechs
 
-import Codeware.UI.*
 import TerminalKit.*
 
-public class CMTerminal extends InGamePopup {
-  protected let m_player: wref<PlayerPuppet>;
-  protected let m_view: ref<TKView>;
-  protected let m_frame: wref<inkCompoundWidget>;
+public class CMTerminal extends TKPopup {
+  public func Content() -> ref<TKContent> {
+    let c = new CMContent();
+    c.game = this.GetGame();
+    return c;
+  }
+  public func Tabs() -> array<String> = ["LINK|link", "SETTINGS|settings", "TOOLS|tk_tools"]
+  public func Brand() -> String = "MILITECH"
+  public func Name() -> String = "ROBOT LINK"
+  public func Status() -> String = "NEURAL UPLINK // K TO CLOSE"
+  public func BootText() -> String = "ESTABLISHING UPLINK..."
+  public func StartPage() -> String = "link"
 
-  private let WIDTH: Float = 3000.0;
-  private let HEIGHT: Float = 1500.0;
-  private let CONTENT: Float = 2300.0;
+  protected func Closed() -> Void {
+    let state = CMTerminalState.Get(this.GetGame());
+    if IsDefined(state) {
+      state.open = null;
+    }
+  }
 
   public static func Toggle(player: ref<PlayerPuppet>) -> Void {
     if !IsDefined(player) {
@@ -25,13 +35,12 @@ public class CMTerminal extends InGamePopup {
     }
     let state = CMTerminalState.Get(player.GetGame());
     if IsDefined(state.open) && state.open.IsInitialized() {
-      if state.open.IsTyping() {
-        return;
+      if !state.open.IsTyping() {
+        state.open.Close();
       }
-      state.open.Close();
       return;
     }
-    if !CMTerminal.CanOpen(player) {
+    if !TKPopup.CanOpen(player) {
       return;
     }
     if player.IsInCombat() {
@@ -39,133 +48,17 @@ public class CMTerminal extends InGamePopup {
       return;
     }
     let terminal = new CMTerminal();
-    terminal.m_player = player;
     state.open = terminal;
-    GameInstance.GetUISystem(player.GetGame()).QueueEvent(ShowCustomPopupEvent.Create(terminal));
+    TKPopup.Open(player, terminal);
   }
 
-  // Only from plain gameplay: a popup queued under a menu locks the controls
-  public static func CanOpen(player: ref<PlayerPuppet>) -> Bool {
-    let game = player.GetGame();
-    let ui = GameInstance.GetBlackboardSystem(game).Get(GetAllBlackboardDefs().UI_System);
-    if IsDefined(ui) && ui.GetBool(GetAllBlackboardDefs().UI_System.IsInMenu) {
-      return false;
+  // closes the terminal if it is up (the Pilot button uses this)
+  public static func CloseOpen(game: GameInstance) -> Void {
+    let state = CMTerminalState.Get(game);
+    if IsDefined(state) && IsDefined(state.open) && state.open.IsInitialized() {
+      state.open.Close();
     }
-    if GameInstance.GetTimeSystem(game).IsPausedState() {
-      return false;
-    }
-    return !GameInstance.GetPhotoModeSystem(game).IsPhotoModeActive();
   }
-
-  public func UseCursor() -> Bool = true
-
-  public func IsTyping() -> Bool = IsDefined(this.m_view) && this.m_view.IsTyping()
-
-  protected func SetUIContext() -> Void {
-    GameInstance.GetUISystem(this.GetGame()).PushGameContext(UIGameContext.ModalPopup);
-  }
-
-  protected func ResetUIContext() -> Void {
-    GameInstance.GetUISystem(this.GetGame()).PopGameContext(UIGameContext.ModalPopup);
-  }
-
-  protected func CreateContainer() -> Void {
-    let frame = new inkCanvas();
-    frame.SetName(n"container");
-    frame.SetAnchor(inkEAnchor.Centered);
-    frame.SetAnchorPoint(Vector2(0.5, 0.5));
-    frame.SetSize(Vector2(this.WIDTH, this.HEIGHT));
-    frame.Reparent(this.GetRootCompoundWidget());
-    this.m_container = frame;
-    this.m_frame = frame;
-    this.SetContainerWidget(frame);
-  }
-
-  protected cb func OnCreate() -> Void {
-    super.OnCreate();
-    this.BuildFrame();
-    this.RegisterToGlobalInputCallback(n"OnPostOnRelative", this, n"OnWheel");
-    this.RegisterToGlobalInputCallback(n"OnPostOnRelease", this, n"OnRelease");
-    this.m_view.Show("link", "", "");
-  }
-
-  private func BuildFrame() -> Void {
-    let frame = this.m_frame;
-    let content = new CMContent();
-    content.game = this.GetGame();
-    let owner = new CMFrame();
-    owner.popup = this;
-    this.m_view = new TKView();
-    this.m_view.SetContent(content);
-    this.m_view.SetFrame(owner);
-
-    // top bar
-    let brand = TKInk.Plain(frame, "CONTROLLABLE MECHS  //  ROBOT LINK", TKScale.TypeXL(), n"Semi-Bold", 0.0);
-    brand.SetMargin(inkMargin(70.0, 40.0, 0.0, 0.0));
-    this.m_view.Chrome(brand, "accent");
-    let rule = new inkRectangle();
-    rule.SetSize(Vector2(this.WIDTH - 140.0, 2.0));
-    rule.SetMargin(inkMargin(70.0, 150.0, 0.0, 0.0));
-    rule.Reparent(frame);
-    this.m_view.Chrome(rule, "rule");
-
-    // body: tabs left, page right
-    let body = new inkHorizontalPanel();
-    body.SetMargin(inkMargin(70.0, 190.0, 0.0, 0.0));
-    body.Reparent(frame);
-    let side = new inkVerticalPanel();
-    side.SetMargin(inkMargin(0.0, 0.0, 80.0, 0.0));
-    side.Reparent(body);
-    this.m_view.AddTab(side, "LINK", "link", 460.0, 74.0, 30).GetRootWidget().SetMargin(inkMargin(0.0, 0.0, 0.0, 12.0));
-    this.m_view.AddTab(side, "SETTINGS", "settings", 460.0, 74.0, 30);
-
-    let page = new inkVerticalPanel();
-    page.Reparent(body);
-    let title = TKInk.Plain(page, "", 56, n"Medium", 0.0);
-    this.m_view.Chrome(title, "title");
-    let subtitle = TKInk.Plain(page, "", 28, n"Regular", 2.0);
-    this.m_view.Chrome(subtitle, "text");
-    let panel = new inkVerticalPanel();
-    panel.SetMargin(inkMargin(0.0, 12.0, 0.0, 0.0));
-    panel.Reparent(page);
-    let message = TKInk.Plain(page, "", 30, n"Medium", 20.0);
-    this.m_view.Chrome(message, "value");
-    this.m_view.Bind(panel, title, subtitle, message, this.CONTENT);
-
-    let foot = TKInk.Plain(frame, "[ESC] CLOSE   [RMB] BACK", 26, n"Medium", 0.0);
-    foot.SetAnchor(inkEAnchor.BottomLeft);
-    foot.SetAnchorPoint(Vector2(0.0, 1.0));
-    foot.SetMargin(inkMargin(70.0, 0.0, 0.0, 40.0));
-    this.m_view.Chrome(foot, "text");
-  }
-
-  protected cb func OnWheel(e: ref<inkPointerEvent>) -> Bool {
-    return this.m_view.OnWheel(e);
-  }
-
-  protected cb func OnRelease(e: ref<inkPointerEvent>) -> Bool {
-    if e.IsAction(n"mouse_right") {
-      this.m_view.Back();
-    }
-    return false;
-  }
-
-  protected cb func OnHidden() -> Void {
-    this.UnregisterFromGlobalInputCallback(n"OnPostOnRelative", this, n"OnWheel");
-    this.UnregisterFromGlobalInputCallback(n"OnPostOnRelease", this, n"OnRelease");
-    this.m_view.StopCustom();
-    let state = CMTerminalState.Get(this.GetGame());
-    if IsDefined(state) {
-      state.open = null;
-    }
-    super.OnHidden();
-  }
-}
-
-// TerminalKit's handle on the frame (the owner of global input)
-public class CMFrame extends TKFrame {
-  public let popup: wref<CMTerminal>;
-  public func Owner() -> ref<inkCustomController> = this.popup
 }
 
 // Which terminal is open (one at a time)

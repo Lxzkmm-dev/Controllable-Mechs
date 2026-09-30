@@ -18,6 +18,8 @@
 // =============================================================================
 module ControllableMechs
 
+import TerminalKit.*
+
 public abstract class CMPilotKey {
   public static func W() -> Int32 = 0
   public static func A() -> Int32 = 1
@@ -75,6 +77,7 @@ public class CMPilotSystem extends ScriptableSystem {
   // settings, kept in the save
   private persistent let m_fireMode: Int32;
   private persistent let m_stayWhenHit: Bool;
+  private persistent let m_themeIdx: Int32;   // 0 = militech (default), else 1 + index into TKTheme.Ids()
 
   // where the sensor sits on the mech (forward, up; metres)
   private let MOUNT_FORWARD: Float = 1.7;
@@ -117,8 +120,30 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_fireMode = mode;
   }
 
-  public func ToggleStayWhenHit() -> Void {
-    this.m_stayWhenHit = !this.m_stayWhenHit;
+  public func SetStayWhenHit(stay: Bool) -> Void {
+    this.m_stayWhenHit = stay;
+  }
+
+  // the terminal's palette (a TerminalKit theme id), kept in the save
+  public func Theme() -> String {
+    let ids = TKTheme.Ids();
+    let i = this.m_themeIdx - 1;
+    if i >= 0 && i < ArraySize(ids) {
+      return ids[i];
+    }
+    return "militech";
+  }
+
+  public func SetTheme(id: String) -> Void {
+    let ids = TKTheme.Ids();
+    let i = 0;
+    while i < ArraySize(ids) {
+      if Equals(ids[i], id) {
+        this.m_themeIdx = i + 1;
+        return;
+      }
+      i += 1;
+    }
   }
 
   // The Pilot key: in if out, out if in
@@ -156,7 +181,8 @@ public class CMPilotSystem extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   // Enter
   // ---------------------------------------------------------------------------
-  public func CanPilot() -> String {
+  // `fromTerminal`: the terminal itself is up (it closes before entering), so skip the menu check
+  public func CanPilot(opt fromTerminal: Bool) -> String {
     let game = this.GetGameInstance();
     let player = GetPlayer(game);
     if !IsDefined(player) {
@@ -178,7 +204,7 @@ public class CMPilotSystem extends ScriptableSystem {
     if IsDefined(veh) {
       return "!LEAVE THE VEHICLE FIRST";
     }
-    if !CMTerminal.CanOpen(player) {
+    if !fromTerminal && !TKPopup.CanOpen(player) {
       return "!NOT NOW";
     }
     return "";
