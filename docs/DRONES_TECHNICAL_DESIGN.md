@@ -196,6 +196,12 @@ Collision checks run each frame, only while piloting:
   - Bombus: body, sensor, 4 rotors, torch;
   - Griffin / Wyvern: body, sensor, 2 to 4 thrusters, rifle;
   - Octant: body, sensor, 4 thruster pods, autocannon.
+- **Mesh layouts found (S3, 2026-09-30):**
+  - **Bombus:** body (`ext01_surveillance`, 0.52 m across), one propeller mesh holding all 4 rotors (split by quadrant), and the torch (`weapon` + `weapon_base`). All are skinned in place, so it renders straight from the meshes.
+  - **Octant:** separate meshes for the body, the gun and the four thruster pods (`thruster_fl/fr/bl/br`), with the thruster joints. The pods and gun are rigid meshes placed by the entity's component transforms, which must be read from the `.ent` to assemble the view.
+  - **Griffin:** body plus `wing_l` / `wing_r` (a thruster in each wing), skinned.
+  - **Wyvern:** one body mesh and a weapon mesh. Its parts are split by geometry.
+  - Not quads, so front view (Omar: quads top-down): the Griffin and Wyvern.
 - **Hit mapping:** as the Minotaur's. The game's hit zone first. Otherwise the nearest part, from the hit position in the drone's frame, measured on its meshes.
 - **Effects of damage:**
   - A rotor or thruster's efficiency `e[i]` falls with its integrity. At 0 its thrust is gone (flight model, section 5).
