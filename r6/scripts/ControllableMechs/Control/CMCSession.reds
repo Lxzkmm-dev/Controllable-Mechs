@@ -77,6 +77,7 @@ public class CMCSession extends ScriptableSystem {
   private persistent let m_fireCall: Int32;   // CMFireCall
   private persistent let m_fireMode: Int32;   // CMFireMode
   private persistent let m_chase: Bool;
+  private persistent let m_creditVOff: Bool;  // false = kills and aggro credit V (the default)
 
   public static func Get(game: GameInstance) -> ref<CMCSession> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.Control.CMCSession") as CMCSession;
@@ -125,6 +126,11 @@ public class CMCSession extends ScriptableSystem {
     CMCSession.Log("fire call " + CMFireCall.Name(this.m_fireCall));
   }
   public func FireMode() -> Int32 = this.m_fireMode
+  public func CreditV() -> Bool = !this.m_creditVOff
+  public func SetCreditV(on: Bool) -> Void {
+    this.m_creditVOff = !on;
+    CMCSession.Log("credit to V " + (on ? "ON" : "off"));
+  }
   public func IsChase() -> Bool = this.m_chase
 
   // ---------------------------------------------------------------------------

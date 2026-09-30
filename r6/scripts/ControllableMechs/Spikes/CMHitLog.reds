@@ -13,10 +13,23 @@ module ControllableMechs
 @addField(WeaponObject)
 public let m_cmWatched: Bool;
 
+// M1 credit to V (on while the framework pilots, CMUMinotaur sets it per weapon): the
+// hit's instigator becomes V before the pipeline runs, so its friendly-fire check,
+// damage, kill, XP and NCPD heat all count as V's (the pipeline's PreProcess, Process
+// and DealDamages all run inside ProcessPipeline)
+@addField(WeaponObject)
+public let m_cmCreditV: Bool;
+
 @wrapMethod(DamageSystem)
 private final func ProcessPipeline(hitEvent: ref<gameHitEvent>, cache: ref<CacheData>) -> Void {
-  wrappedMethod(hitEvent, cache);
   let w = hitEvent.attackData.GetWeapon();
+  if IsDefined(w) && w.m_cmCreditV {
+    let player = GetPlayer(w.GetGame());
+    if IsDefined(player) {
+      hitEvent.attackData.SetInstigator(player);
+    }
+  }
+  wrappedMethod(hitEvent, cache);
   if IsDefined(w) && w.m_cmWatched {
     CMHitLog.Note(hitEvent);
   }
@@ -55,6 +68,7 @@ public class CMHitLog extends ScriptableSystem {
       + ", instigator " + (IsDefined(instigator) ? NameToString(instigator.GetClassName()) : "none")
       + ", weapon " + TDBID.ToStringDEBUG(ItemID.GetTDBID(w.GetItemID()))
       + ", damage " + FloatToStringPrec(hit.attackComputed.GetTotalAttackValue(gamedataStatPoolType.Health), 1)
+      + (data.HasFlag(hitFlag.WasKillingBlow) ? ", KILLING BLOW" : "")
       + (StrLen(cancelled) > 0 ? ", CANCELLED:" + cancelled : "");
     CMSpikeSystem.Log(line);
   }

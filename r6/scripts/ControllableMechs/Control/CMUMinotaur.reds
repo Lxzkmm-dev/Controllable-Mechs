@@ -123,6 +123,10 @@ public class CMUMinotaur extends CMCUnit {
     }
     let empty: EntityID;
     this.m_markerID = empty;
+    // the mech's own hits are its own again (and the alpha's never credit V)
+    if IsDefined(this.m_guns) {
+      this.SetCredit(false);
+    }
     let link = CMLinkSystem.Get(this.m_game);
     if IsDefined(link) && link.IsLinked() {
       link.Hold();
@@ -148,6 +152,7 @@ public class CMUMinotaur extends CMCUnit {
     let mech = this.Mech();
     this.MoveMarker(s.aim);
     this.TurnChassis(s, mech, dt);
+    this.SetCredit(s.CreditV());
     let split = s.FireMode() == CMFireMode.Split();
     let lmb = s.Key(CMCKey.Lmb());
     let rmb = split && s.Key(CMCKey.Rmb());
@@ -240,6 +245,16 @@ public class CMUMinotaur extends CMCUnit {
     let e: EulerAngles;
     e.Yaw = this.m_bodyYaw;
     GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, mech.GetWorldPosition(), e);
+  }
+
+  // the MK.31s' hits credit V while this is on (CMHitLog's pipeline hook reads it)
+  private func SetCredit(on: Bool) -> Void {
+    if IsDefined(this.m_guns.left.weapon) {
+      this.m_guns.left.weapon.m_cmCreditV = on;
+    }
+    if IsDefined(this.m_guns.right.weapon) {
+      this.m_guns.right.weapon.m_cmCreditV = on;
+    }
   }
 
   private func MoveMarker(at: Vector4) -> Void {
