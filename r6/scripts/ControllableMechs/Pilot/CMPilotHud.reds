@@ -139,6 +139,7 @@ public class CMPilotHud {
   private let m_hitBars: array<ref<inkRectangle>>;
   private let m_parts: array<ref<CMHudPart>>;     // the damage schematic, one per CMPart
   private let m_sensor: Float;                    // the sensor's integrity: below half, the display suffers
+  private let m_schem: ref<inkCanvas>;            // the schematic, shown only for a unit that reports parts
   private let m_hitT: Float;
 
   private let BAR_W: Float = 415.0;          // 20 cells of 16 with 5 between
@@ -780,14 +781,20 @@ public class CMPilotHud {
     let h = 768.0 * k;
     let top = this.PLATE_GAP + 300.0 + h + 30.0;   // above the chassis plate
     let x = this.PLATE_X + 40.0;
-    this.Glow(root, inkEAnchor.BottomLeft, x - 60.0, top + 40.0, w + 120.0, h + 80.0, CMPilotHud.Black());
+    let holder = new inkCanvas();
+    holder.SetAnchor(inkEAnchor.Fill);
+    holder.SetInteractive(false);
+    holder.Reparent(root);
+    holder.SetVisible(false);   // until a unit reports its parts (Refresh)
+    this.m_schem = holder;
+    this.Glow(holder, inkEAnchor.BottomLeft, x - 60.0, top + 40.0, w + 120.0, h + 80.0, CMPilotHud.Black());
     let box = new inkCanvas();
     box.SetAnchor(inkEAnchor.BottomLeft);
     box.SetMargin(CMPilotHud.Edge(inkEAnchor.BottomLeft, x, top));
     box.SetSize(Vector2(w, h));
     box.SetInteractive(false);
-    box.Reparent(root);
-    CMPilotHud.Label(root, inkEAnchor.BottomLeft, x + w + 10.0, top - h + 30.0, "CHASSIS", 22, n"Medium", CMPilotHud.Dim());
+    box.Reparent(holder);
+    CMPilotHud.Label(holder, inkEAnchor.BottomLeft, x + w + 10.0, top - h + 30.0, "CHASSIS", 22, n"Medium", CMPilotHud.Dim());
     // back to front; the offsets and sizes are the layers' place in the 689 x 768 front view
     // (tools/schematic writes them to layout.reds.txt)
     this.PartLayer(box, k, CMPart.Pods(), n"pods", 188.0, 162.0, 318.0, 159.0);
@@ -1127,6 +1134,10 @@ public class CMPilotHud {
 
     this.Gun(this.m_heatL, this.m_stateL, "L  ", s.heatL, s.lockedL, s.hasL, s.lostL);
     this.Gun(this.m_heatR, this.m_stateR, "R  ", s.heatR, s.lockedR, s.hasR, s.lostR);
+    // the Minotaur schematic only for a unit that reports its parts (not a drone)
+    if IsDefined(this.m_schem) {
+      this.m_schem.SetVisible(ArraySize(s.parts) == CMPart.Count());
+    }
     let i = 0;
     while i < ArraySize(s.parts) {
       this.SetPart(i, s.parts[i]);

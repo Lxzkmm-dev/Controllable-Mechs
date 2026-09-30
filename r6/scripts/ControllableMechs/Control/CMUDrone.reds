@@ -21,6 +21,7 @@ public class CMUDrone extends CMCUnit {
   private let m_game: GameInstance;
   private let m_drone: wref<NPCPuppet>;
   private let m_pos: Vector4;          // where the flight model has the drone
+  private let m_seen: Vector4;         // where the drone really is (the camera follows this)
   private let m_vel: Vector4;
   private let m_yaw: Float;
   private let m_pitch: Float;          // the body's tilt, degrees (nose down is negative)
@@ -59,6 +60,7 @@ public class CMUDrone extends CMCUnit {
     link.Hold();
     link.SetOrder(CMOrder.Pilot());
     this.m_pos = drone.GetWorldPosition();
+    this.m_seen = this.m_pos;
     this.m_vel = new Vector4(0.0, 0.0, 0.0, 0.0);
     this.m_yaw = CMPilotRig.YawOf(drone.GetWorldForward());
     this.m_pitch = 0.0;
@@ -118,7 +120,9 @@ public class CMUDrone extends CMCUnit {
     return "";
   }
   public func Name() -> String = this.m_name
-  public func Ground() -> Vector4 = this.m_pos
+  // the camera rides the drone as it really is, not the model a frame ahead of it: the
+  // teleports land a frame late, and a camera on the model shook against the drone
+  public func Ground() -> Vector4 = this.m_seen
   public func Facing() -> Float = this.m_yaw
   public func SensorUp() -> Float = 0.25
   public func SensorFwd() -> Float = 0.6
@@ -133,6 +137,7 @@ public class CMUDrone extends CMCUnit {
     this.m_frames += 1;
     // S1: how far the last placement landed from where it was sent
     let actual = drone.GetWorldPosition();
+    this.m_seen = actual;
     if this.m_method == 2 {
       this.m_pos = actual;   // the AI does the moving: the model follows it
     } else {
@@ -271,6 +276,7 @@ public class CMUDrone extends CMCUnit {
     if IsDefined(drone) {
       st.integrity = GameInstance.GetStatPoolsSystem(this.m_game).GetStatPoolValue(Cast<StatsObjectID>(drone.GetEntityID()), gamedataStatPoolType.Health, true) / 100.0;
     }
+    ArrayClear(st.parts);   // no Minotaur schematic for a drone
     st.hasL = false;
     st.hasR = false;
     st.missile = "";
