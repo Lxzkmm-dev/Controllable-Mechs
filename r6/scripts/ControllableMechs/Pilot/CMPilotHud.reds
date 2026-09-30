@@ -108,6 +108,7 @@ public class CMPilotHud {
     this.BuildRight(root);
     this.BuildGuns(root);
     this.BuildHints(root);
+    this.BuildEffects(root);
     return true;
   }
 
@@ -175,6 +176,70 @@ public class CMPilotHud {
     this.Corner(root, inkEAnchor.TopRight, -1.0, 1.0);
     this.Corner(root, inkEAnchor.BottomLeft, 1.0, -1.0);
     this.Corner(root, inkEAnchor.BottomRight, -1.0, -1.0);
+  }
+
+  // The display's wear: faint scanlines down the whole screen and darker glass toward the
+  // left and right edges. Static (built once, never touched again).
+  private func BuildEffects(root: ref<inkCanvas>) -> Void {
+    let y = 0.0;
+    while y < 2160.0 {
+      CMPilotHud.Box(root, inkEAnchor.TopFillHorizontaly, 0.0, y, 0.0, 3.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.10);
+      y += 27.0;
+    }
+    let i = 0;
+    while i < 4 {
+      let w = 110.0 + Cast<Float>(i) * 90.0;
+      CMPilotHud.Box(root, inkEAnchor.LeftFillVerticaly, 0.0, 0.0, w, 0.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.10);
+      let r = CMPilotHud.Box(root, inkEAnchor.RightFillVerticaly, 0.0, 0.0, w, 0.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.10);
+      r.SetAnchorPoint(Vector2(1.0, 0.0));
+      i += 1;
+    }
+    // the boot text (StartBoot / Boot run it)
+    this.m_boot = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, -330.0, "", 34, n"Semi-Bold", CMPilotHud.Amber());
+    this.m_boot.SetAnchorPoint(Vector2(0.5, 0.0));
+    this.m_boot.SetVisible(false);
+  }
+
+  // The link coming up: for BOOT_TIME the display flickers for the first half second and
+  // the boot lines appear one by one, then it settles. Boot() is called every frame by the
+  // session and returns at once when there is nothing to do.
+  private let m_boot: ref<inkText>;
+  private let m_bootT: Float;
+  private let m_bootStage: Int32;
+  private let BOOT_TIME: Float = 1.8;
+
+  public func StartBoot() -> Void {
+    if !IsDefined(this.m_root) {
+      return;
+    }
+    this.m_bootT = this.BOOT_TIME;
+    this.m_bootStage = -1;
+    this.m_boot.SetVisible(true);
+  }
+
+  public func Boot(dt: Float) -> Void {
+    if this.m_bootT <= 0.0 || !IsDefined(this.m_root) {
+      return;
+    }
+    this.m_bootT -= dt;
+    let elapsed = this.BOOT_TIME - this.m_bootT;
+    if this.m_bootT <= 0.0 {
+      this.m_boot.SetVisible(false);
+      this.m_root.SetOpacity(1.0);
+      return;
+    }
+    this.m_root.SetOpacity(elapsed < 0.5 ? RandRangeF(0.3, 1.0) : 1.0);
+    let stage = FloorF(elapsed / 0.3);
+    if stage != this.m_bootStage {
+      this.m_bootStage = stage;
+      let text = "MILITECH FCS  //  COLD START";
+      if stage >= 1 { text += "\nNEURAL UPLINK ........ SECURE"; }
+      if stage >= 2 { text += "\nCHASSIS BUS .......... OK"; }
+      if stage >= 3 { text += "\nMK.31 L / R .......... ARMED"; }
+      if stage >= 4 { text += "\nOPTICS / LRF ......... OK"; }
+      if stage >= 5 { text += "\nPILOT HAS CONTROL"; }
+      this.m_boot.SetText(text);
+    }
   }
 
   // a block of five slanted caution stripes

@@ -299,6 +299,7 @@ public class CMCSession extends ScriptableSystem {
     cam.Activate(0.35, true);
     this.m_hud = new CMPilotHud();
     this.m_hud.Build();
+    this.m_hud.StartBoot();
     this.m_state = 2;
     let player = GetPlayer(this.GetGameInstance());
     if IsDefined(player) {
@@ -455,6 +456,7 @@ public class CMCSession extends ScriptableSystem {
     this.ApplyCamera();
     if IsDefined(this.m_hud) {
       this.m_hud.SetAttitude(CMPilotRig.Wrap(-this.rig.yaw), this.rig.pitch);
+      this.m_hud.Boot(dt);
     }
     this.UpdateAim();
     this.m_unit.Tick(this, dt, now);
