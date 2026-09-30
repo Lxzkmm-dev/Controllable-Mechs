@@ -58,6 +58,7 @@ public class CMUMinotaur extends CMCUnit {
   private let m_turnByOrder: Bool;    // rotate with AI turn orders instead of teleports
   private let m_air: Bool;            // nothing under the mech's feet (Airborne)
   private let m_combatWatch: Int32;   // seconds left to report whether it is still in combat
+  private let m_lookAtsFrom: Float;   // not before this time (after an AI restart)
   private let m_combatWatchAt: Float;
   private let m_airTime: Float;
   private let m_sentOpen: Bool;       // a rotation request is out and has not landed yet
@@ -179,6 +180,9 @@ public class CMUMinotaur extends CMCUnit {
     this.Pacify(mech, true);
     if fighting {
       this.Reboot(mech);
+      // the gun look-ats sent in the same moment as the restart were lost with it (the
+      // guns stayed 20-30 deg off for the whole session): they go out a second later
+      this.m_lookAtsFrom = s.Now() + 1.0;
     }
     this.m_combatWatch = fighting ? 10 : 0;
     GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_q110_personal_link_01");   // link established
@@ -1002,7 +1006,7 @@ public class CMUMinotaur extends CMCUnit {
 
   // once the marker has attached: the four gun-part look-ats, pointed at it
   private func SendLookAts(mech: ref<NPCPuppet>) -> Void {
-    if ArraySize(this.m_lookAts) > 0 || !EntityID.IsDefined(this.m_markerID) {
+    if ArraySize(this.m_lookAts) > 0 || !EntityID.IsDefined(this.m_markerID) || EngineTime.ToFloat(GameInstance.GetEngineTime(this.m_game)) < this.m_lookAtsFrom {
       return;
     }
     if !IsDefined(this.m_marker) {
@@ -1048,21 +1052,23 @@ public class CMUMinotaur extends CMCUnit {
       CMCSession.Log("guns off the reticle: " + FloatToStringPrec(errR, 1) + " (R) and " + FloatToStringPrec(errL, 1) + " (L) deg with the body " + FloatToStringPrec(body, 1) + " deg off, reticle " + FloatToStringPrec(s.aimDist, 0) + " m, state " + CMUMinotaur.StateName(mech));
     }
   }
-  // How far the mech can walk along `dir` without the ground dropping away or rising
-  // sharply: the ground is sampled every 2 m (a short ray down each time), and the walk
-  // stops 2 m before the first point more than 1.5 m above or below its feet. Only when a
-  // walk order is about to go out, so a handful of rays every second or so at most.
+  // How far the mech can walk along `dir` before a real drop: the ground is sampled every
+  // 1.5 m from 3 m out (a short ray down each time), and the walk stops 1 m before the
+  // first point more than 2.5 m below its feet (or 2 m above, a wall-like step). Slopes,
+  // kerbs and banks pass (the first version, at 1.5 m either way, stopped walks that went
+  // nowhere near an edge). Only when a walk order is about to go out.
   private func SafeReach(pos: Vector4, dir: Vector4, reach: Float) -> Float {
     let sq = GameInstance.GetSpatialQueriesSystem(this.m_game);
-    let d = 2.0;
+    let d = 3.0;
     while d <= reach {
       let p = pos + dir * d;
       let hit: TraceResult;
-      let ground = sq.SyncRaycastByCollisionGroup(new Vector4(p.X, p.Y, pos.Z + 3.0, 1.0), new Vector4(p.X, p.Y, pos.Z - 4.0, 1.0), n"Static", hit, true, false);
-      if !ground || AbsF(Cast<Vector4>(hit.position).Z - pos.Z) > 1.5 {
-        return d - 2.0;
+      let ground = sq.SyncRaycastByCollisionGroup(new Vector4(p.X, p.Y, pos.Z + 3.0, 1.0), new Vector4(p.X, p.Y, pos.Z - 6.0, 1.0), n"Static", hit, true, false);
+      let dz = ground ? Cast<Vector4>(hit.position).Z - pos.Z : -10.0;
+      if dz < -2.5 || dz > 2.0 {
+        return d - 1.0;
       }
-      d += 2.0;
+      d += 1.5;
     }
     return reach;
   }
