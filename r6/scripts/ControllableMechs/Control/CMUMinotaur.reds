@@ -66,6 +66,8 @@ public class CMUMinotaur extends CMCUnit {
   private let SPIN_DOWN: Float = 0.9;        // seconds from full spin to still
   private let SPIN_FIRE: Float = 0.3;        // spin fraction at which rounds start
   private let m_spin: Float;
+  private let MUZZLE_AHEAD: Float = 1.2;     // metres ahead of the weapon item where the flash sits
+  private let m_impactToggle: Bool;
 
   private let GATE_DEG: Float = 4.0;
   private let SPREAD_DEG: Float = 0.6;
@@ -233,10 +235,19 @@ public class CMUMinotaur extends CMCUnit {
         this.m_held += 1;
       }
     }
+    let flashL = this.m_guns.left.flash;
+    let flashR = this.m_guns.right.flash;
     let shots = this.m_guns.Update(mech, now, dt, lmb, rmb, s.FireMode(), s.aim, this.SPREAD_DEG, s.rig.pos);
     if shots > 0 {
       this.m_shots += shots;
       s.rig.Recoil(this.KICK * Cast<Float>(shots));
+      // which barrel just fired: its flash timer was reset this frame
+      if this.m_guns.left.flash > flashL {
+        this.RoundFx(this.m_guns.left.weapon, s.aim);
+      }
+      if this.m_guns.right.flash > flashR && this.m_guns.right.weapon != this.m_guns.left.weapon {
+        this.RoundFx(this.m_guns.right.weapon, s.aim);
+      }
     }
     this.AimLog(s, trigger, now);
     let hud = s.Hud();
@@ -320,6 +331,42 @@ public class CMUMinotaur extends CMCUnit {
     let e: EulerAngles;
     e.Yaw = this.m_bodyYaw;
     GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, mech.GetWorldPosition(), e);
+  }
+
+  // A heavier round, visually: the Militech HMG's own big muzzle flash and a power-HMG
+  // trail at the barrel, and every other round the HMG's explosive-bullet impact where the
+  // reticle is. Spawned from the game's effect files (nothing vanilla is edited); at most
+  // three effects a round, only while piloting.
+  private func RoundFx(weapon: ref<WeaponObject>, aim: Vector4) -> Void {
+    if !IsDefined(weapon) {
+      return;
+    }
+    let fx = GameInstance.GetFxSystem(this.m_game);
+    let dir = Vector4.Normalize(aim - weapon.GetWorldPosition());
+    let muzzle = weapon.GetWorldPosition() + dir * this.MUZZLE_AHEAD;
+    fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
+    fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg_npc.effect"), CMUMinotaur.At(muzzle, dir), true);
+    this.m_impactToggle = !this.m_impactToggle;
+    if this.m_impactToggle {
+      fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_explosive_bullet.effect"), CMUMinotaur.At(aim, -dir), true);
+    }
+  }
+
+  private static func Fx(path: ResRef) -> FxResource {
+    let ref: ResourceAsyncRef;
+    ResourceAsyncRef.SetPath(ref, path);
+    let fx: FxResource;
+    fx.effect = ref;
+    return fx;
+  }
+
+  private static func At(p: Vector4, dir: Vector4) -> WorldTransform {
+    let wp: WorldPosition;
+    WorldPosition.SetVector4(wp, p);
+    let wt: WorldTransform;
+    WorldTransform.SetWorldPosition(wt, wp);
+    WorldTransform.SetOrientationFromDir(wt, dir);
+    return wt;
   }
 
   // the MK.31s' hits credit V while this is on (CMHitLog's pipeline hook reads it)
