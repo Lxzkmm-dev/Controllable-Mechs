@@ -2,8 +2,8 @@
 // CONTROLLABLE MECHS - ROBOT LINK TERMINAL (on TerminalKit's ready-made frame)
 // TKPopup gives the lens, brand bar, sidebar tabs, scrolling page, tooltips,
 // right-click back and Esc close; CMContent fills the pages. Opened with K
-// (CM_OpenLink, Input Loader) through CMTerminal.Toggle. Not available in combat
-// or over a menu. TerminalKit comes from the TerminalKIT mod (a requirement).
+// (CM_OpenLink, Input Loader) through CMTerminal.Toggle. Works in combat; not over
+// a menu. TerminalKit comes from the TerminalKIT mod (a requirement).
 // =============================================================================
 module ControllableMechs
 
@@ -40,11 +40,8 @@ public class CMTerminal extends TKPopup {
       }
       return;
     }
+    // available in combat too: only menus, pause and photo mode block it (TKPopup.CanOpen)
     if !TKPopup.CanOpen(player) {
-      return;
-    }
-    if player.IsInCombat() {
-      player.SetWarningMessage("ROBOT LINK UNAVAILABLE IN COMBAT");
       return;
     }
     let terminal = new CMTerminal();
