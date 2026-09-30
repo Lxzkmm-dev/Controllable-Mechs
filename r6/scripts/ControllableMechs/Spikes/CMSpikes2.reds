@@ -118,7 +118,30 @@ public class CMSpike2System extends ScriptableSystem {
     if IsDefined(puppet) {
       s += " " + TDBID.ToStringDEBUG(puppet.GetRecordID());
     }
+    // the two things the damage pipeline cancels a hit for: god mode, and a friendly target
+    let game = obj.GetGame();
+    let gm = GameInstance.GetGodModeSystem(game);
+    let id = obj.GetEntityID();
+    if gm.HasGodMode(id, gameGodModeType.Invulnerable) {
+      s += " [INVULNERABLE]";
+    }
+    if gm.HasGodMode(id, gameGodModeType.Immortal) {
+      s += " [IMMORTAL]";
+    }
+    s += " attitude to V " + CMSpike2System.Attitude(GameObject.GetAttitudeBetween(obj, GetPlayer(game)));
+    let mech = CMLinkSystem.Get(game).Unit();
+    if IsDefined(mech) && mech != obj {
+      s += ", to the mech " + CMSpike2System.Attitude(GameObject.GetAttitudeBetween(obj, mech));
+    }
     return s;
+  }
+
+  public static func Attitude(a: EAIAttitude) -> String {
+    switch a {
+      case EAIAttitude.AIA_Friendly: return "FRIENDLY";
+      case EAIAttitude.AIA_Hostile: return "HOSTILE";
+    }
+    return "neutral";
   }
 
   private static func V(v: Vector4) -> String {

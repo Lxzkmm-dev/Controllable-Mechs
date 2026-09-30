@@ -39,6 +39,8 @@ public class CMUMinotaur extends CMCUnit {
   private let m_logNext: Float;
   private let m_held: Int32;
   private let m_shots: Int32;
+  private let m_target: wref<GameObject>;
+  private let m_targetHP: Float;
 
   private let GATE_DEG: Float = 4.0;
   private let SPREAD_DEG: Float = 0.6;
@@ -167,7 +169,14 @@ public class CMUMinotaur extends CMCUnit {
       this.m_logNext = now;
       this.m_held = 0;
       this.m_shots = 0;
-      CMCSession.Log("fire (" + CMFireCall.Name(this.m_guns.call) + ")");
+      this.m_target = GameInstance.GetTargetingSystem(this.m_game).GetLookAtObject(GetPlayer(this.m_game));
+      this.m_targetHP = CMSpike2System.Health(this.m_target);
+      CMCSession.Log("fire (" + CMFireCall.Name(this.m_guns.call) + "): target " + CMSpike2System.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1));
+    }
+    if !trigger && this.m_triggerWas && IsDefined(this.m_target) {
+      let cb = new CMUMinotaurReportCb();
+      cb.unit = this;
+      GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, 1.0, false);
     }
     if trigger && now >= this.m_logNext {
       this.m_logNext = now + 1.0;
@@ -176,6 +185,11 @@ public class CMUMinotaur extends CMCUnit {
         + " deg, reticle " + FloatToStringPrec(s.aimDist, 0) + " m, rounds " + IntToString(this.m_shots) + ", frames held " + IntToString(this.m_held));
     }
     this.m_triggerWas = trigger;
+  }
+
+  public func Report() -> Void {
+    let hp = CMSpike2System.Health(this.m_target);
+    CMCSession.Log("result: target " + CMSpike2System.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1) + " -> " + FloatToStringPrec(hp, 1));
   }
 
   private func MoveMarker(at: Vector4) -> Void {
@@ -374,6 +388,15 @@ public class CMUMinotaur extends CMCUnit {
           st.warning = "GUNS TRAVERSING";
         }
       }
+    }
+  }
+}
+
+public class CMUMinotaurReportCb extends DelayCallback {
+  public let unit: wref<CMUMinotaur>;
+  public func Call() -> Void {
+    if IsDefined(this.unit) {
+      this.unit.Report();
     }
   }
 }
