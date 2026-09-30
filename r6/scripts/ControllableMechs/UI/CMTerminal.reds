@@ -15,7 +15,7 @@ public class CMTerminal extends TKPopup {
     c.game = this.GetGame();
     return c;
   }
-  public func Tabs() -> array<String> = ["LINK|link", "SETTINGS|settings", "TOOLS|tk_tools"]
+  public func Tabs() -> array<String> = ["LINK|link", "SETTINGS|settings", "SPIKES|spikes", "TOOLS|tk_tools"]
   public func Brand() -> String = "MILITECH"
   public func Name() -> String = "ROBOT LINK"
   public func Status() -> String = "NEURAL UPLINK // v" + CMVersion.Text() + " // ] TO CLOSE"

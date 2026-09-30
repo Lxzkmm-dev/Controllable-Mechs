@@ -23,6 +23,9 @@ public class CMContent extends TKContent {
       case "settings":
         this.Settings(p);
         break;
+      case "spikes":
+        CMSpikeSystem.Get(this.game).Page(p);
+        break;
       default:
         this.Link(p);
         break;
@@ -31,6 +34,9 @@ public class CMContent extends TKContent {
 
   public func Act(p: ref<TKPage>, action: String, arg: String) -> Void {
     if TKTools.Act(p, action, arg) {
+      return;
+    }
+    if StrBeginsWith(action, "sp_") && CMSpikeSystem.Get(this.game).Act(p, action, arg) {
       return;
     }
     let link = CMLinkSystem.Get(this.game);
