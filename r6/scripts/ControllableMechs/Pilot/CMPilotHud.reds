@@ -14,8 +14,8 @@
 //     below each plate
 //   - shadow_blobs: the soft shadow under the plates, the glow behind the main
 //     readouts, the vignette
-//   - the quest glitch atlas: the tearing lines when the mech takes damage
-// The motion (idle flicker, damage jolt, hot-gun pulse, warning sweep) is ink
+// The motion (idle flicker, damage jolt and red flash, hit markers, hot-gun pulse,
+// warning sweep) is ink
 // animations started on events: the engine runs them, no script runs per frame.
 // =============================================================================
 module ControllableMechs
@@ -131,7 +131,9 @@ public class CMPilotHud {
   private let m_warnPulse: ref<inkAnimProxy>;
   private let m_warnSweepAnim: ref<inkAnimProxy>;
   private let m_msl: ref<inkText>;
-  private let m_glitch: array<ref<inkImage>>;
+  private let m_hurt: ref<inkImage>;             // the red edge flash on a hit
+  private let m_hitDirs: array<ref<inkCanvas>>;   // where hits come from
+  private let m_hitNext: Int32;
   private let TAPE_Y: Float = 50.0;
   private let TAPE_SPACING: Float = 165.0;   // px per 15 deg
   private let PITCH_PX: Float = 6.0;         // px per degree on the elevation ladder
@@ -158,7 +160,6 @@ public class CMPilotHud {
   public static func Panzer() -> ResRef = r"base\\gameplay\\gui\\widgets\\tank_hud\\panzer_hud.inkatlas"
   public static func Turret() -> ResRef = r"base\\gameplay\\gui\\widgets\\turret_hud\\turret_hud.inkatlas"
   public static func Blobs() -> ResRef = r"base\\gameplay\\gui\\common\\shadow_blobs.inkatlas"
-  public static func Glitch() -> ResRef = r"base\\gameplay\\gui\\quests\\assets\\glitch.inkatlas"
 
   // ---------------------------------------------------------------------------
   // Build / remove
@@ -279,23 +280,38 @@ public class CMPilotHud {
     this.Corner(root, inkEAnchor.BottomRight, -1.0, -1.0);
   }
 
-  // On top of everything: the tearing lines a hit throws across the display (hidden until
-  // Damage plays them) and the boot text (StartBoot / Boot run it).
+  // On top of everything: the red edge flash a hit throws on the display, the markers that
+  // show where hits come from (all hidden until a hit plays them), and the boot text
+  // (StartBoot / Boot run it).
   private func BuildEffects(root: ref<inkCanvas>) -> Void {
-    this.GlitchBand(root, n"bw_h_lines_01", CMPilotHud.Amber(), 3840.0, 200.0);
-    this.GlitchBand(root, n"bw_big_lines", CMPilotHud.Red(), 3400.0, 520.0);
-    this.GlitchBand(root, n"bw_big_lines", new HDRColor(0.20, 0.95, 1.05, 1.0), 3400.0, 520.0);
+    this.m_hurt = CMPilotHud.Img(root, inkEAnchor.Fill, 0.0, 0.0, 0.0, 0.0, CMPilotHud.Blobs(), n"vignette", CMPilotHud.Red(), 0.0);
+    let i = 0;
+    while i < 4 {
+      ArrayPush(this.m_hitDirs, this.HitMarker(root));
+      i += 1;
+    }
     this.m_boot = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, -330.0, "", 34, n"Semi-Bold", CMPilotHud.Amber());
     this.m_boot.SetAnchorPoint(Vector2(0.5, 0.0));
     this.m_boot.SetVisible(false);
   }
 
-  private func GlitchBand(root: ref<inkCanvas>, part: CName, color: HDRColor, w: Float, h: Float) -> Void {
-    let g = CMPilotHud.Img(root, inkEAnchor.Centered, 0.0, 0.0, w, h, CMPilotHud.Glitch(), part, color, 0.0);
-    g.SetAnchorPoint(Vector2(0.5, 0.5));
-    ArrayPush(this.m_glitch, g);
+  // one direction marker: a heavy chevron with a thin arc bar behind it, pointing outward
+  // from the sight toward whoever fired; placed and turned by HitFrom
+  private func HitMarker(root: ref<inkCanvas>) -> ref<inkCanvas> {
+    let c = new inkCanvas();
+    c.SetAnchor(inkEAnchor.Centered);
+    c.SetAnchorPoint(Vector2(0.5, 0.5));
+    c.SetSize(Vector2(240.0, 80.0));
+    c.SetRenderTransformPivot(Vector2(0.5, 0.5));
+    c.SetOpacity(0.0);
+    c.Reparent(root);
+    CMPilotHud.Bar(c, 20.0, 54.0, 200.0, 5.0, CMPilotHud.Red(), 0.6);
+    let l = CMPilotHud.Bar(c, 76.0, 22.0, 52.0, 12.0, CMPilotHud.Red(), 1.0);
+    l.SetRotation(-32.0);
+    let r = CMPilotHud.Bar(c, 112.0, 22.0, 52.0, 12.0, CMPilotHud.Red(), 1.0);
+    r.SetRotation(32.0);
+    return c;
   }
-
   // The display's idle flicker: two short dips in brightness every 5.5 s, looped by the
   // engine for as long as the HUD is up.
   private func Flicker() -> Void {
@@ -311,9 +327,9 @@ public class CMPilotHud {
     this.m_face.PlayAnimationWithOptions(def, opt);
   }
 
-  // The mech took damage: the display jolts sideways and tearing lines flash across it,
-  // harder the more hull the hit took (`lost` is the fraction of the hull lost since the
-  // last reading; 8% or more is the full effect). Three short engine animations per hit.
+  // The mech took damage: the screen edges flash red and the display jolts, harder the
+  // more hull the hit took (`lost` is the fraction of the hull lost since the last reading;
+  // 8% or more is the full effect). Two short engine animations per hit.
   public func Damage(lost: Float) -> Void {
     if !IsDefined(this.m_root) {
       return;
@@ -321,26 +337,35 @@ public class CMPilotHud {
     let k = ClampF(lost * 12.0, 0.25, 1.0);
     let jolt = new inkAnimDef();
     let move = new inkAnimTranslation();
-    move.SetStartTranslation(Vector2(RandRangeF(-46.0, 46.0) * k, RandRangeF(-18.0, 18.0) * k));
+    move.SetStartTranslation(Vector2(RandRangeF(-30.0, 30.0) * k, RandRangeF(-12.0, 12.0) * k));
     move.SetEndTranslation(Vector2(0.0, 0.0));
-    move.SetDuration(0.16 + 0.14 * k);
+    move.SetDuration(0.14 + 0.12 * k);
     move.SetType(inkanimInterpolationType.Quadratic);
     move.SetMode(inkanimInterpolationMode.EasyOut);
     jolt.AddInterpolator(move);
     this.m_face.PlayAnimation(jolt);
-    let i = 0;
-    while i < ArraySize(this.m_glitch) {
-      let g = this.m_glitch[i];
-      // the red and the cyan band sit a few pixels either side of each other: a colour split
-      let y = i == 0 ? RandRangeF(-520.0, 520.0) : RandRangeF(-260.0, 260.0);
-      g.SetMargin(inkMargin(i == 1 ? -14.0 * k : (i == 2 ? 14.0 * k : 0.0), y, 0.0, 0.0));
-      let def = new inkAnimDef();
-      def.AddInterpolator(CMPilotHud.Fade((i == 0 ? 0.8 : 0.45) * k, 0.0, 0.14 + 0.3 * k, 0.0));
-      g.PlayAnimation(def);
-      i += 1;
-    }
+    let flash = new inkAnimDef();
+    flash.AddInterpolator(CMPilotHud.Fade(0.25 + 0.5 * k, 0.0, 0.35 + 0.35 * k, 0.0));
+    this.m_hurt.PlayAnimation(flash);
   }
 
+  // A hit on the mech from `off` degrees off the view (positive = to the left, 180 =
+  // behind): a red chevron on a ring round the sight points toward it and fades over a
+  // second. Four markers are reused in turn.
+  public func HitFrom(off: Float) -> Void {
+    if !IsDefined(this.m_root) || ArraySize(this.m_hitDirs) == 0 {
+      return;
+    }
+    let m = this.m_hitDirs[this.m_hitNext];
+    this.m_hitNext = (this.m_hitNext + 1) % ArraySize(this.m_hitDirs);
+    let a = Deg2Rad(off);
+    m.SetMargin(inkMargin(-SinF(a) * 330.0, -CosF(a) * 330.0, 0.0, 0.0));
+    m.SetRotation(-off);
+    let fade = new inkAnimDef();
+    fade.AddInterpolator(CMPilotHud.Fade(1.0, 1.0, 0.35, 0.0));
+    fade.AddInterpolator(CMPilotHud.Fade(1.0, 0.0, 0.8, 0.35));
+    m.PlayAnimation(fade);
+  }
   // The link coming up: for BOOT_TIME the display flickers for the first half second and
   // the boot lines appear one by one, then it settles. Boot() is called every frame by the
   // session and returns at once when there is nothing to do.

@@ -582,6 +582,15 @@ public class CMCSession extends ScriptableSystem {
     this.m_hud.Refresh(s);
   }
 
+  // a hit on the unit from a shooter at `from`: the HUD's direction marker, placed by where
+  // the shooter stands relative to the view
+  public func HitFrom(from: Vector4) -> Void {
+    if this.m_state != 2 || !IsDefined(this.m_hud) || !IsDefined(this.rig) || !IsDefined(this.m_unit) {
+      return;
+    }
+    this.m_hud.HitFrom(CMPilotRig.Wrap(CMPilotRig.YawOf(from - this.m_unit.Ground()) - this.rig.yaw));
+  }
+
   // the unit's barrel markers and muzzle flashes, drawn every frame
   public func Hud() -> ref<CMPilotHud> = this.m_hud
 

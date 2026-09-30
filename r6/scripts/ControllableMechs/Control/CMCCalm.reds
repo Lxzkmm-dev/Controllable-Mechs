@@ -25,7 +25,12 @@ public let m_cmPiloted: Bool;
 @wrapMethod(TargetTrackingExtension)
 public final static func OnHit(ownerPuppet: wref<ScriptedPuppet>, evt: ref<gameHitEvent>) -> Void {
   if IsDefined(ownerPuppet) && ownerPuppet.m_cmPiloted {
-    CMCCalm.Note(ownerPuppet, evt.attackData.GetInstigator(), "a hit");
+    let shooter = evt.attackData.GetInstigator();
+    CMCCalm.Note(ownerPuppet, shooter, "a hit");
+    // where it came from, for the pilot's HUD (not the mech's own rounds, credited to V)
+    if IsDefined(shooter) && !shooter.IsPlayer() {
+      CMCSession.Get(ownerPuppet.GetGame()).HitFrom(shooter.GetWorldPosition());
+    }
     return;
   }
   // Someone hit by the piloted unit: the hit is credited to V (the kill, XP and heat are
