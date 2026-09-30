@@ -1108,7 +1108,7 @@ public class CMUMinotaur extends CMCUnit {
       // the AI's own teleport order: the teleport facility's moves don't land on this mech
       // (the log showed it set down every half second and never moving)
       let cmd = new AITeleportCommand();
-      cmd.position = ground;
+      cmd.position = new Vector4(ground.X, ground.Y, ground.Z + 0.3, 1.0);   // a touch above: set right on the hit point its legs sank in
       cmd.rotation = CMPilotRig.YawOf(mech.GetWorldForward());
       cmd.doNavTest = false;
       this.Send(mech, cmd, false);

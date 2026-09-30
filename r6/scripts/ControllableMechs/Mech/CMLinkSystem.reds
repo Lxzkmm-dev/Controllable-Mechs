@@ -490,7 +490,7 @@ public class CMLinkSystem extends ScriptableSystem {
       return;
     }
     let cmd = new AITeleportCommand();
-    cmd.position = ground;
+    cmd.position = new Vector4(ground.X, ground.Y, ground.Z + 0.3, 1.0);   // a touch above: set right on the hit point its legs sank in
     cmd.rotation = CMPilotRig.YawOf(mech.GetWorldForward());
     cmd.doNavTest = false;
     ai.SendCommand(cmd);
