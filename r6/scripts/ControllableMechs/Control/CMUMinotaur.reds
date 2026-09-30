@@ -56,6 +56,8 @@ public class CMUMinotaur extends CMCUnit {
   private let m_bodyYaw: Float;
   private let m_turnVel: Float;
   private let m_turnByOrder: Bool;    // rotate with AI turn orders instead of teleports
+  private let m_air: Bool;            // nothing under the mech's feet (Airborne)
+  private let m_airTime: Float;
   private let m_sentOpen: Bool;       // a rotation request is out and has not landed yet
   private let m_sentYaw: Float;
   private let m_sentAt: Float;
@@ -481,8 +483,8 @@ public class CMUMinotaur extends CMCUnit {
   private func TurnChassis(s: ref<CMCSession>, mech: ref<NPCPuppet>, dt: Float) -> Void {
     let real = CMPilotRig.YawOf(mech.GetWorldForward());
     let now = s.Now();
-    if this.m_moving || now - this.m_stoodAt < 0.8 {
-      // walking, or settling out of a walk: the walk order owns the facing
+    if this.m_moving || this.m_air || now - this.m_stoodAt < 0.8 {
+      // walking, in the air, or settling out of a walk: no rotation from us
       this.m_bodyYaw = real;
       this.m_turnVel = 0.0;
       this.m_turning = false;
@@ -960,7 +962,10 @@ public class CMUMinotaur extends CMCUnit {
     this.WatchLookAts(s, mech, now);
     this.ReadHull(mech);
     this.IntegrityAlarm(mech, now);
-    this.Drive(s, mech, now);
+    this.m_air = this.Airborne(s, mech);
+    if !this.m_air {
+      this.Drive(s, mech, now);
+    }
     return "";
   }
 
@@ -1012,6 +1017,63 @@ public class CMUMinotaur extends CMCUnit {
       CMCSession.Log("guns off the reticle: " + FloatToStringPrec(errR, 1) + " (R) and " + FloatToStringPrec(errL, 1) + " (L) deg with the body " + FloatToStringPrec(body, 1) + " deg off, reticle " + FloatToStringPrec(s.aimDist, 0) + " m, state " + CMUMinotaur.StateName(mech));
     }
   }
+  // How far the mech can walk along `dir` without the ground dropping away or rising
+  // sharply: the ground is sampled every 2 m (a short ray down each time), and the walk
+  // stops 2 m before the first point more than 1.5 m above or below its feet. Only when a
+  // walk order is about to go out, so a handful of rays every second or so at most.
+  private func SafeReach(pos: Vector4, dir: Vector4, reach: Float) -> Float {
+    let sq = GameInstance.GetSpatialQueriesSystem(this.m_game);
+    let d = 2.0;
+    while d <= reach {
+      let p = pos + dir * d;
+      let hit: TraceResult;
+      let ground = sq.SyncRaycastByCollisionGroup(new Vector4(p.X, p.Y, pos.Z + 3.0, 1.0), new Vector4(p.X, p.Y, pos.Z - 4.0, 1.0), n"Static", hit, true, false);
+      if !ground || AbsF(Cast<Vector4>(hit.position).Z - pos.Z) > 1.5 {
+        return d - 2.0;
+      }
+      d += 2.0;
+    }
+    return reach;
+  }
+
+  // Ten times a second: is the mech standing on anything? One ray down from its feet. In
+  // the air (walked or blown off a ledge) it gets no orders at all, so the game's own fall
+  // has the best chance to run; if it is still in the air after half a second (the game
+  // left it hanging), it is set down on the ground below, with a heavy landing.
+  private func Airborne(s: ref<CMCSession>, mech: ref<NPCPuppet>) -> Bool {
+    let pos = mech.GetWorldPosition();
+    let hit: TraceResult;
+    let gap = 40.0;
+    if GameInstance.GetSpatialQueriesSystem(this.m_game).SyncRaycastByCollisionGroup(new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 40.0, 1.0), n"Static", hit, true, false) {
+      gap = pos.Z - Cast<Vector4>(hit.position).Z;
+    }
+    if gap < 1.0 {
+      this.m_airTime = 0.0;
+      return false;
+    }
+    if this.m_airTime == 0.0 {
+      CMCSession.Log("AIRBORNE: " + FloatToStringPrec(gap, 1) + " m above the ground, orders held");
+      this.CancelCmd(mech, this.m_moveCmd);
+      this.CancelCmd(mech, this.m_turnCmd);
+      this.m_moveCmd = null;
+      this.m_turnCmd = null;
+      this.m_moving = false;
+    }
+    this.m_airTime += 0.1;
+    if this.m_airTime >= 0.5 && gap < 40.0 {
+      let ground = Cast<Vector4>(hit.position);
+      ground.W = 1.0;
+      let e: EulerAngles;
+      e.Yaw = CMPilotRig.YawOf(mech.GetWorldForward());
+      GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, ground, e);
+      CMCSession.Log("AIRBORNE: still hanging after " + FloatToStringPrec(this.m_airTime, 1) + " s, set down " + FloatToStringPrec(gap, 1) + " m below");
+      s.rig.Nudge(12.0, -1.2);   // the landing, felt
+      GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
+      this.m_airTime = 0.0;
+    }
+    return true;
+  }
+
   // WASD relative to where the view looks; the mech walks there on its own legs
   private func Drive(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
     let f = (s.Key(CMCKey.W()) ? 1.0 : 0.0) - (s.Key(CMCKey.S()) ? 1.0 : 0.0);
@@ -1044,12 +1106,16 @@ public class CMUMinotaur extends CMCUnit {
     if GameInstance.GetSpatialQueriesSystem(this.m_game).SyncRaycastByCollisionGroup(from + dir * 2.0, from + dir * (reach + 2.5), n"Static", hit, true, false) {
       reach = Vector4.Distance(from, Cast<Vector4>(hit.position)) - 2.5;
     }
+    // nor off a ledge: the game walks NPCs on its navigation mesh and has no fall for the
+    // Minotaur, so one walked off an edge hangs in the air (see Airborne)
+    let wall = reach;
+    reach = this.SafeReach(pos, dir, reach);
     if reach < 1.5 {
       if this.m_moving {
         this.CancelCmd(mech, this.m_moveCmd);
         this.m_moveCmd = null;
         this.m_moving = false;
-        CMCSession.Log("walk: stop (wall ahead)");
+        CMCSession.Log(reach < wall ? "walk: stop (drop ahead)" : "walk: stop (wall ahead)");
       }
       return;
     }
