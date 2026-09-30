@@ -50,7 +50,6 @@ public class CMPilotSystem extends ScriptableSystem {
 
   private let m_keys: array<Bool>;
   private let m_zoom: Bool;
-  private let m_inputOn: Bool;
   private let m_sensX: Float;
   private let m_sensY: Float;
 
@@ -68,6 +67,13 @@ public class CMPilotSystem extends ScriptableSystem {
   private let m_moveRun: Bool;
   private let m_turnCmd: ref<AICommand>;
   private let m_turnSent: Float;
+
+  // diagnostics: what actually arrives while piloting (HUD line + TerminalKit log)
+  private let m_dbgFrames: Int32;
+  private let m_dbgKeys: Int32;
+  private let m_dbgAxis: Int32;
+  private let m_dbgActions: Int32;
+  private let m_dbgLast: String;
 
   private let m_vHealth: Float;
   private let m_restricted: Bool;
@@ -93,7 +99,14 @@ public class CMPilotSystem extends ScriptableSystem {
   // Lifecycle
   // ---------------------------------------------------------------------------
   private func OnAttach() -> Void {
-    GameInstance.GetCallbackSystem().RegisterCallback(n"Session/BeforeEnd", this, n"OnSessionEnd").SetLifetime(CallbackLifetime.Forever);
+    let cbs = GameInstance.GetCallbackSystem();
+    cbs.RegisterCallback(n"Session/BeforeEnd", this, n"OnSessionEnd").SetLifetime(CallbackLifetime.Forever);
+    // raw input, registered once like XUtils does; both handlers return at once unless piloting
+    cbs.RegisterCallback(n"Input/Key", this, n"OnKey").SetLifetime(CallbackLifetime.Forever);
+    cbs.RegisterCallback(n"Input/Axis", this, n"OnAxis")
+      .AddTarget(InputTarget.Axis(EInputKey.IK_MouseX))
+      .AddTarget(InputTarget.Axis(EInputKey.IK_MouseY))
+      .SetLifetime(CallbackLifetime.Forever);
   }
 
   private func OnDetach() -> Void {
@@ -235,6 +248,11 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_hudState = new CMPilotHudState();
     ArrayClear(this.m_keys);
     ArrayResize(this.m_keys, CMPilotKey.Count());
+    this.m_dbgFrames = 0;
+    this.m_dbgKeys = 0;
+    this.m_dbgAxis = 0;
+    this.m_dbgActions = 0;
+    this.m_dbgLast = "";
     this.m_zoom = false;
     this.m_moving = false;
     this.m_moveCmd = null;
@@ -306,8 +324,12 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_hud = new CMPilotHud();
     this.m_hud.Build();
 
-    this.InputOn();
     this.m_state = 2;
+    let owner = GetPlayer(this.GetGameInstance());
+    if IsDefined(owner) {
+      owner.m_cmPilot = this;   // the game's own actions now come to us
+    }
+    TKLog.Add("ControllableMechs", "pilot: camera active, guns " + this.m_guns.Describe() + ", paused " + (GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() ? "yes" : "no"));
     this.m_lastTime = this.Now();
     this.m_slow = 1.0;   // refresh the HUD on the first frame
     this.ScheduleFrame();
@@ -329,9 +351,13 @@ public class CMPilotSystem extends ScriptableSystem {
     let game = this.GetGameInstance();
     this.m_gen += 1;   // stops the frame loop and any pending timeout
     this.m_state = 0;
+    let owner = GetPlayer(game);
+    if IsDefined(owner) {
+      owner.m_cmPilot = null;
+    }
     this.m_lastExit = this.Now();
 
-    this.InputOff();
+    TKLog.Add("ControllableMechs", "pilot: exit (" + reason + ") frames " + IntToString(this.m_dbgFrames) + ", keys " + IntToString(this.m_dbgKeys) + ", mouse " + IntToString(this.m_dbgAxis) + ", actions " + IntToString(this.m_dbgActions));
     if this.m_attachPending {
       this.m_attachPending = false;
       GameInstance.GetCallbackSystem().UnregisterCallback(n"Entity/Attached", this, n"OnCamAttached");
@@ -420,6 +446,7 @@ public class CMPilotSystem extends ScriptableSystem {
     if generation != this.m_gen || this.m_state != 2 {
       return;
     }
+    this.m_dbgFrames += 1;
     let game = this.GetGameInstance();
     let now = this.Now();
     let dt = ClampF(now - this.m_lastTime, 0.0, 0.1);
@@ -661,32 +688,62 @@ public class CMPilotSystem extends ScriptableSystem {
     } else {
       s.hints = "[WASD] WALK   [SHIFT] RUN   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [L] DISCONNECT";
     }
+    s.debug = this.DebugLine();
     this.m_hud.Refresh(s);
   }
 
   // ---------------------------------------------------------------------------
-  // Raw input, only registered while piloting
+  // Input, two channels:
+  //   - raw keys and mouse (Codeware Input/Key, Input/Axis), registered once
+  //     in OnAttach; both handlers return at once unless piloting
+  //   - the game's own actions (Forward, Back, Left, Right, sprint, attack,
+  //     aim, camera mouse) through the player's OnAction (CMInput.reds);
+  //     rebind-aware, and the path XUtils and AMM rely on
+  // Setting a held key from both channels is harmless. The camera mouse
+  // actions are only used while no raw mouse events have arrived, so the view
+  // never turns twice.
   // ---------------------------------------------------------------------------
-  private func InputOn() -> Void {
-    if this.m_inputOn {
-      return;
+  public func OnGameAction(name: CName, type: gameinputActionType, value: Float) -> Bool {
+    if this.m_state != 2 {
+      return false;
     }
-    let cbs = GameInstance.GetCallbackSystem();
-    cbs.RegisterCallback(n"Input/Key", this, n"OnKey");
-    cbs.RegisterCallback(n"Input/Axis", this, n"OnAxis")
-      .AddTarget(InputTarget.Axis(EInputKey.IK_MouseX))
-      .AddTarget(InputTarget.Axis(EInputKey.IK_MouseY));
-    this.m_inputOn = true;
-  }
-
-  private func InputOff() -> Void {
-    if !this.m_inputOn {
-      return;
+    let down = !Equals(type, gameinputActionType.BUTTON_RELEASED);
+    let used = true;
+    switch name {
+      case n"Forward": this.SetKey(CMPilotKey.W(), down); break;
+      case n"Back": this.SetKey(CMPilotKey.S(), down); break;
+      case n"Left": this.SetKey(CMPilotKey.A(), down); break;
+      case n"Right": this.SetKey(CMPilotKey.D(), down); break;
+      case n"ToggleSprint":
+      case n"Sprint":
+        this.SetKey(CMPilotKey.Run(), down);
+        break;
+      case n"RangedAttack":
+      case n"ShootPrimary":
+        this.SetKey(CMPilotKey.Lmb(), down);
+        break;
+      case n"CameraAim":
+        this.SetKey(CMPilotKey.Rmb(), down);
+        break;
+      case n"CameraMouseX":
+        if this.m_dbgAxis == 0 && IsDefined(this.m_rig) {
+          this.m_rig.Look(-value / 45.0 * (this.m_zoom ? 0.5 : 1.0), 0.0);
+        }
+        break;
+      case n"CameraMouseY":
+        if this.m_dbgAxis == 0 && IsDefined(this.m_rig) {
+          this.m_rig.Look(0.0, value / 45.0 * (this.m_zoom ? 0.5 : 1.0));
+        }
+        break;
+      default:
+        used = false;
+        break;
     }
-    let cbs = GameInstance.GetCallbackSystem();
-    cbs.UnregisterCallback(n"Input/Key", this, n"OnKey");
-    cbs.UnregisterCallback(n"Input/Axis", this, n"OnAxis");
-    this.m_inputOn = false;
+    if used {
+      this.m_dbgActions += 1;
+      this.Trace("action " + NameToString(name));
+    }
+    return used;
   }
 
   protected cb func OnKey(event: ref<KeyInputEvent>) -> Void {
@@ -697,11 +754,9 @@ public class CMPilotSystem extends ScriptableSystem {
     if Equals(action, EInputAction.IACT_Axis) {
       return;
     }
+    this.m_dbgKeys += 1;
+    this.Trace("key " + EnumValueToString("EInputKey", Cast<Int64>(EnumInt(event.GetKey()))));
     let down = !Equals(action, EInputAction.IACT_Release);
-    // presses while a menu has the game paused are ignored; releases always count
-    if down && GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() {
-      return;
-    }
     switch event.GetKey() {
       case EInputKey.IK_W: this.SetKey(CMPilotKey.W(), down); break;
       case EInputKey.IK_A: this.SetKey(CMPilotKey.A(), down); break;
@@ -732,9 +787,7 @@ public class CMPilotSystem extends ScriptableSystem {
     if this.m_state != 2 || !IsDefined(this.m_rig) {
       return;
     }
-    if GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() {
-      return;
-    }
+    this.m_dbgAxis += 1;
     let v = event.GetValue();
     // finer control through the optics
     let zoomScale = this.m_zoom ? 0.5 : 1.0;
@@ -815,7 +868,21 @@ public class CMPilotSystem extends ScriptableSystem {
     return GameInstance.GetStatPoolsSystem(this.GetGameInstance()).GetStatPoolValue(Cast<StatsObjectID>(player.GetEntityID()), gamedataStatPoolType.Health, false);
   }
 
-  private func Now() -> Float = EngineTime.ToFloat(GameInstance.GetSimTime(this.GetGameInstance()))
+  // engine time: it always advances (the frame loop itself stops while a menu pauses the game)
+  private func Now() -> Float = EngineTime.ToFloat(GameInstance.GetEngineTime(this.GetGameInstance()))
+
+  // the first input events of each kind go to TerminalKit's log (TOOLS > LOG)
+  private func Trace(what: String) -> Void {
+    if Equals(what, this.m_dbgLast) || this.m_dbgKeys + this.m_dbgAxis + this.m_dbgActions > 40 {
+      return;
+    }
+    this.m_dbgLast = what;
+    TKLog.Add("ControllableMechs", "pilot input: " + what);
+  }
+
+  public func DebugLine() -> String {
+    return "DBG  FRAMES " + IntToString(this.m_dbgFrames) + "  KEYS " + IntToString(this.m_dbgKeys) + "  MOUSE " + IntToString(this.m_dbgAxis) + "  ACTIONS " + IntToString(this.m_dbgActions) + "  PAUSED " + (GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() ? "Y" : "N");
+  }
 
   // a default Quaternion is all zeros, not identity
   public static func Identity() -> Quaternion {

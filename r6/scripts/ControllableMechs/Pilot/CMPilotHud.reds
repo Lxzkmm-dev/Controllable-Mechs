@@ -25,6 +25,7 @@ public class CMPilotHud {
   private let m_link: ref<inkText>;
   private let m_speed: ref<inkText>;
   private let m_hints: ref<inkText>;
+  private let m_debug: ref<inkText>;
   private let m_integrityText: ref<inkText>;
   private let m_integrityBar: ref<inkRectangle>;
   private let m_signalText: ref<inkText>;
@@ -225,6 +226,9 @@ public class CMPilotHud {
   private func BuildHints(root: ref<inkCanvas>) -> Void {
     this.m_hints = CMPilotHud.Label(root, inkEAnchor.BottomCenter, 0.0, 70.0, "", 28, n"Medium", CMPilotHud.Dim());
     this.m_hints.SetAnchorPoint(Vector2(0.5, 1.0));
+    // diagnostics while Pilot Mode is being tested; a line that never changes means the frame loop never ran
+    this.m_debug = CMPilotHud.Label(root, inkEAnchor.BottomCenter, 0.0, 120.0, "DBG  WAITING FOR FIRST FRAME", 26, n"Medium", CMPilotHud.Pale());
+    this.m_debug.SetAnchorPoint(Vector2(0.5, 1.0));
   }
 
   // ---------------------------------------------------------------------------
@@ -271,6 +275,7 @@ public class CMPilotHud {
 
     this.m_warn.SetText(s.warning);
     this.m_hints.SetText(s.hints);
+    this.m_debug.SetText(s.debug);
   }
 
   private func Gun(bar: ref<inkRectangle>, state: ref<inkText>, heat: Float, locked: Bool, has: Bool) -> Void {
@@ -385,4 +390,5 @@ public class CMPilotHudState {
   public let hasR: Bool;
   public let warning: String;
   public let hints: String;
+  public let debug: String;
 }

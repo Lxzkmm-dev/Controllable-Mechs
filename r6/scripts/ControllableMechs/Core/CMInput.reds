@@ -52,6 +52,21 @@ protected cb func OnGameAttached() -> Bool {
   return result;
 }
 
+// While piloting, the game's own actions (move, sprint, attack, aim, camera mouse) go to
+// the mech instead of V. Set only while piloting, so otherwise this costs one check.
+@addField(PlayerPuppet)
+public let m_cmPilot: wref<CMPilotSystem>;
+
+@wrapMethod(PlayerPuppet)
+protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsumer) -> Bool {
+  if IsDefined(this.m_cmPilot) {
+    if this.m_cmPilot.OnGameAction(ListenerAction.GetName(action), ListenerAction.GetType(action), ListenerAction.GetValue(action)) {
+      return true;
+    }
+  }
+  return wrappedMethod(action, consumer);
+}
+
 @wrapMethod(PlayerPuppet)
 protected cb func OnDetach() -> Bool {
   if IsDefined(this.m_cmInput) {
