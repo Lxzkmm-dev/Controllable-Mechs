@@ -91,6 +91,12 @@ public class CMContent extends TKContent {
       case "spawntest":
         p.SetMessage(link.SpawnTestMech(StringToName(CMContent.Str(arg))));
         break;
+      case "spawndrone":
+        p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg)));
+        break;
+      case "dronemove":
+        cfg.SetDroneMove(CMContent.Val(arg, 0));
+        break;
       case "despawntest":
         link.DespawnTestMech();
         p.SetMessage("TEST MECH REMOVED");
@@ -205,6 +211,10 @@ public class CMContent extends TKContent {
     p.Stat("HULL", IntToString(RoundF(hp * 100.0)) + "%", hp < 0.3 ? "!CRITICAL" : "*NOMINAL", hp);
     p.Stat("UPLINK", IntToString(RoundF(link.Distance() * 3.28084)) + " ft", "", link.SignalFraction());
     p.Stat("ORDER", CMContent.OrderName(link.Order()), "", -1.0);
+    if Equals(link.UnitKind(), "DRONE") {
+      p.Heading("PILOT INTERFACE");
+      p.Item("FLY THE DRONE", "Test build: WASD tilt and move it, Space/Ctrl climb and descend, the mouse turns, \\ disconnects.", "", "FLY  [\\]", "pilot", "", true);
+    }
     if Equals(link.UnitKind(), "MECH") {
       p.Heading("PILOT INTERFACE");
       p.Item("PILOT THE MECH", "WASD walks, the mouse aims, LMB fires the MK.31s, RMB optics, G missile, V view, B fire mode, \\ disconnects.", "", "PILOT  [\\]", "pilot", "", true);
@@ -225,6 +235,7 @@ public class CMContent extends TKContent {
     } else {
       p.Buttons("SPAWN A MINOTAUR", "", "", "MILITECH|ARASAKA|NCPD|KURT'S", "spawntest|spawntest|spawntest|spawntest", "mch_003__minotaur_militech_01|mch_003__minotaur_arasaka_01|mch_003__minotaur_police_01|mch_003__minotaur_kurt");
       p.SetTip("Spawns one 46 ft in front of you and links it, in that livery.");
+      p.Buttons("SPAWN A DRONE (TEST)", "", "", "BOMBUS|GRIFFIN|WYVERN|OCTANT", "spawndrone|spawndrone|spawndrone|spawndrone", "bombus|griffin|wyvern|octant");
     }
     // dev tools for part damage, while DIAGNOSTICS is on (repairs are a planned mechanic)
     if CMPilotSystem.Get(this.game).ShowDebug() && link.IsLinked() && Equals(link.UnitKind(), "MECH") {
@@ -279,6 +290,9 @@ public class CMContent extends TKContent {
     p.Heading("DISPLAY");
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
     p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
+    if cfg.ShowDebug() {
+      p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "FACILITY TELEPORT|AI TELEPORT|AI MOVE CARROT", "0|1|2", "dronemove", "");
+    }
   }
 
   // A control's value from Act's arg. TerminalKit's slider used to hand on "arg:value" even

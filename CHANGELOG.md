@@ -10,6 +10,12 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **Missing slots:** an attached effect is skipped, and logged, if the unit lacks the slot.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
+- **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone test build** (docs/DRONES_TECHNICAL_DESIGN.md, spikes S0-S2):
+  - MOTOR POOL spawns a Bombus, Griffin, Wyvern or Octant, and UNIT CONTROL has FLY THE DRONE.
+  - **Flight:** a first angle-mode model. WASD tilt it (up to 25 degrees) and the tilt moves it, Space/Ctrl climb and descend, and the mouse turns. It has drag, a top speed of 15 m/s, a wall stop and a ground floor.
+  - **Move method:** CONFIG > DIAGNOSTICS > DRONE MOVE METHOD picks how the drone is placed each frame (facility teleport, AI teleport, or AI move carrot).
+  - **Test log:** once a second with DIAGNOSTICS on, it logs how far off the drone lands and the tilt sent versus the real tilt. At Begin it logs the drone's class, record and type.
 ## 0.6.0 Alpha (branch 0.6.0-alpha)
 
 Part damage, per docs/DAMAGE_DESIGN.md. Untested in game.

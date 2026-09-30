@@ -179,24 +179,49 @@ public class CMLinkSystem extends ScriptableSystem {
   // _police_01, _kurt), or none for the record's own. Optional: Night City Empires calls this
   // with no argument.
   public func SpawnTestMech(opt appearance: CName) -> String {
+    return this.SpawnTest([t"Character.q003_militech_mech", t"Character.q114_arasaka_netnest_mech_friendly_quest", t"Character.Mech_NPC_Base"], appearance, 0.0, "*MINOTAUR INBOUND", "!NO MINOTAUR RECORD IN THIS GAME VERSION");
+  }
+
+  // a test drone: "bombus", "griffin", "wyvern" or "octant", 2.5 m above the ground point
+  public func SpawnTestDrone(kind: String) -> String {
+    let records: array<TweakDBID>;
+    switch kind {
+      case "bombus":
+        records = [t"Character.aldecaldos_drone_bombus_easy", t"Character.aldecaldos_base_drone_bombus", t"Character.con_kurtz_base_drone_bombus"];
+        break;
+      case "griffin":
+        records = [t"Character.bls_se_militech_drone_griffin_medium", t"Character.bls_se_militech_drone_griffin_hard", t"Character.arr_militech_drone_griffin_hard"];
+        break;
+      case "wyvern":
+        records = [t"Character.bls_se_militech_drone_wyvern_medium", t"Character.arasaka_drone_wyvern_medium4", t"Character.bou_kurtz_base_drone_wyvern"];
+        break;
+      default:
+        records = [t"Character.bls_se_militech_drone_octant_medium", t"Character.border_patrol_octant", t"Character.arasaka_drone_octant_easy4"];
+    }
+    return this.SpawnTest(records, n"", 2.5, "*" + StrUpper(kind) + " INBOUND", "!NO " + StrUpper(kind) + " RECORD IN THIS GAME VERSION");
+  }
+
+  // the first of `records` this game has, spawned in front of V (`lift` metres up) and
+  // linked once it is in the world
+  private func SpawnTest(records: array<TweakDBID>, appearance: CName, lift: Float, ok: String, missing: String) -> String {
     let game = this.GetGameInstance();
     let player = GetPlayer(game);
     if !IsDefined(player) {
       return "";
     }
     if this.HasTestMech() {
-      return "!A TEST MECH IS ALREADY OUT";
+      return "!A TEST UNIT IS ALREADY OUT";
     }
     let record: TweakDBID;
     let found = false;
-    for id in [t"Character.q003_militech_mech", t"Character.q114_arasaka_netnest_mech_friendly_quest", t"Character.Mech_NPC_Base"] {
+    for id in records {
       if !found && IsDefined(TweakDBInterface.GetCharacterRecord(id)) {
         record = id;
         found = true;
       }
     }
     if !found {
-      return "!NO MINOTAUR RECORD IN THIS GAME VERSION";
+      return missing;
     }
     if !this.m_listening {
       GameInstance.GetDynamicEntitySystem().RegisterListener(n"ControllableMechsTest", this, n"OnTestMechEvent");
@@ -212,7 +237,7 @@ public class CMLinkSystem extends ScriptableSystem {
     }
     let spec = new DynamicEntitySpec();
     spec.recordID = record;
-    spec.position = at;
+    spec.position = at + new Vector4(0.0, 0.0, lift, 0.0);
     let face: EulerAngles;
     face.Yaw = CMPilotRig.YawOf(fwd) + 180.0;   // facing V
     spec.orientation = EulerAngles.ToQuat(face);
@@ -224,7 +249,7 @@ public class CMLinkSystem extends ScriptableSystem {
     }
     spec.tags = [n"ControllableMechsTest"];
     this.m_testID = GameInstance.GetDynamicEntitySystem().CreateEntity(spec);
-    return "*MINOTAUR INBOUND";
+    return ok;
   }
 
   // Where the test mech goes: on the ground, up to 46 ft from V. The point straight ahead

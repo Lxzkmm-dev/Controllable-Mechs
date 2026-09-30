@@ -29,7 +29,9 @@ public abstract class CMCKey {
   public static func Lmb() -> Int32 = 4
   public static func Rmb() -> Int32 = 5
   public static func Mmb() -> Int32 = 6
-  public static func Count() -> Int32 = 7
+  public static func Up() -> Int32 = 7      // Space: a drone climbs
+  public static func Down() -> Int32 = 8    // Ctrl: a drone descends
+  public static func Count() -> Int32 = 9
   public static func Name(i: Int32) -> String {
     switch i {
       case 0: return "W";
@@ -193,13 +195,22 @@ public class CMCSession extends ScriptableSystem {
     if !link.IsLinked() || !IsDefined(mech) {
       return "!NO UNIT LINKED";
     }
-    if NotEquals(mech.GetNPCType(), gamedataNPCType.Mech) {
-      return "!PILOTING NEEDS A MECH";
+    if NotEquals(mech.GetNPCType(), gamedataNPCType.Mech) && NotEquals(mech.GetNPCType(), gamedataNPCType.Drone) {
+      return "!PILOTING NEEDS A MECH OR A DRONE";
     }
     if !ScriptedPuppet.IsAlive(mech) {
-      return "!MECH IS DESTROYED";
+      return "!" + CMLinkSystem.KindName(mech) + " IS DESTROYED";
     }
     return "";
+  }
+
+  // the unit type for what is linked: a drone flies (CMUDrone), a mech walks (CMUMinotaur)
+  private func NewUnit() -> ref<CMCUnit> {
+    let unit = CMLinkSystem.Get(this.GetGameInstance()).Unit();
+    if IsDefined(unit) && Equals(unit.GetNPCType(), gamedataNPCType.Drone) {
+      return new CMUDrone();
+    }
+    return new CMUMinotaur();
   }
   // how much tougher the mech is while piloted: x its health, 10 by default (stored +1)
   public func HullMult() -> Float {
@@ -239,7 +250,7 @@ public class CMCSession extends ScriptableSystem {
     if this.Now() - this.m_lastExit < 0.5 {
       return;
     }
-    this.Warn(this.Begin(new CMUMinotaur(), false));
+    this.Warn(this.Begin(this.NewUnit(), false));
   }
 
   // from the terminal: let the popup close first
@@ -251,7 +262,7 @@ public class CMCSession extends ScriptableSystem {
 
   public func BeginFromCallback() -> Void {
     if this.m_state == 0 {
-      this.Warn(this.Begin(new CMUMinotaur(), true));
+      this.Warn(this.Begin(this.NewUnit(), true));
     }
   }
 
@@ -891,6 +902,8 @@ public class CMCSession extends ScriptableSystem {
       case EInputKey.IK_LeftMouse: this.RawKey(CMCKey.Lmb(), down); break;
       case EInputKey.IK_RightMouse: this.RawKey(CMCKey.Rmb(), down); break;
       case EInputKey.IK_MiddleMouse: this.RawKey(CMCKey.Mmb(), down); break;
+      case EInputKey.IK_Space: this.RawKey(CMCKey.Up(), down); break;
+      case EInputKey.IK_LControl: this.RawKey(CMCKey.Down(), down); break;
       case EInputKey.IK_V:
         if press {
           this.SetChase(!this.m_chase);
