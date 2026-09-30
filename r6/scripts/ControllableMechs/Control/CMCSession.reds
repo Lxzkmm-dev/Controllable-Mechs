@@ -59,6 +59,7 @@ public class CMCSession extends ScriptableSystem {
   private let m_sensX: Float;
   private let m_sensY: Float;
   private let m_axisSeen: Int32;
+  private let m_rawSeen: array<Bool>;   // per key: the raw channel has reported it
 
   private let m_camID: EntityID;
   private let m_cam: ref<CameraComponent>;
@@ -224,6 +225,8 @@ public class CMCSession extends ScriptableSystem {
     ArrayClear(this.m_keys);
     ArrayResize(this.m_keys, CMCKey.Count());
     this.m_axisSeen = 0;
+    ArrayClear(this.m_rawSeen);
+    ArrayResize(this.m_rawSeen, CMCKey.Count());
     this.m_frames = 0;
     this.m_hudState = new CMPilotHudState();
     this.CacheSensitivity();
@@ -454,8 +457,12 @@ public class CMCSession extends ScriptableSystem {
   private func SlowTick(now: Float) -> Bool {
     let game = this.GetGameInstance();
     let player = GetPlayer(game);
-    if !IsDefined(player) || player.IsDead() {
+    if !IsDefined(player) {
       this.End("", false);
+      return false;
+    }
+    if player.IsDead() {
+      this.End("!OPERATOR DOWN", false);
       return false;
     }
     let hp = this.PlayerHealth(player);
@@ -613,6 +620,23 @@ public class CMCSession extends ScriptableSystem {
     return i >= 0 && i < ArraySize(this.m_keys) && this.m_keys[i];
   }
 
+  // A key the raw channel has reported is its alone from then on: the game's attack
+  // action sends release-like events mid-hold, which chopped the fire into bursts. Keys
+  // the raw channel never reports still come from the game's actions.
+  private func RawKey(i: Int32, down: Bool) -> Void {
+    if i >= 0 && i < ArraySize(this.m_rawSeen) {
+      this.m_rawSeen[i] = true;
+    }
+    this.SetKey(i, down);
+  }
+
+  private func ActionKey(i: Int32, down: Bool, from: String) -> Void {
+    if i >= 0 && i < ArraySize(this.m_rawSeen) && this.m_rawSeen[i] {
+      return;
+    }
+    this.SetKey(i, down, from);
+  }
+
   // `from`: which channel set it, for the log (a key changing state is logged, so a
   // stuck key shows up)
   private func SetKey(i: Int32, down: Bool, opt from: String) -> Void {
@@ -631,17 +655,19 @@ public class CMCSession extends ScriptableSystem {
     // held only while the value says so: an axis-type event that isn't a button release
     // (value 0) used to count as held, and left the mech walking on its own
     let down = !Equals(type, gameinputActionType.BUTTON_RELEASED) && AbsF(value) > 0.1;
+    // once raw keys arrive they're the truth: the attack action sends release-like events
+    // mid-hold, which chopped the fire into bursts; its events are then only swallowed
     switch name {
-      case n"Forward": this.SetKey(CMCKey.W(), down, "Forward"); break;
-      case n"Back": this.SetKey(CMCKey.S(), down, "Back"); break;
-      case n"Left": this.SetKey(CMCKey.A(), down, "Left"); break;
-      case n"Right": this.SetKey(CMCKey.D(), down, "Right"); break;
+      case n"Forward": this.ActionKey(CMCKey.W(), down, "Forward"); break;
+      case n"Back": this.ActionKey(CMCKey.S(), down, "Back"); break;
+      case n"Left": this.ActionKey(CMCKey.A(), down, "Left"); break;
+      case n"Right": this.ActionKey(CMCKey.D(), down, "Right"); break;
       case n"RangedAttack":
       case n"ShootPrimary":
-        this.SetKey(CMCKey.Lmb(), down, "attack");
+        this.ActionKey(CMCKey.Lmb(), down, "attack");
         break;
       case n"CameraAim":
-        this.SetKey(CMCKey.Rmb(), down, "aim");
+        this.ActionKey(CMCKey.Rmb(), down, "aim");
         break;
       case n"CameraMouseX":
         if this.m_axisSeen == 0 && IsDefined(this.rig) {
@@ -692,13 +718,13 @@ public class CMCSession extends ScriptableSystem {
     let down = !Equals(action, EInputAction.IACT_Release);
     let press = Equals(action, EInputAction.IACT_Press);
     switch event.GetKey() {
-      case EInputKey.IK_W: this.SetKey(CMCKey.W(), down); break;
-      case EInputKey.IK_A: this.SetKey(CMCKey.A(), down); break;
-      case EInputKey.IK_S: this.SetKey(CMCKey.S(), down); break;
-      case EInputKey.IK_D: this.SetKey(CMCKey.D(), down); break;
-      case EInputKey.IK_LeftMouse: this.SetKey(CMCKey.Lmb(), down); break;
-      case EInputKey.IK_RightMouse: this.SetKey(CMCKey.Rmb(), down); break;
-      case EInputKey.IK_MiddleMouse: this.SetKey(CMCKey.Mmb(), down); break;
+      case EInputKey.IK_W: this.RawKey(CMCKey.W(), down); break;
+      case EInputKey.IK_A: this.RawKey(CMCKey.A(), down); break;
+      case EInputKey.IK_S: this.RawKey(CMCKey.S(), down); break;
+      case EInputKey.IK_D: this.RawKey(CMCKey.D(), down); break;
+      case EInputKey.IK_LeftMouse: this.RawKey(CMCKey.Lmb(), down); break;
+      case EInputKey.IK_RightMouse: this.RawKey(CMCKey.Rmb(), down); break;
+      case EInputKey.IK_MiddleMouse: this.RawKey(CMCKey.Mmb(), down); break;
       case EInputKey.IK_V:
         if press {
           this.SetChase(!this.m_chase);

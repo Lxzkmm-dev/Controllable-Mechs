@@ -36,6 +36,8 @@ public class CMUMinotaur extends CMCUnit {
   // (it has no order otherwise, and its combat behaviour takes over)
   private let m_holdCmd: ref<AICommand>;
   private let m_holdSent: Float;
+  private let m_calmChecked: Float;
+  private let m_calmResets: Int32;
 
   // the aim log while firing: once a second
   private let m_triggerWas: Bool;
@@ -106,12 +108,50 @@ public class CMUMinotaur extends CMCUnit {
     spec.attached = true;
     this.m_markerID = GameInstance.GetStaticEntitySystem().SpawnEntity(spec);
     this.m_marker = null;
+    this.Pacify(mech, true);
     CMCSession.Log("Minotaur: guns " + this.m_guns.Describe());
     return "";
   }
 
+  // While piloted the mech's own combat AI must not act: with its senses and target
+  // tracking off it perceives no threats, and its high-level state is put back to
+  // relaxed if combat still reaches it (checked once a second). All restored on exit.
+  private func Pacify(mech: ref<NPCPuppet>, on: Bool) -> Void {
+    if !IsDefined(mech) {
+      return;
+    }
+    let senses = mech.GetSensesComponent();
+    if IsDefined(senses) {
+      senses.Toggle(!on);
+    }
+    let tracker = mech.GetTargetTrackerComponent();
+    if IsDefined(tracker) {
+      tracker.Toggle(!on);
+    }
+    if on {
+      NPCPuppet.ChangeHighLevelState(mech, gamedataNPCHighLevelState.Relaxed);
+    }
+    CMCSession.Log("AI " + (on ? "suppressed (senses and target tracking off, relaxed)" : "restored") + ", state now " + EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(mech.GetHighLevelStateFromBlackboard()))));
+  }
+
+  private func KeepCalm(mech: ref<NPCPuppet>, now: Float) -> Void {
+    if now - this.m_calmChecked < 1.0 {
+      return;
+    }
+    this.m_calmChecked = now;
+    let state = mech.GetHighLevelStateFromBlackboard();
+    if Equals(state, gamedataNPCHighLevelState.Combat) || Equals(state, gamedataNPCHighLevelState.Alerted) {
+      NPCPuppet.ChangeHighLevelState(mech, gamedataNPCHighLevelState.Relaxed);
+      this.m_calmResets += 1;
+      if this.m_calmResets <= 10 {
+        CMCSession.Log("AI went to " + EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(state))) + ", set back to relaxed (" + IntToString(this.m_calmResets) + ")");
+      }
+    }
+  }
+
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
     let mech = this.Mech();
+    this.Pacify(mech, false);
     if IsDefined(mech) {
       this.CancelCmd(mech, this.m_moveCmd);
       this.CancelCmd(mech, this.m_turnCmd);
@@ -301,6 +341,7 @@ public class CMUMinotaur extends CMCUnit {
       return "!SIGNAL LOST";
     }
     this.SendLookAts(mech);
+    this.KeepCalm(mech, now);
     this.Drive(s, mech, now);
     return "";
   }
