@@ -94,8 +94,21 @@ public class CMContent extends TKContent {
       case "spawndrone":
         p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg)));
         break;
-      case "droneacro":
-        cfg.SetDroneAcro(Equals(CMContent.Str(arg), "1"));
+      case "cfgprofile":
+        cfg.SetCfgProfile(CMContent.Val(arg, 0));
+        break;
+      case "dlevel":
+        cfg.SetDroneLevel(cfg.CfgProfile(), CMContent.Val(arg, 50));
+        break;
+      case "dtilt":
+        cfg.SetDroneTilt(cfg.CfgProfile(), CMContent.Val(arg, 30));
+        break;
+      case "drate":
+        cfg.SetDroneRate(cfg.CfgProfile(), CMContent.Val(arg, 180));
+        break;
+      case "dreset":
+        cfg.ResetDrone(cfg.CfgProfile());
+        p.SetMessage("*" + StrUpper(cfg.CfgProfile()) + " FLIGHT SETTINGS RESET");
         break;
       case "dronemove":
         cfg.SetDroneMove(CMContent.Val(arg, 0));
@@ -252,9 +265,31 @@ public class CMContent extends TKContent {
   private func Settings(p: ref<TKPage>) -> Void {
     let cfg = CMPilotSystem.Get(this.game);
     let session = CMCSession.Get(this.game);
-    p.SetTitle("CONFIGURATION", "FIRE CONTROL, OPTICS AND DISPLAY");
+    p.SetTitle("CONFIGURATION", "PROFILES, OPERATOR AND DISPLAY");
     p.SetSection("settings");
 
+    // whose settings: the mech, or one of the four drone types (each has its own)
+    p.Dropdown("PROFILE", "Which unit's dedicated settings are shown below", IntToString(cfg.CfgProfileIndex()), "MECH|BOMBUS|GRIFFIN|WYVERN|OCTANT", "0|1|2|3|4", "cfgprofile", "");
+    let kind = cfg.CfgProfile();
+    if NotEquals(kind, "mech") {
+      this.DroneSettings(p, cfg, kind);
+    } else {
+      this.MechSettings(p, cfg, session);
+    }
+    this.CommonSettings(p, cfg, session);
+  }
+
+  // a drone type's flight: how much it levels itself, how far and how fast it tilts
+  private func DroneSettings(p: ref<TKPage>, cfg: ref<CMPilotSystem>, kind: String) -> Void {
+    let base = CMDroneProfiles.For(kind);
+    p.Heading(StrUpper(kind) + " // FLIGHT");
+    p.Slider("SELF-LEVELLING", "100%: the keys set a tilt and it levels itself when you let go. 0%: acro, the keys set how fast it rolls and pitches and nothing levels it; you fly every attitude. Between: the rates, with a pull back toward level (from the next link-in)", "", "0|100|5|" + IntToString(cfg.DroneLevel(kind)) + "|%", "dlevel", "");
+    p.Slider("TILT LIMIT", "How far it leans with the keys held, while it levels itself; more tilt, more speed (from the next link-in)", "", "10|70|1|" + IntToString(cfg.DroneTilt(kind, RoundF(base.tilt))) + "|deg", "dtilt", "");
+    p.Slider("ROLL / PITCH RATE", "How fast it rolls and pitches at full key, the acro part of the flight (from the next link-in)", "", "45|600|15|" + IntToString(cfg.DroneRate(kind, RoundF(base.tiltRate))) + "|deg/s", "drate", "");
+    p.Item("DEFAULTS", "Self-levelling " + IntToString(CMDroneProfiles.DefaultLevel(kind)) + "%, tilt " + IntToString(RoundF(base.tilt)) + " deg, rate " + IntToString(RoundF(base.tiltRate)) + " deg/s", "", "RESET", "dreset", "", true);
+  }
+
+  private func MechSettings(p: ref<TKPage>, cfg: ref<CMPilotSystem>, session: ref<CMCSession>) -> Void {
     p.Heading("FIRE CONTROL");
     p.Dropdown("FIRE MODE", "How LMB / RMB fire the two MK.31s (B cycles it while piloting)",
       IntToString(session.FireMode()),
@@ -269,9 +304,14 @@ public class CMContent extends TKContent {
     p.Slider("TURN SPEED", "How fast the view traverses and the chassis turns; 100% is the heavy baseline (from the next link-in)", "", "50|300|25|" + IntToString(cfg.TurnPct()) + "|%", "turn", "");
     p.Check("PART DAMAGE", "Hits wear down the part they land on: guns can be shot off, the sensor, legs and missile pods knocked out. Off: only the hull (from the next link-in)", cfg.PartDamage(), "parts", "");
 
-    p.Heading("DRONES");
-    p.Check("ACRO MODE", "Off (angle mode): the keys tilt the drone and it levels itself when you let go. On: the keys set how fast it rolls and pitches, and it holds whatever attitude you leave it in (from the next link-in)", cfg.DroneAcro(), "droneacro", "");
+    p.Heading("OPTICS // SENSOR MOUNT");
+    p.Slider("HEIGHT", "Sensor view: above the mech's feet", "", "40|177|1|" + IntToString(CMContent.CmToIn(cfg.CamUpCm())) + "| in", "camup", "");
+    p.Slider("FORWARD", "Sensor view: ahead of the mech's centre", "", "0|196|1|" + IntToString(CMContent.CmToIn(cfg.CamFwdCm())) + "| in", "camfwd", "");
+    p.Item("DEFAULTS", "Height 7 ft 7 in, forward 8 ft 6 in, sensitivity 100%", "", "RESET", "camreset", "", true);
+  }
 
+  // for every unit: the operator, the view, the chase camera and the display
+  private func CommonSettings(p: ref<TKPage>, cfg: ref<CMPilotSystem>, session: ref<CMCSession>) -> Void {
     p.Heading("OPERATOR");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !cfg.StayWhenHit(), "dropwhenhit", "");
     p.Check("HIDE V WHILE LINKED", "Enemies' senses don't pick V up while you pilot, so they go for the mech. Off: enemies who see V may still attack V (from the next link-in)", cfg.HideOperator(), "hidev", "");
@@ -288,16 +328,11 @@ public class CMContent extends TKContent {
     p.Item("DEFAULTS", "Distance 20 ft, height 146 in, side offset 71 in, right shoulder", "", "RESET", "chasereset", "", true);
     p.SetTip("All four apply live while you pilot. The camera pulls in when a wall, pole or container is between it and the mech. The view's up and down tilt is the mouse.");
 
-    p.Heading("OPTICS // SENSOR MOUNT");
-    p.Slider("HEIGHT", "Sensor view: above the mech's feet", "", "40|177|1|" + IntToString(CMContent.CmToIn(cfg.CamUpCm())) + "| in", "camup", "");
-    p.Slider("FORWARD", "Sensor view: ahead of the mech's centre", "", "0|196|1|" + IntToString(CMContent.CmToIn(cfg.CamFwdCm())) + "| in", "camfwd", "");
-    p.Item("DEFAULTS", "Height 7 ft 7 in, forward 8 ft 6 in, sensitivity 100%", "", "RESET", "camreset", "", true);
-
     p.Heading("DISPLAY");
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
     p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
     if cfg.ShowDebug() {
-      p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "AI TELEPORT|AI MOVE CARROT|ENTITY TRANSFORM (TEST)", "1|2|4", "dronemove", "");
+      p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "ENTITY TRANSFORM|AI TELEPORT|AI MOVE CARROT", "4|1|2", "dronemove", "");
     }
   }
 

@@ -9,7 +9,9 @@
 //     dropped rather than the speed clamped
 //   - angle mode (default): the keys set a wanted tilt, eased near its limit, and a PD
 //     loop brings the body to it; with no climb input a damped spring holds the altitude
-//   - acro mode (a setting): the keys set tilt rates, no self-levelling
+//   - self-levelling is a blend (0-1, a per-drone setting): at 1 the angle mode above,
+//     at 0 pure acro (the keys set roll and pitch rates, nothing levels it), between the
+//     two the stick still flies the rates and the drone drifts back toward level
 // Pure maths on its own state: the drone unit feeds it input and puts the drone where
 // it says (AI teleport), and runs the collision checks. Nothing here touches the game.
 // =============================================================================
@@ -31,6 +33,7 @@ public class CMFlightProfile {
   public let yawRate: Float;       // deg/s, the body follows the view this fast
   public let arm: Float;           // m, rotor distance from the centre
   public let impact: Float;        // m/s, a collision faster than this does damage
+  public let radius: Float;        // m, its collision sphere
 }
 
 public class CMFlight {
@@ -43,7 +46,7 @@ public class CMFlight {
   public let rollRate: Float;
   public let spool: array<Float>;  // four rotors, 0-1: front left, front right, back left, back right
   public let eff: array<Float>;    // each rotor's efficiency, 0-1 (damage)
-  public let acro: Bool;
+  public let level: Float;         // self-levelling, 0 (acro) to 1 (angle mode)
   public let holdZ: Float;         // the altitude held with no climb input
   public let holding: Bool;
   public let p: ref<CMFlightProfile>;
@@ -79,18 +82,14 @@ public class CMFlight {
       side /= stick;
     }
     // --- the body's attitude: angle mode aims for a tilt, acro for a rate ---
-    let wantPitchRate: Float;
-    let wantRollRate: Float;
-    if this.acro {
-      wantPitchRate = -fwd * p.tiltRate;
-      wantRollRate = side * p.tiltRate;
-    } else {
-      // eased near the limit, as it closes on it
-      let tp = -fwd * p.tilt;
-      let tr = side * p.tilt;
-      wantPitchRate = (tp - this.pitch) * 6.0;
-      wantRollRate = (tr - this.roll) * 6.0;
-    }
+    // acro: the stick is a rate. Angle mode: the stick is a tilt the body is brought to.
+    // The self-levelling setting blends the two.
+    let acroPitch = -fwd * p.tiltRate;
+    let acroRoll = side * p.tiltRate;
+    let anglePitch = (-fwd * p.tilt - this.pitch) * 6.0;
+    let angleRoll = (side * p.tilt - this.roll) * 6.0;
+    let wantPitchRate = acroPitch + (anglePitch - acroPitch) * this.level;
+    let wantRollRate = acroRoll + (angleRoll - acroRoll) * this.level;
     // --- the rotors: collective for the height, differential for the attitude ---
     let hover = CMFlight.HoverSpool(p);
     let lift = MaxF(0.5, CosF(Deg2Rad(this.pitch)) * CosF(Deg2Rad(this.roll)));
@@ -187,20 +186,32 @@ public class CMFlight {
 }
 
 public abstract class CMDroneProfiles {
+  // what the CONFIG profile sliders start at, per type: self-levelling (%), tilt limit
+  // (deg) and full-stick rate (deg/s). With the stick held, the tilt settles where the rate
+  // and the levelling balance: the limit + rate x (1 - level) / (6 x level), so 65% on the
+  // Bombus leans it about 55 deg, past its 35 deg limit; lower is more acro.
+  public static func DefaultLevel(kind: String) -> Int32 {
+    switch kind {
+      case "bombus": return 65;
+      case "octant": return 95;
+    }
+    return 85;
+  }
+
   public static func For(kind: String) -> ref<CMFlightProfile> {
     let p = new CMFlightProfile();
     switch kind {
       case "bombus":
         p.mass = 6.0; p.thrust = 30.0; p.spool = 0.08; p.tilt = 35.0; p.tiltRate = 220.0; p.top = 18.0;
-        p.dragH = 0.35; p.dragV = 0.8; p.climb = 5.0; p.yawRate = 160.0; p.arm = 0.2; p.impact = 6.0;
+        p.dragH = 0.35; p.dragV = 0.8; p.climb = 5.0; p.yawRate = 160.0; p.arm = 0.2; p.impact = 6.0; p.radius = 0.3;
         break;
       case "octant":
         p.mass = 180.0; p.thrust = 900.0; p.spool = 0.15; p.tilt = 20.0; p.tiltRate = 90.0; p.top = 10.0;
-        p.dragH = 0.5; p.dragV = 1.0; p.climb = 3.0; p.yawRate = 60.0; p.arm = 1.0; p.impact = 5.0;
+        p.dragH = 0.5; p.dragV = 1.0; p.climb = 3.0; p.yawRate = 60.0; p.arm = 1.0; p.impact = 5.0; p.radius = 1.1;
         break;
       default:   // griffin, wyvern
         p.mass = 40.0; p.thrust = 190.0; p.spool = 0.11; p.tilt = 22.0; p.tiltRate = 120.0; p.top = 14.0;
-        p.dragH = 0.45; p.dragV = 0.9; p.climb = 4.0; p.yawRate = 100.0; p.arm = 0.45; p.impact = 5.5;
+        p.dragH = 0.45; p.dragV = 0.9; p.climb = 4.0; p.yawRate = 100.0; p.arm = 0.45; p.impact = 5.5; p.radius = 0.5;
     }
     return p;
   }

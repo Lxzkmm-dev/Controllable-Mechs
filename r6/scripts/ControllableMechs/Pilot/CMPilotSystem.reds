@@ -17,6 +17,7 @@ module ControllableMechs
 
 import TerminalKit.*
 import RedFunctions.Storage.*
+import ControllableMechs.Control.*
 
 public class CMPilotSystem extends ScriptableSystem {
   // ---- the settings file, in memory ----
@@ -158,15 +159,39 @@ public class CMPilotSystem extends ScriptableSystem {
   // how fast the view traverses and the chassis turns, % of the heavy baseline
   // the drone test build: how a flown drone is moved each frame (0 facility teleport,
   // 1 AI teleport, 2 AI move carrot)
-  // drones: acro mode (rate control, no self-levelling) instead of angle mode
-  public func DroneAcro() -> Bool = this.Flag("droneAcro", false)
-  public func SetDroneAcro(on: Bool) -> Void { this.PutFlag("droneAcro", on); }
+  // CONFIG's profile: whose settings the page shows (mech, bombus, griffin, wyvern, octant)
+  public func CfgProfile() -> String {
+    let v = this.Int("cfgProfile", 0);
+    switch v {
+      case 1: return "bombus";
+      case 2: return "griffin";
+      case 3: return "wyvern";
+      case 4: return "octant";
+    }
+    return "mech";
+  }
+  public func CfgProfileIndex() -> Int32 = Clamp(this.Int("cfgProfile", 0), 0, 4)
+  public func SetCfgProfile(i: Int32) -> Void { this.PutInt("cfgProfile", Clamp(i, 0, 4)); }
+
+  // each drone type's flight settings: self-levelling (0-100%, 0 = acro), tilt limit (deg),
+  // full-stick rate (deg/s)
+  public func DroneLevel(kind: String) -> Int32 = Clamp(this.Int(kind + "Level", CMDroneProfiles.DefaultLevel(kind)), 0, 100)
+  public func SetDroneLevel(kind: String, v: Int32) -> Void { this.PutInt(kind + "Level", Clamp(v, 0, 100)); }
+  public func DroneTilt(kind: String, def: Int32) -> Int32 = Clamp(this.Int(kind + "Tilt", def), 10, 70)
+  public func SetDroneTilt(kind: String, v: Int32) -> Void { this.PutInt(kind + "Tilt", Clamp(v, 10, 70)); }
+  public func DroneRate(kind: String, def: Int32) -> Int32 = Clamp(this.Int(kind + "Rate", def), 45, 600)
+  public func SetDroneRate(kind: String, v: Int32) -> Void { this.PutInt(kind + "Rate", Clamp(v, 45, 600)); }
+  public func ResetDrone(kind: String) -> Void {
+    this.Put(kind + "Level", "");
+    this.Put(kind + "Tilt", "");
+    this.Put(kind + "Rate", "");
+  }
 
   // only AI TELEPORT (1) and AI MOVE CARROT (2) move a drone: the facility teleports (0, 3)
   // were tested and do nothing, so an old setting of either reads as 1
   public func DroneMove() -> Int32 {
-    let m = this.Int("droneMove", 1);
-    return m == 2 || m == 4 ? m : 1;
+    let m = this.Int("droneMove", 4);
+    return m == 1 || m == 2 ? m : 4;
   }
   public func SetDroneMove(v: Int32) -> Void { this.PutInt("droneMove", Clamp(v, 0, 4)); }
 

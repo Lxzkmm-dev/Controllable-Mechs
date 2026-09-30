@@ -11,7 +11,8 @@
 //   - its pitch and roll can't be set: the tilt is shown through the camera instead
 // The camera rides where the drone really is (the teleports land a frame late).
 // Keys: WASD tilt it and the tilt moves it, Space/Ctrl climb and descend, the mouse
-// turns it. CONFIG > DRONES > ACRO switches to rate control with no self-levelling.
+// turns it. CONFIG > PROFILE > (the drone) sets its self-levelling (0% = acro), tilt limit
+// and rates.
 // Collisions: the step is swept against the world; the velocity into a surface is
 // removed with a little bounce, and a hard hit damages the drone (a crashed drone is
 // lost). Nothing runs unless a drone is piloted.
@@ -44,7 +45,6 @@ public class CMUDrone extends CMCUnit {
   private let m_lastYaw: Float;
   private let m_ground: Float;         // metres above the ground, last measured
 
-  private let RADIUS: Float = 0.45;    // m, the collision sphere around the drone
   private let SUBSTEP: Float = 0.008;  // s, the flight model's step
 
   public func Begin(s: ref<CMCSession>) -> String {
@@ -63,8 +63,11 @@ public class CMUDrone extends CMCUnit {
     link.Hold();
     link.SetOrder(CMOrder.Pilot());
     let cfg = CMPilotSystem.Get(this.m_game);
-    this.m_flight = CMFlight.Make(CMDroneProfiles.For(this.m_kind), drone.GetWorldPosition(), CMPilotRig.YawOf(drone.GetWorldForward()));
-    this.m_flight.acro = cfg.DroneAcro();
+    let prof = CMDroneProfiles.For(this.m_kind);
+    prof.tilt = Cast<Float>(cfg.DroneTilt(this.m_kind, RoundF(prof.tilt)));
+    prof.tiltRate = Cast<Float>(cfg.DroneRate(this.m_kind, RoundF(prof.tiltRate)));
+    this.m_flight = CMFlight.Make(prof, drone.GetWorldPosition(), CMPilotRig.YawOf(drone.GetWorldForward()));
+    this.m_flight.level = Cast<Float>(cfg.DroneLevel(this.m_kind)) / 100.0;
     this.m_seen = drone.GetWorldPosition();
     this.m_method = cfg.DroneMove();
     this.m_logAt = s.Now() + 1.0;
@@ -86,7 +89,7 @@ public class CMUDrone extends CMCUnit {
       }
     }
     CMCSession.Log("drone: " + this.m_name + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID())
-      + ", " + (this.m_flight.acro ? "acro" : "angle mode") + ", move method " + CMUDrone.MethodName(this.m_method));
+      + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", move method " + CMUDrone.MethodName(this.m_method));
     return "";
   }
 
@@ -191,20 +194,24 @@ public class CMUDrone extends CMCUnit {
     let hit: TraceResult;
     if len > 0.0005 {
       let dir = move / len;
-      if sq.SyncRaycastByCollisionPreset(from, to + dir * this.RADIUS, n"World Static", hit, true) {
+      let r = fl.p.radius;
+      if sq.SyncRaycastByCollisionPreset(from, to + dir * r, n"World Static", hit, true) {
         let at = Cast<Vector4>(hit.position);
         let n = Vector4.Normalize(Cast<Vector4>(hit.normal));
-        fl.pos = at - dir * this.RADIUS;
+        fl.pos = at - dir * r;
         fl.pos.W = 1.0;
         this.Impact(drone, fl.Contact(n, 0.3));
       }
     }
-    // the ground under it: never inside it
-    if sq.SyncRaycastByCollisionPreset(fl.pos + new Vector4(0.0, 0.0, 0.3, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), n"World Static", hit, true) {
+    // the ground under it: measured for the HUD, and a contact only when the drone is
+    // actually in it. There is no minimum height (a floor held it half a metre up and
+    // bounced it over every curb and bump in the road); flying low is the pilot's call.
+    let r0 = fl.p.radius * 0.5;
+    if sq.SyncRaycastByCollisionPreset(fl.pos + new Vector4(0.0, 0.0, r0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), n"World Static", hit, true) {
       let gz = Cast<Vector4>(hit.position).Z;
       this.m_ground = fl.pos.Z - gz;
-      if fl.pos.Z < gz + this.RADIUS {
-        fl.pos.Z = gz + this.RADIUS;
+      if fl.pos.Z < gz + r0 {
+        fl.pos.Z = gz + r0;
         this.Impact(drone, fl.Contact(new Vector4(0.0, 0.0, 1.0, 0.0), 0.25));
         if fl.holding {
           fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
@@ -381,7 +388,7 @@ public class CMUDrone extends CMCUnit {
     st.missile = "";
     if IsDefined(this.m_flight) {
       st.speed = Vector4.Length(this.m_flight.vel);
-      st.title = this.m_name + "  //  " + (this.m_flight.acro ? "ACRO" : "ANGLE") + "  ALT " + (this.m_ground >= 0.0 ? FloatToStringPrec(this.m_ground, 1) + " M" : "---") + "  SPOOL " + IntToString(RoundF(this.m_flight.Spool() * 100.0)) + "%";
+      st.title = this.m_name + "  //  LEVEL " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%  ALT " + (this.m_ground >= 0.0 ? FloatToStringPrec(this.m_ground, 1) + " M" : "---") + "  SPOOL " + IntToString(RoundF(this.m_flight.Spool() * 100.0)) + "%";
     }
   }
 
