@@ -297,9 +297,11 @@ public class CMCSession extends ScriptableSystem {
     }
 
     let cfg = CMPilotSystem.Get(this.GetGameInstance());
-    this.m_chaseUp = Cast<Float>(cfg.ChaseUpCm()) / 100.0;
-    this.m_chaseDist = Cast<Float>(cfg.ChaseDistCm()) / 100.0;
-    this.m_chaseSide = cfg.ChaseSide();
+    // the chase camera of this unit's profile (the mech's, or its drone type's)
+    let prof = unit.CamProfile();
+    this.m_chaseUp = Cast<Float>(cfg.ChaseUpCm(prof)) / 100.0;
+    this.m_chaseDist = Cast<Float>(cfg.ChaseDistCm(prof)) / 100.0;
+    this.m_chaseSide = Equals(prof, "mech") ? cfg.ChaseSide() : Cast<Float>(cfg.ChaseSideCm(prof)) / 100.0 * (cfg.ShoulderLeft(prof) ? -1.0 : 1.0);
     this.rig.Init(unit.Ground(), this.CamUp(), this.CamFwd(), unit.Facing());
     this.Sync();
     this.rig.SetChase(this.m_chase);

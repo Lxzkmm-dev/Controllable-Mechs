@@ -15,7 +15,8 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **ENTITY TRANSFORM is the move method.** The drone's own transform is set each frame through Codeware, with an AI teleport 4 times a second to keep its movement component in step. It lands exactly where the physics says, and the body really tilts (pitch and roll match).
   - **No minimum altitude:** a floor held the drone half a metre up and bounced it over every curb (the "speed bumps"). The ground is now only a real collision, sized per type.
   - **Skill expression:** each drone type has SELF-LEVELLING (0% = pure acro, 100% = angle mode, blended between), TILT LIMIT and ROLL / PITCH RATE. The defaults are Bombus 65%, Griffin/Wyvern 85% and Octant 95%. This replaces the ACRO MODE switch.
-  - **CONFIG > PROFILE:** MECH, BOMBUS, GRIFFIN, WYVERN or OCTANT, each showing its dedicated settings. Operator, view, chase camera and display stay shared.
+  - **CONFIG > PROFILE:** MECH, BOMBUS, GRIFFIN, WYVERN or OCTANT, each showing its dedicated settings, including its own chase camera (drones default closer and centred). Operator, view and display stay shared.
+  - **Full flips:** there is no tilt limit in the physics any more. At low self-levelling a drone loops and rolls right over, and inverted, its thrust drives it down.
 - **Drone flight model** (CMFlight), built on what the spikes found:
   - **What the spikes found:** a drone is an NPC puppet, the facility teleport does not move it, an AI teleport each frame lands within centimetres, and its body can't be tilted.
   - **The model:** four rotors with spool lag and a per-rotor efficiency (for damage), and lift along the body's up axis, so tilting is what moves it. It has gravity, split drag and a top speed.

@@ -205,14 +205,44 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SetCamFwdCm(v: Int32) -> Void { this.PutInt("camFwdCm", Clamp(v, 0, 500)); }
 
   // ---- the chase camera: distance behind, height above, and off to one shoulder ----
-  public func ChaseDistCm() -> Int32 = this.Int("chaseDistCm", this.CHASE_DIST_CM)
-  public func ChaseUpCm() -> Int32 = this.Int("chaseUpCm", this.CHASE_UP_CM)
-  public func ChaseSideCm() -> Int32 = this.Int("chaseSideCm", this.CHASE_SIDE_CM)
-  public func ShoulderLeft() -> Bool = this.Flag("shoulderLeft", false)
-  public func SetChaseDistCm(v: Int32) -> Void { this.PutInt("chaseDistCm", Clamp(v, 300, 1600)); }
-  public func SetChaseUpCm(v: Int32) -> Void { this.PutInt("chaseUpCm", Clamp(v, 150, 900)); }
-  public func SetChaseSideCm(v: Int32) -> Void { this.PutInt("chaseSideCm", Clamp(v, 0, 400)); }
-  public func SetShoulderLeft(left: Bool) -> Void { this.PutFlag("shoulderLeft", left); }
+  // Each profile (CONFIG > PROFILE) has its own chase camera: the mech's keys as they
+  // always were, a drone type's prefixed with its name and closer defaults.
+  // No profile (or "mech") is the mech's.
+  private static func IsDrone(prof: String) -> Bool = StrLen(prof) > 0 && NotEquals(prof, "mech")
+  private static func DroneChaseDefault(prof: String, which: Int32) -> Int32 {
+    // distance, height, side (cm)
+    switch prof {
+      case "bombus": return which == 0 ? 250 : (which == 1 ? 60 : 0);
+      case "octant": return which == 0 ? 700 : (which == 1 ? 220 : 0);
+    }
+    return which == 0 ? 400 : (which == 1 ? 110 : 0);
+  }
+  public func ChaseDistCm(opt prof: String) -> Int32 = CMPilotSystem.IsDrone(prof) ? this.Int(prof + "ChaseDistCm", CMPilotSystem.DroneChaseDefault(prof, 0)) : this.Int("chaseDistCm", this.CHASE_DIST_CM)
+  public func ChaseUpCm(opt prof: String) -> Int32 = CMPilotSystem.IsDrone(prof) ? this.Int(prof + "ChaseUpCm", CMPilotSystem.DroneChaseDefault(prof, 1)) : this.Int("chaseUpCm", this.CHASE_UP_CM)
+  public func ChaseSideCm(opt prof: String) -> Int32 = CMPilotSystem.IsDrone(prof) ? this.Int(prof + "ChaseSideCm", CMPilotSystem.DroneChaseDefault(prof, 2)) : this.Int("chaseSideCm", this.CHASE_SIDE_CM)
+  public func ShoulderLeft(opt prof: String) -> Bool = CMPilotSystem.IsDrone(prof) ? this.Flag(prof + "ShoulderLeft", false) : this.Flag("shoulderLeft", false)
+  public func SetChaseDistCm(v: Int32, opt prof: String) -> Void {
+    if CMPilotSystem.IsDrone(prof) { this.PutInt(prof + "ChaseDistCm", Clamp(v, 60, 1600)); } else { this.PutInt("chaseDistCm", Clamp(v, 300, 1600)); }
+  }
+  public func SetChaseUpCm(v: Int32, opt prof: String) -> Void {
+    if CMPilotSystem.IsDrone(prof) { this.PutInt(prof + "ChaseUpCm", Clamp(v, 0, 900)); } else { this.PutInt("chaseUpCm", Clamp(v, 150, 900)); }
+  }
+  public func SetChaseSideCm(v: Int32, opt prof: String) -> Void {
+    if CMPilotSystem.IsDrone(prof) { this.PutInt(prof + "ChaseSideCm", Clamp(v, 0, 400)); } else { this.PutInt("chaseSideCm", Clamp(v, 0, 400)); }
+  }
+  public func SetShoulderLeft(left: Bool, opt prof: String) -> Void {
+    if CMPilotSystem.IsDrone(prof) { this.PutFlag(prof + "ShoulderLeft", left); } else { this.PutFlag("shoulderLeft", left); }
+  }
+  public func ResetChaseOf(prof: String) -> Void {
+    if !CMPilotSystem.IsDrone(prof) {
+      this.ResetChase();
+      return;
+    }
+    this.Put(prof + "ChaseDistCm", "");
+    this.Put(prof + "ChaseUpCm", "");
+    this.Put(prof + "ChaseSideCm", "");
+    this.Put(prof + "ShoulderLeft", "");
+  }
   // metres to the right of the centre line (negative = left), for the camera every frame
   public func ChaseSide() -> Float {
     this.Load();

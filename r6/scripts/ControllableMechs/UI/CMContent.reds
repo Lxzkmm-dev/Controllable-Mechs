@@ -149,19 +149,19 @@ public class CMContent extends TKContent {
         session.SetChaseView(CMContent.Val(arg, 0) == 1);
         break;
       case "chasedist":
-        cfg.SetChaseDistCm(CMContent.FtToCm(CMContent.Val(arg, CMContent.CmToFt(cfg.ChaseDistCm()))));
+        cfg.SetChaseDistCm(CMContent.FtToCm(CMContent.Val(arg, CMContent.CmToFt(cfg.ChaseDistCm(cfg.CfgProfile())))), cfg.CfgProfile());
         break;
       case "chaseup":
-        cfg.SetChaseUpCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.ChaseUpCm()))));
+        cfg.SetChaseUpCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.ChaseUpCm(cfg.CfgProfile())))), cfg.CfgProfile());
         break;
       case "chaseside":
-        cfg.SetChaseSideCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.ChaseSideCm()))));
+        cfg.SetChaseSideCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.ChaseSideCm(cfg.CfgProfile())))), cfg.CfgProfile());
         break;
       case "shoulder":
-        cfg.SetShoulderLeft(CMContent.Val(arg, 0) == 1);
+        cfg.SetShoulderLeft(CMContent.Val(arg, 0) == 1, cfg.CfgProfile());
         break;
       case "chasereset":
-        cfg.ResetChase();
+        cfg.ResetChaseOf(cfg.CfgProfile());
         p.SetMessage("*CHASE CAMERA RESET");
         break;
       case "camup":
@@ -279,6 +279,18 @@ public class CMContent extends TKContent {
     this.CommonSettings(p, cfg, session);
   }
 
+  // the chase camera of one profile: the mech's, or a drone type's own
+  private func ChaseSettings(p: ref<TKPage>, cfg: ref<CMPilotSystem>, prof: String) -> Void {
+    let drone = NotEquals(prof, "mech");
+    p.Heading(drone ? StrUpper(prof) + " // CHASE CAMERA" : "CHASE CAMERA");
+    p.Slider("DISTANCE", drone ? "Behind the drone" : "Behind the mech's centre", "", (drone ? "2" : "10") + "|52|1|" + IntToString(CMContent.CmToFt(cfg.ChaseDistCm(prof))) + "| ft", "chasedist", "");
+    p.Slider("HEIGHT", drone ? "Above the drone" : "Above the mech's feet", "", (drone ? "0" : "60") + "|354|2|" + IntToString(CMContent.CmToIn(cfg.ChaseUpCm(prof))) + "| in", "chaseup", "");
+    p.Slider("SIDE OFFSET", "Off the centre line, toward the shoulder (0 = dead centre)", "", "0|156|2|" + IntToString(CMContent.CmToIn(cfg.ChaseSideCm(prof))) + "| in", "chaseside", "");
+    p.Dropdown("SHOULDER", "Which side the camera sits on", cfg.ShoulderLeft(prof) ? "1" : "0", "RIGHT|LEFT", "0|1", "shoulder", "");
+    p.Item("DEFAULTS", drone ? "This drone's own framing, centred" : "Distance 20 ft, height 146 in, side offset 71 in, right shoulder", "", "RESET", "chasereset", "", true);
+    p.SetTip("From the next link-in. The camera pulls in when a wall, pole or container is between it and the unit. The view's up and down tilt is the mouse.");
+  }
+
   // a drone type's flight: how much it levels itself, how far and how fast it tilts
   private func DroneSettings(p: ref<TKPage>, cfg: ref<CMPilotSystem>, kind: String) -> Void {
     let base = CMDroneProfiles.For(kind);
@@ -287,6 +299,8 @@ public class CMContent extends TKContent {
     p.Slider("TILT LIMIT", "How far it leans with the keys held, while it levels itself; more tilt, more speed (from the next link-in)", "", "10|70|1|" + IntToString(cfg.DroneTilt(kind, RoundF(base.tilt))) + "|deg", "dtilt", "");
     p.Slider("ROLL / PITCH RATE", "How fast it rolls and pitches at full key, the acro part of the flight (from the next link-in)", "", "45|600|15|" + IntToString(cfg.DroneRate(kind, RoundF(base.tiltRate))) + "|deg/s", "drate", "");
     p.Item("DEFAULTS", "Self-levelling " + IntToString(CMDroneProfiles.DefaultLevel(kind)) + "%, tilt " + IntToString(RoundF(base.tilt)) + " deg, rate " + IntToString(RoundF(base.tiltRate)) + " deg/s", "", "RESET", "dreset", "", true);
+    p.SetTip("At low self-levelling it will loop and roll right over; upside down its thrust drives it down.");
+    this.ChaseSettings(p, cfg, kind);
   }
 
   private func MechSettings(p: ref<TKPage>, cfg: ref<CMPilotSystem>, session: ref<CMCSession>) -> Void {
@@ -308,6 +322,7 @@ public class CMContent extends TKContent {
     p.Slider("HEIGHT", "Sensor view: above the mech's feet", "", "40|177|1|" + IntToString(CMContent.CmToIn(cfg.CamUpCm())) + "| in", "camup", "");
     p.Slider("FORWARD", "Sensor view: ahead of the mech's centre", "", "0|196|1|" + IntToString(CMContent.CmToIn(cfg.CamFwdCm())) + "| in", "camfwd", "");
     p.Item("DEFAULTS", "Height 7 ft 7 in, forward 8 ft 6 in, sensitivity 100%", "", "RESET", "camreset", "", true);
+    this.ChaseSettings(p, cfg, "mech");
   }
 
   // for every unit: the operator, the view, the chase camera and the display
@@ -320,13 +335,6 @@ public class CMContent extends TKContent {
     p.Heading("OPTICS // VIEW");
     p.Dropdown("VIEW", "V switches it while piloting", session.IsChase() ? "1" : "0", "SENSOR (FIRST PERSON)|CHASE (THIRD PERSON)", "0|1", "view", "");
 
-    p.Heading("CHASE CAMERA");
-    p.Slider("DISTANCE", "Behind the mech's centre", "", "10|52|1|" + IntToString(CMContent.CmToFt(cfg.ChaseDistCm())) + "| ft", "chasedist", "");
-    p.Slider("HEIGHT", "Above the mech's feet", "", "60|354|2|" + IntToString(CMContent.CmToIn(cfg.ChaseUpCm())) + "| in", "chaseup", "");
-    p.Slider("SIDE OFFSET", "Off the centre line, toward the shoulder (0 = dead centre)", "", "0|156|2|" + IntToString(CMContent.CmToIn(cfg.ChaseSideCm())) + "| in", "chaseside", "");
-    p.Dropdown("SHOULDER", "Which side the camera sits on", cfg.ShoulderLeft() ? "1" : "0", "RIGHT|LEFT", "0|1", "shoulder", "");
-    p.Item("DEFAULTS", "Distance 20 ft, height 146 in, side offset 71 in, right shoulder", "", "RESET", "chasereset", "", true);
-    p.SetTip("All four apply live while you pilot. The camera pulls in when a wall, pole or container is between it and the mech. The view's up and down tilt is the mouse.");
 
     p.Heading("DISPLAY");
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");

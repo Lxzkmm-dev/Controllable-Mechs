@@ -86,8 +86,8 @@ public class CMFlight {
     // The self-levelling setting blends the two.
     let acroPitch = -fwd * p.tiltRate;
     let acroRoll = side * p.tiltRate;
-    let anglePitch = (-fwd * p.tilt - this.pitch) * 6.0;
-    let angleRoll = (side * p.tilt - this.roll) * 6.0;
+    let anglePitch = CMPilotRig.Wrap(-fwd * p.tilt - this.pitch) * 6.0;
+    let angleRoll = CMPilotRig.Wrap(side * p.tilt - this.roll) * 6.0;
     let wantPitchRate = acroPitch + (anglePitch - acroPitch) * this.level;
     let wantRollRate = acroRoll + (angleRoll - acroRoll) * this.level;
     // --- the rotors: collective for the height, differential for the attitude ---
@@ -136,8 +136,10 @@ public class CMFlight {
     let rollTorque = ((t0 + t2) - (t1 + t3)) * p.arm;    // more on the left: right side down
     this.pitchRate += (pitchTorque / inertia * 57.3 - this.pitchRate * 2.0) * dt;
     this.rollRate += (rollTorque / inertia * 57.3 - this.rollRate * 2.0) * dt;
-    this.pitch = ClampF(this.pitch + this.pitchRate * dt, -80.0, 80.0);
-    this.roll = ClampF(this.roll + this.rollRate * dt, -80.0, 80.0);
+    // no limit: at low self-levelling it can loop and roll all the way over (the thrust
+    // then points where the body does, so inverted it drives down)
+    this.pitch = CMPilotRig.Wrap(this.pitch + this.pitchRate * dt);
+    this.roll = CMPilotRig.Wrap(this.roll + this.rollRate * dt);
     // the body turns toward the view
     let dy = CMPilotRig.Wrap(view - this.yaw);
     this.yaw += ClampF(dy, -p.yawRate * dt, p.yawRate * dt);

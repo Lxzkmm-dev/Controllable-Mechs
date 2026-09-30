@@ -138,6 +138,7 @@ public class CMUDrone extends CMCUnit {
   // the body's tilt, shown through the camera (the game won't tilt a drone's body)
   public func CamTilt() -> Vector4 = IsDefined(this.m_flight) ? new Vector4(this.m_flight.pitch, this.m_flight.roll, 0.0, 0.0) : new Vector4(0.0, 0.0, 0.0, 0.0)
   public func StepWeight() -> Float = 0.0   // no footfalls
+  public func CamProfile() -> String = this.m_kind
 
   public func Tick(s: ref<CMCSession>, dt: Float, now: Float) -> Void {
     let drone = this.m_drone;
