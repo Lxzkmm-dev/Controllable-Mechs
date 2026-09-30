@@ -58,10 +58,14 @@ public class CMPilotHud {
 
   private let BAR_W: Float = 420.0;
 
-  public static func Amber() -> HDRColor = new HDRColor(1.0, 0.76, 0.18, 1.0)
-  public static func Dim() -> HDRColor = new HDRColor(0.62, 0.48, 0.16, 1.0)
-  public static func Red() -> HDRColor = new HDRColor(1.0, 0.26, 0.2, 1.0)
-  public static func Pale() -> HDRColor = new HDRColor(0.95, 0.92, 0.82, 1.0)
+  // The palette: a military fire-control display. Amber() is the primary (kept by name for
+  // its callers): phosphor olive. Caution() is the old amber, now only for warnings and heat.
+  public static func Amber() -> HDRColor = new HDRColor(0.58, 0.84, 0.36, 1.0)
+  public static func Dim() -> HDRColor = new HDRColor(0.30, 0.44, 0.20, 1.0)
+  public static func Red() -> HDRColor = new HDRColor(1.0, 0.24, 0.16, 1.0)
+  public static func Pale() -> HDRColor = new HDRColor(0.86, 0.90, 0.76, 1.0)
+  public static func Caution() -> HDRColor = new HDRColor(1.0, 0.70, 0.10, 1.0)
+  public static func Steel() -> HDRColor = new HDRColor(0.035, 0.045, 0.035, 1.0)
 
   // ---------------------------------------------------------------------------
   // Build / remove
@@ -136,9 +140,24 @@ public class CMPilotHud {
   // Pieces
   // ---------------------------------------------------------------------------
   private func BuildFrame(root: ref<inkCanvas>) -> Void {
-    // dark vignette bands top and bottom, like looking through a sensor housing
-    let top = CMPilotHud.Box(root, inkEAnchor.TopFillHorizontaly, 0.0, 0.0, 0.0, 150.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.45);
-    let bottom = CMPilotHud.Box(root, inkEAnchor.BottomFillHorizontaly, 0.0, 0.0, 0.0, 190.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.45);
+    // armoured housing: heavy steel bands top and bottom, each edged with a double line
+    // and a row of rivets, hazard blocks in the corners
+    CMPilotHud.Box(root, inkEAnchor.TopFillHorizontaly, 0.0, 0.0, 0.0, 150.0, CMPilotHud.Steel(), 0.72);
+    CMPilotHud.Box(root, inkEAnchor.BottomFillHorizontaly, 0.0, 0.0, 0.0, 190.0, CMPilotHud.Steel(), 0.72);
+    CMPilotHud.Box(root, inkEAnchor.TopFillHorizontaly, 0.0, 150.0, 0.0, 5.0, CMPilotHud.Amber(), 0.75);
+    CMPilotHud.Box(root, inkEAnchor.TopFillHorizontaly, 0.0, 162.0, 0.0, 2.0, CMPilotHud.Dim(), 0.7);
+    CMPilotHud.Box(root, inkEAnchor.BottomFillHorizontaly, 0.0, 190.0, 0.0, 5.0, CMPilotHud.Amber(), 0.75);
+    CMPilotHud.Box(root, inkEAnchor.BottomFillHorizontaly, 0.0, 202.0, 0.0, 2.0, CMPilotHud.Dim(), 0.7);
+    let x = 420.0;
+    while x < 3440.0 {
+      CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 126.0, 10.0, 10.0, CMPilotHud.Dim(), 0.9);
+      CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, 176.0, 10.0, 10.0, CMPilotHud.Dim(), 0.9);
+      x += 190.0;
+    }
+    this.Hazard(root, inkEAnchor.TopLeft, 60.0, 40.0);
+    this.Hazard(root, inkEAnchor.TopRight, 60.0, 40.0);
+    this.Hazard(root, inkEAnchor.BottomLeft, 60.0, 130.0);
+    this.Hazard(root, inkEAnchor.BottomRight, 60.0, 130.0);
     // corner brackets
     this.Corner(root, inkEAnchor.TopLeft, 1.0, 1.0);
     this.Corner(root, inkEAnchor.TopRight, -1.0, 1.0);
@@ -146,10 +165,48 @@ public class CMPilotHud {
     this.Corner(root, inkEAnchor.BottomRight, -1.0, -1.0);
   }
 
+  // a block of five slanted caution stripes
+  private func Hazard(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float) -> Void {
+    let right = Equals(anchor, inkEAnchor.TopRight) || Equals(anchor, inkEAnchor.BottomRight);
+    let i = 0;
+    while i < 5 {
+      let s = CMPilotHud.Box(root, anchor, x + Cast<Float>(i) * 44.0, y, 20.0, 78.0, CMPilotHud.Caution(), 0.85);
+      s.SetAnchorPoint(Vector2(right ? 1.0 : 0.0, 0.0));
+      s.SetRotation(right ? -28.0 : 28.0);
+      i += 1;
+    }
+  }
+
+  // a dark steel plate behind a block of readouts, with a heavy edge bar and a stencil header
+  private func Plate(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, w: Float, h: Float, header: String) -> Void {
+    let right = Equals(anchor, inkEAnchor.TopRight) || Equals(anchor, inkEAnchor.BottomRight);
+    let ap = Vector2(right ? 1.0 : 0.0, 0.0);
+    let plate = CMPilotHud.Box(root, anchor, x, y, w, h, CMPilotHud.Steel(), 0.62);
+    plate.SetAnchorPoint(ap);
+    let edge = CMPilotHud.Box(root, anchor, x, y, 9.0, h, CMPilotHud.Amber(), 0.9);
+    edge.SetAnchorPoint(ap);
+    let cap = CMPilotHud.Box(root, anchor, x, y, w, 4.0, CMPilotHud.Dim(), 0.9);
+    cap.SetAnchorPoint(ap);
+    let bottom = Equals(anchor, inkEAnchor.BottomLeft) || Equals(anchor, inkEAnchor.BottomRight);
+    let label = CMPilotHud.Label(root, anchor, x + 24.0, bottom ? y - 8.0 : y + 8.0, header, 24, n"Semi-Bold", CMPilotHud.Dim());
+    label.SetAnchorPoint(ap);
+  }
+
+  // nine dark dividers over a bar, so it reads as ten armoured segments
+  private func Segments(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, h: Float) -> Void {
+    let right = Equals(anchor, inkEAnchor.TopRight) || Equals(anchor, inkEAnchor.BottomRight);
+    let i = 1;
+    while i < 10 {
+      let d = CMPilotHud.Box(root, anchor, x + this.BAR_W * Cast<Float>(i) / 10.0 - 3.0, y, 6.0, h, CMPilotHud.Steel(), 1.0);
+      d.SetAnchorPoint(Vector2(right ? 1.0 : 0.0, 0.0));
+      i += 1;
+    }
+  }
+
   private func Corner(root: ref<inkCanvas>, anchor: inkEAnchor, sx: Float, sy: Float) -> Void {
-    let inset = 80.0;
-    let len = 150.0;
-    let t = 5.0;
+    let inset = 34.0;
+    let len = 210.0;
+    let t = 11.0;
     let ax = sx > 0.0 ? 0.0 : 1.0;
     let ay = sy > 0.0 ? 0.0 : 1.0;
     let h = new inkRectangle();
@@ -178,12 +235,24 @@ public class CMPilotHud {
     r.Reparent(root);
     this.m_reticle = r;
     let c = CMPilotHud.Amber();
-    // crosshair with a centre gap
-    CMPilotHud.Bar(r, 200.0 - 3.0, 200.0 - 70.0, 6.0, 44.0, c, 0.95);   // up
-    CMPilotHud.Bar(r, 200.0 - 3.0, 200.0 + 26.0, 6.0, 44.0, c, 0.95);   // down
-    CMPilotHud.Bar(r, 200.0 - 70.0, 200.0 - 3.0, 44.0, 6.0, c, 0.95);   // left
-    CMPilotHud.Bar(r, 200.0 + 26.0, 200.0 - 3.0, 44.0, 6.0, c, 0.95);   // right
-    CMPilotHud.Bar(r, 200.0 - 4.0, 200.0 - 4.0, 8.0, 8.0, CMPilotHud.Pale(), 1.0);
+    // a gunner's sight: heavy arms with a centre gap, stadia ticks along the side arms, a
+    // drop ladder under the centre, and a short chevron at the aim point
+    CMPilotHud.Bar(r, 200.0 - 4.0, 200.0 - 96.0, 8.0, 62.0, c, 0.95);    // up
+    CMPilotHud.Bar(r, 200.0 - 4.0, 200.0 + 34.0, 8.0, 62.0, c, 0.95);    // down
+    CMPilotHud.Bar(r, 200.0 - 150.0, 200.0 - 4.0, 116.0, 8.0, c, 0.95);  // left
+    CMPilotHud.Bar(r, 200.0 + 34.0, 200.0 - 4.0, 116.0, 8.0, c, 0.95);   // right
+    let i = 1;
+    while i <= 3 {
+      let off = 34.0 + Cast<Float>(i) * 30.0;
+      CMPilotHud.Bar(r, 200.0 - off - 1.5, 200.0 - 14.0, 3.0, 28.0 - Cast<Float>(i) * 5.0, c, 0.9);
+      CMPilotHud.Bar(r, 200.0 + off - 1.5, 200.0 - 14.0, 3.0, 28.0 - Cast<Float>(i) * 5.0, c, 0.9);
+      CMPilotHud.Bar(r, 200.0 - 18.0 + Cast<Float>(i) * 4.0, 200.0 + 96.0 + Cast<Float>(i) * 22.0, 36.0 - Cast<Float>(i) * 8.0, 3.0, c, 0.85);
+      i += 1;
+    }
+    let cl = CMPilotHud.Bar(r, 200.0 - 15.0, 200.0 + 2.0, 18.0, 4.0, CMPilotHud.Pale(), 1.0);
+    cl.SetRotation(-38.0);
+    let cr = CMPilotHud.Bar(r, 200.0 - 3.0, 200.0 + 2.0, 18.0, 4.0, CMPilotHud.Pale(), 1.0);
+    cr.SetRotation(38.0);
     // hit marker: four short diagonals round the centre, shown when a round connects (M1)
     for sx in [-1.0, 1.0] {
       for sy in [-1.0, 1.0] {
@@ -199,9 +268,9 @@ public class CMPilotHud {
     this.m_pipL = this.GunReticle(root, true);
     this.m_pipR = this.GunReticle(root, false);
     // range under the reticle
-    this.m_range = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, 130.0, "RNG ---", 34, n"Medium", c);
+    this.m_range = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, 190.0, "LRF ----", 36, n"Semi-Bold", c);
     this.m_range.SetAnchorPoint(Vector2(0.5, 0.0));
-    this.m_zoom = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, 175.0, "", 30, n"Medium", CMPilotHud.Dim());
+    this.m_zoom = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, 236.0, "", 28, n"Medium", CMPilotHud.Dim());
     this.m_zoom.SetAnchorPoint(Vector2(0.5, 0.0));
   }
 
@@ -210,44 +279,55 @@ public class CMPilotHud {
     this.m_title.SetAnchorPoint(Vector2(0.5, 0.0));
     this.m_heading = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 84.0, "HDG 000  N", 46, n"Medium", CMPilotHud.Pale());
     this.m_heading.SetAnchorPoint(Vector2(0.5, 0.0));
-    this.m_warn = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 220.0, "", 44, n"Semi-Bold", CMPilotHud.Red());
+    // a heading tape under the bearing: a base line with graduations
+    let tape = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 142.0, "|    '    |    '    |    '    V    '    |    '    |    '    |", 22, n"Medium", CMPilotHud.Dim());
+    tape.SetAnchorPoint(Vector2(0.5, 0.0));
+    this.m_warn = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 232.0, "", 46, n"Semi-Bold", CMPilotHud.Red());
     this.m_warn.SetAnchorPoint(Vector2(0.5, 0.0));
   }
 
   private func BuildLeft(root: ref<inkCanvas>) -> Void {
     let x = 130.0;
-    this.m_integrityText = CMPilotHud.Label(root, inkEAnchor.TopLeft, x, 230.0, "INTEGRITY 100%", 32, n"Medium", CMPilotHud.Amber());
-    CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 278.0, this.BAR_W, 12.0, CMPilotHud.Dim(), 0.35);
-    this.m_integrityBar = CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 278.0, this.BAR_W, 12.0, CMPilotHud.Amber(), 0.95);
-    this.m_signalText = CMPilotHud.Label(root, inkEAnchor.TopLeft, x, 312.0, "SIGNAL", 32, n"Medium", CMPilotHud.Amber());
-    CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 360.0, this.BAR_W, 12.0, CMPilotHud.Dim(), 0.35);
-    this.m_signalBar = CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 360.0, this.BAR_W, 12.0, CMPilotHud.Amber(), 0.95);
-    this.m_speed = CMPilotHud.Label(root, inkEAnchor.TopLeft, x, 396.0, "SPD 0.0 m/s", 32, n"Medium", CMPilotHud.Pale());
+    this.Plate(root, inkEAnchor.TopLeft, x - 34.0, 196.0, this.BAR_W + 74.0, 270.0, "SYS-01 // CHASSIS");
+    this.m_integrityText = CMPilotHud.Label(root, inkEAnchor.TopLeft, x, 238.0, "HULL 100%", 34, n"Semi-Bold", CMPilotHud.Amber());
+    CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 288.0, this.BAR_W, 18.0, CMPilotHud.Dim(), 0.35);
+    this.m_integrityBar = CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 288.0, this.BAR_W, 18.0, CMPilotHud.Amber(), 0.95);
+    this.Segments(root, inkEAnchor.TopLeft, x, 288.0, 18.0);
+    this.m_signalText = CMPilotHud.Label(root, inkEAnchor.TopLeft, x, 322.0, "UPLINK", 34, n"Semi-Bold", CMPilotHud.Amber());
+    CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 372.0, this.BAR_W, 18.0, CMPilotHud.Dim(), 0.35);
+    this.m_signalBar = CMPilotHud.Box(root, inkEAnchor.TopLeft, x, 372.0, this.BAR_W, 18.0, CMPilotHud.Amber(), 0.95);
+    this.Segments(root, inkEAnchor.TopLeft, x, 372.0, 18.0);
+    this.m_speed = CMPilotHud.Label(root, inkEAnchor.TopLeft, x, 408.0, "GND SPD 0.0 M/S", 32, n"Medium", CMPilotHud.Pale());
   }
 
   private func BuildRight(root: ref<inkCanvas>) -> Void {
-    this.m_mode = CMPilotHud.Label(root, inkEAnchor.TopRight, 130.0, 230.0, "FIRE MODE", 32, n"Medium", CMPilotHud.Amber());
+    this.Plate(root, inkEAnchor.TopRight, 96.0, 196.0, this.BAR_W + 74.0, 150.0, "FCS // FIRE CONTROL");
+    this.m_mode = CMPilotHud.Label(root, inkEAnchor.TopRight, 130.0, 238.0, "FIRE MODE", 34, n"Semi-Bold", CMPilotHud.Amber());
     this.m_mode.SetAnchorPoint(Vector2(1.0, 0.0));
-    this.m_link = CMPilotHud.Label(root, inkEAnchor.TopRight, 130.0, 278.0, "LINK", 32, n"Medium", CMPilotHud.Pale());
+    this.m_link = CMPilotHud.Label(root, inkEAnchor.TopRight, 130.0, 286.0, "LINK", 32, n"Medium", CMPilotHud.Pale());
     this.m_link.SetAnchorPoint(Vector2(1.0, 0.0));
   }
 
   private func BuildGuns(root: ref<inkCanvas>) -> Void {
     let x = 130.0;
-    let y = 330.0;   // from the bottom
-    CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, y, "L  MK.31 HMG", 34, n"Semi-Bold", CMPilotHud.Amber());
-    this.m_stateL = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, y - 48.0, "READY", 30, n"Medium", CMPilotHud.Pale());
-    CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, y - 90.0, this.BAR_W, 16.0, CMPilotHud.Dim(), 0.35);
-    this.m_heatL = CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, y - 90.0, 0.0, 16.0, CMPilotHud.Amber(), 0.95);
+    let y = 340.0;   // from the bottom
+    this.Plate(root, inkEAnchor.BottomLeft, x - 34.0, y + 46.0, this.BAR_W + 74.0, 190.0, "WPN-L // HARDPOINT 1");
+    CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, y, "MK.31 HMG  [L]", 34, n"Semi-Bold", CMPilotHud.Amber());
+    this.m_stateL = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, y - 48.0, "ARMED", 30, n"Medium", CMPilotHud.Pale());
+    CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, y - 94.0, this.BAR_W, 20.0, CMPilotHud.Dim(), 0.35);
+    this.m_heatL = CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, y - 94.0, 0.0, 20.0, CMPilotHud.Amber(), 0.95);
+    this.Segments(root, inkEAnchor.BottomLeft, x, y - 94.0, 20.0);
 
-    let r = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, y, "MK.31 HMG  R", 34, n"Semi-Bold", CMPilotHud.Amber());
+    this.Plate(root, inkEAnchor.BottomRight, x - 34.0, y + 46.0, this.BAR_W + 74.0, 190.0, "WPN-R // HARDPOINT 2");
+    let r = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, y, "[R]  MK.31 HMG", 34, n"Semi-Bold", CMPilotHud.Amber());
     r.SetAnchorPoint(Vector2(1.0, 0.0));
-    this.m_stateR = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, y - 48.0, "READY", 30, n"Medium", CMPilotHud.Pale());
+    this.m_stateR = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, y - 48.0, "ARMED", 30, n"Medium", CMPilotHud.Pale());
     this.m_stateR.SetAnchorPoint(Vector2(1.0, 0.0));
-    let bg = CMPilotHud.Box(root, inkEAnchor.BottomRight, x, y - 90.0, this.BAR_W, 16.0, CMPilotHud.Dim(), 0.35);
+    let bg = CMPilotHud.Box(root, inkEAnchor.BottomRight, x, y - 94.0, this.BAR_W, 20.0, CMPilotHud.Dim(), 0.35);
     bg.SetAnchorPoint(Vector2(1.0, 0.0));
-    this.m_heatR = CMPilotHud.Box(root, inkEAnchor.BottomRight, x, y - 90.0, 0.0, 16.0, CMPilotHud.Amber(), 0.95);
+    this.m_heatR = CMPilotHud.Box(root, inkEAnchor.BottomRight, x, y - 94.0, 0.0, 20.0, CMPilotHud.Amber(), 0.95);
     this.m_heatR.SetAnchorPoint(Vector2(1.0, 0.0));
+    this.Segments(root, inkEAnchor.BottomRight, x, y - 94.0, 20.0);
   }
 
   private func BuildHints(root: ref<inkCanvas>) -> Void {
@@ -389,7 +469,7 @@ public class CMPilotHud {
     let k = 0;
     while k < 12 {
       let a = Deg2Rad(Cast<Float>(k) * 30.0 - 90.0);
-      let tick = CMPilotHud.Bar(c, 60.0 + CosF(a) * 42.0 - 5.0, 60.0 + SinF(a) * 42.0 - 2.0, 10.0, 4.0, CMPilotHud.Amber(), 0.12);
+      let tick = CMPilotHud.Bar(c, 60.0 + CosF(a) * 42.0 - 5.0, 60.0 + SinF(a) * 42.0 - 2.0, 10.0, 4.0, CMPilotHud.Caution(), 0.12);
       tick.SetRotation(Cast<Float>(k) * 30.0);
       if left {
         ArrayPush(this.m_heatTicksL, tick);
@@ -437,7 +517,7 @@ public class CMPilotHud {
     while i < ArraySize(ticks) {
       let on = i < lit;
       ticks[i].SetOpacity(on ? 1.0 : 0.12);
-      ticks[i].SetTintColor(on && hot ? CMPilotHud.Red() : CMPilotHud.Amber());
+      ticks[i].SetTintColor(on && hot ? CMPilotHud.Red() : CMPilotHud.Caution());
       i += 1;
     }
   }
@@ -461,19 +541,19 @@ public class CMPilotHud {
     }
     this.m_title.SetText(s.title);
     this.m_heading.SetText("HDG " + CMPilotHud.Pad3(s.heading) + "  " + CMPilotHud.Cardinal(s.heading));
-    this.m_range.SetText(s.range > 0.0 ? "RNG " + IntToString(RoundF(s.range)) + " m" : "RNG ---");
-    this.m_zoom.SetText(s.zoomed ? "OPTICS x2" : "");
+    this.m_range.SetText(s.range > 0.0 ? "[ LRF " + CMPilotHud.Pad4(RoundF(s.range)) + " M ]" : "[ LRF ---- M ]");
+    this.m_zoom.SetText(s.zoomed ? "OPTICS  2.5X  NARROW" : "");
 
-    this.m_integrityText.SetText("INTEGRITY " + IntToString(RoundF(s.integrity * 100.0)) + "%");
+    this.m_integrityText.SetText("HULL " + IntToString(RoundF(s.integrity * 100.0)) + "%" + (s.integrity < 0.3 ? "  CRITICAL" : ""));
     this.m_integrityBar.SetWidth(this.BAR_W * ClampF(s.integrity, 0.0, 1.0));
     this.m_integrityBar.SetTintColor(s.integrity < 0.3 ? CMPilotHud.Red() : CMPilotHud.Amber());
-    this.m_signalText.SetText("SIGNAL " + IntToString(RoundF(s.signal * 100.0)) + "%");
+    this.m_signalText.SetText("UPLINK " + IntToString(RoundF(s.signal * 100.0)) + "%");
     this.m_signalBar.SetWidth(this.BAR_W * ClampF(s.signal, 0.0, 1.0));
     this.m_signalBar.SetTintColor(s.signal < 0.25 ? CMPilotHud.Red() : CMPilotHud.Amber());
-    this.m_speed.SetText("SPD " + FloatToStringPrec(s.speed, 1) + " m/s");
+    this.m_speed.SetText("GND SPD " + FloatToStringPrec(s.speed, 1) + " M/S");
 
-    this.m_mode.SetText("FIRE MODE  " + CMFireMode.Name(s.fireMode));
-    this.m_link.SetText("OPERATOR " + IntToString(RoundF(s.distance)) + " m");
+    this.m_mode.SetText("MODE  " + CMFireMode.Name(s.fireMode));
+    this.m_link.SetText("OPERATOR  " + IntToString(RoundF(s.distance)) + " M");
 
     this.Gun(this.m_heatL, this.m_stateL, s.heatL, s.lockedL, s.hasL);
     this.Gun(this.m_heatR, this.m_stateR, s.heatR, s.lockedR, s.hasR);
@@ -487,16 +567,16 @@ public class CMPilotHud {
 
   private func Gun(bar: ref<inkRectangle>, state: ref<inkText>, heat: Float, locked: Bool, has: Bool) -> Void {
     bar.SetWidth(this.BAR_W * ClampF(heat, 0.0, 1.0));
-    bar.SetTintColor(locked || heat > 0.8 ? CMPilotHud.Red() : CMPilotHud.Amber());
+    bar.SetTintColor(locked || heat > 0.8 ? CMPilotHud.Red() : (heat > 0.5 ? CMPilotHud.Caution() : CMPilotHud.Amber()));
     if !has {
       state.SetText("NO WEAPON");
       state.SetTintColor(CMPilotHud.Red());
     } else {
       if locked {
-        state.SetText("OVERHEAT - COOLING");
+        state.SetText("BARREL OVERTEMP - LOCKED");
         state.SetTintColor(CMPilotHud.Red());
       } else {
-        state.SetText("READY   HEAT " + IntToString(RoundF(heat * 100.0)) + "%");
+        state.SetText("ARMED   TEMP " + IntToString(RoundF(heat * 100.0)) + "%");
         state.SetTintColor(CMPilotHud.Pale());
       }
     }
@@ -555,6 +635,13 @@ public class CMPilotHud {
         return inkMargin(x, 0.0, 0.0, y);
     }
     return inkMargin(x, y, 0.0, 0.0);
+  }
+
+  public static func Pad4(v: Int32) -> String {
+    if v < 10 { return "000" + IntToString(v); }
+    if v < 100 { return "00" + IntToString(v); }
+    if v < 1000 { return "0" + IntToString(v); }
+    return IntToString(v);
   }
 
   public static func Pad3(v: Int32) -> String {
