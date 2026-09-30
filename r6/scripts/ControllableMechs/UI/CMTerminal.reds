@@ -100,19 +100,19 @@ public class CMTerminal extends TKPopup {
   }
 }
 
-// The terminal's palette, matching the pilot HUD: phosphor olive, amber for emphasis,
-// sand text, dark olive rules. Registered with TerminalKit as "cm_military".
+// The terminal's palette, matching the pilot HUD: phosphor green, amber for emphasis,
+// pale green text, dark green rules. Registered with TerminalKit as "cm_military".
 public class CMMilitaryPalette extends TKPalette {
   public func Id() -> String = "cm_military"
   public func Color(role: String) -> HDRColor {
     switch role {
-      case "title": return new HDRColor(0.58, 0.84, 0.36, 1.0);
-      case "accent": return new HDRColor(1.0, 0.70, 0.10, 1.0);
-      case "text": return new HDRColor(0.72, 0.78, 0.62, 1.0);
-      case "rule": return new HDRColor(0.22, 0.34, 0.15, 1.0);
-      case "frame": return new HDRColor(0.46, 0.68, 0.30, 1.0);
+      case "title": return new HDRColor(0.32, 0.95, 0.42, 1.0);
+      case "accent": return new HDRColor(1.0, 0.62, 0.14, 1.0);
+      case "text": return new HDRColor(0.68, 0.84, 0.70, 1.0);
+      case "rule": return new HDRColor(0.12, 0.36, 0.18, 1.0);
+      case "frame": return new HDRColor(0.26, 0.76, 0.34, 1.0);
     }
-    return new HDRColor(0.86, 0.90, 0.76, 1.0);
+    return new HDRColor(0.80, 0.96, 0.82, 1.0);
   }
 }
 

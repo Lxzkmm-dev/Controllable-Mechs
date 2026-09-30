@@ -3,13 +3,80 @@
 //
 // Built once on the game's HUD layer when piloting starts and removed when it
 // ends. While it's up, the vanilla HUD is faded out (and restored exactly as it
-// was). Values update ten times a second from CMPilotSystem; only the two
-// barrel markers are touched every frame, and only when they change.
+// was). Values update ten times a second from the pilot session; per frame only
+// the compass tape, the gun reticles and the heat cells are touched, and only
+// when they change.
+//
+// The art is the game's own, referenced by path (nothing is shipped or edited):
+//   - the Basilisk tank HUD atlas (panzer_hud): the cut-corner glass of the two
+//     plates, the tick ruler under the bars, the hatch blocks of the warning panel
+//   - the Militech turret HUD atlas (turret_hud): the hairline frames above and
+//     below each plate
+//   - shadow_blobs: the soft shadow under the plates, the glow behind the main
+//     readouts, the vignette
+//   - the quest glitch atlas: the tearing lines when the mech takes damage
+// The motion (idle flicker, damage jolt, hot-gun pulse, warning sweep) is ink
+// animations started on events: the engine runs them, no script runs per frame.
 // =============================================================================
 module ControllableMechs
 
+import Codeware.UI.ScreenHelper
+
+// A bar of cells that light up left to right; the last lit cell fades in by quarters.
+// Widgets are only touched when the quarter count or the colour changes.
+public class CMHudCells {
+  public let box: ref<inkCanvas>;
+  public let cells: array<ref<inkRectangle>>;
+  private let m_quarters: Int32;   // stored + 1, so 0 means "never set"
+  private let m_state: Int32;
+  private let m_pulse: ref<inkAnimProxy>;
+
+  // state: 0 nominal, 1 caution, 2 critical
+  public func Set(frac: Float, state: Int32) -> Void {
+    let n = ArraySize(this.cells);
+    let q = RoundF(ClampF(frac, 0.0, 1.0) * Cast<Float>(n) * 4.0);
+    if q + 1 == this.m_quarters && state == this.m_state {
+      return;
+    }
+    this.m_quarters = q + 1;
+    this.m_state = state;
+    let color = state == 2 ? CMPilotHud.Red() : (state == 1 ? CMPilotHud.Caution() : CMPilotHud.Amber());
+    let full = q / 4;
+    let rem = q % 4;
+    let i = 0;
+    while i < n {
+      if i < full {
+        this.cells[i].SetTintColor(color);
+        this.cells[i].SetOpacity(0.95);
+      } else {
+        if i == full && rem > 0 {
+          this.cells[i].SetTintColor(color);
+          this.cells[i].SetOpacity(0.3 + 0.65 * Cast<Float>(rem) / 4.0);
+        } else {
+          this.cells[i].SetTintColor(CMPilotHud.Dim());
+          this.cells[i].SetOpacity(0.3);
+        }
+      }
+      i += 1;
+    }
+  }
+
+  // the whole bar throbs while on, and rests at full brightness when off
+  public func Pulse(on: Bool) -> Void {
+    if on && !IsDefined(this.m_pulse) {
+      this.m_pulse = CMPilotHud.Loop(this.box, 1.0, 0.45, 0.22);
+    }
+    if !on && IsDefined(this.m_pulse) {
+      this.m_pulse.Stop();
+      this.m_pulse = null;
+      this.box.SetOpacity(1.0);
+    }
+  }
+}
+
 public class CMPilotHud {
   private let m_root: ref<inkCanvas>;
+  private let m_face: ref<inkCanvas>;    // everything but the sight: it flickers and jolts as one
   private let m_parent: wref<inkCompoundWidget>;
 
   // hidden vanilla HUD widgets and their opacity before we touched them
@@ -27,11 +94,10 @@ public class CMPilotHud {
   private let m_hints: ref<inkText>;
   private let m_debug: ref<inkText>;
   private let m_integrityText: ref<inkText>;
-  private let m_integrityBar: ref<inkRectangle>;
   private let m_signalText: ref<inkText>;
-  private let m_signalBar: ref<inkRectangle>;
-  private let m_heatL: ref<inkRectangle>;
-  private let m_heatR: ref<inkRectangle>;
+  private let m_hull: ref<CMHudCells>;
+  private let m_heatL: ref<CMHudCells>;
+  private let m_heatR: ref<CMHudCells>;
   private let m_stateL: ref<inkText>;
   private let m_stateR: ref<inkText>;
   private let m_markL: ref<inkRectangle>;
@@ -39,7 +105,7 @@ public class CMPilotHud {
   private let m_markLOn: Bool;
   private let m_markROn: Bool;
   private let m_reticle: ref<inkCanvas>;
-  // where each barrel points: a small diamond, placed from the centre in 4K units
+  // where each barrel points: a small ring, placed from the centre in 4K units
   private let m_pipL: ref<inkCanvas>;
   private let m_pipR: ref<inkCanvas>;
   private let m_heatTicksL: array<ref<inkRectangle>>;
@@ -60,24 +126,39 @@ public class CMPilotHud {
   private let m_pitchMark: ref<inkRectangle>;
   private let m_pitchY: Float;
   private let m_warnPlate: ref<inkCanvas>;
-  private let m_flash: Bool;
+  private let m_warnSweep: ref<inkRectangle>;
+  private let m_warnOn: Bool;
+  private let m_warnPulse: ref<inkAnimProxy>;
+  private let m_warnSweepAnim: ref<inkAnimProxy>;
   private let m_msl: ref<inkText>;
+  private let m_glitch: array<ref<inkImage>>;
   private let TAPE_Y: Float = 50.0;
   private let TAPE_SPACING: Float = 165.0;   // px per 15 deg
   private let PITCH_PX: Float = 6.0;         // px per degree on the elevation ladder
   private let m_hitBars: array<ref<inkRectangle>>;
   private let m_hitT: Float;
 
-  private let BAR_W: Float = 420.0;
+  private let BAR_W: Float = 415.0;          // 20 cells of 16 with 5 between
+  private let PLATE_W: Float = 620.0;
+  private let PLATE_X: Float = 200.0;        // plate edge to screen edge
+  private let PLATE_GAP: Float = 160.0;      // plate bottom to screen bottom
 
-  // The palette: a military fire-control display. Amber() is the primary (kept by name for
-  // its callers): phosphor olive. Caution() is the old amber, now only for warnings and heat.
-  public static func Amber() -> HDRColor = new HDRColor(0.58, 0.84, 0.36, 1.0)
-  public static func Dim() -> HDRColor = new HDRColor(0.30, 0.44, 0.20, 1.0)
-  public static func Red() -> HDRColor = new HDRColor(1.0, 0.24, 0.16, 1.0)
-  public static func Pale() -> HDRColor = new HDRColor(0.86, 0.90, 0.76, 1.0)
-  public static func Caution() -> HDRColor = new HDRColor(1.0, 0.70, 0.10, 1.0)
-  public static func Steel() -> HDRColor = new HDRColor(0.035, 0.045, 0.035, 1.0)
+  // The palette: a phosphor fire-control display. Amber() is the primary (kept by name for
+  // its callers): phosphor green. Caution() is the amber of keys, warnings and heat. The
+  // values just over 1 pick up the game's HUD bloom, like its own HUD colours do.
+  public static func Amber() -> HDRColor = new HDRColor(0.34, 1.02, 0.46, 1.0)
+  public static func Dim() -> HDRColor = new HDRColor(0.14, 0.45, 0.22, 1.0)
+  public static func Red() -> HDRColor = new HDRColor(1.18, 0.30, 0.22, 1.0)
+  public static func Pale() -> HDRColor = new HDRColor(0.80, 0.96, 0.82, 1.0)
+  public static func Caution() -> HDRColor = new HDRColor(1.10, 0.64, 0.14, 1.0)
+  public static func Steel() -> HDRColor = new HDRColor(0.015, 0.06, 0.035, 1.0)
+  public static func Black() -> HDRColor = new HDRColor(0.0, 0.0, 0.0, 1.0)
+
+  // the game's own HUD art
+  public static func Panzer() -> ResRef = r"base\\gameplay\\gui\\widgets\\tank_hud\\panzer_hud.inkatlas"
+  public static func Turret() -> ResRef = r"base\\gameplay\\gui\\widgets\\turret_hud\\turret_hud.inkatlas"
+  public static func Blobs() -> ResRef = r"base\\gameplay\\gui\\common\\shadow_blobs.inkatlas"
+  public static func Glitch() -> ResRef = r"base\\gameplay\\gui\\quests\\assets\\glitch.inkatlas"
 
   // ---------------------------------------------------------------------------
   // Build / remove
@@ -96,27 +177,52 @@ public class CMPilotHud {
 
     let root = new inkCanvas();
     root.SetName(n"cm_pilot_hud");
-    root.SetAnchor(inkEAnchor.Fill);
     root.SetInteractive(false);
+    // The HUD layer's window is in real screen pixels, and everything here is laid out on
+    // a 2160-high screen like the game's own HUD. So the root is that design space (as
+    // wide as the screen's shape makes it) scaled down to the real height, and the HUD is
+    // the same size relative to the screen on 1080p, 1440p, 4K and ultrawide.
+    let screen = ScreenHelper.GetScreenSize(GetGameInstance());
+    if screen.Y > 100.0 {
+      let k = screen.Y / 2160.0;
+      root.SetAnchor(inkEAnchor.TopLeft);
+      root.SetSize(Vector2(screen.X / k, 2160.0));
+      root.SetRenderTransformPivot(Vector2(0.0, 0.0));
+      root.SetScale(Vector2(k, k));
+    } else {
+      root.SetAnchor(inkEAnchor.Fill);
+    }
     root.Reparent(window);
     this.m_root = root;
 
-    this.BuildFrame(root);
+    let face = new inkCanvas();
+    face.SetAnchor(inkEAnchor.Fill);
+    face.SetInteractive(false);
+    face.Reparent(root);
+    this.m_face = face;
+
+    this.BuildBackdrop(face);
+    this.BuildFrame(face);
     this.BuildReticle(root);
-    this.BuildTop(root);
-    this.BuildGuns(root);    // first: its key tags take indices 0-3, the chassis plate's 4-5
-    this.BuildLeft(root);
-    this.BuildRight(root);
+    this.BuildTop(face);
+    this.BuildGuns(face, root);    // first: its key tags take indices 0-3, the chassis plate's 4-5
+    this.BuildLeft(face);
+    this.BuildRight(face);
     this.BuildHints(root);
     this.BuildEffects(root);
+    this.Flicker();
     return true;
   }
 
   public func Remove() -> Void {
     if IsDefined(this.m_root) && IsDefined(this.m_parent) {
+      this.m_root.StopAllAnimations();
       this.m_parent.RemoveChild(this.m_root);
     }
     this.m_root = null;
+    this.m_face = null;
+    this.m_warnPulse = null;
+    this.m_warnSweepAnim = null;
     this.RestoreVanilla();
   }
 
@@ -152,7 +258,19 @@ public class CMPilotHud {
   // ---------------------------------------------------------------------------
   // Pieces
   // ---------------------------------------------------------------------------
-  // The frame is four heavy corner brackets and nothing else: the display is sparse on
+  // Behind everything: the glass darkens toward the screen edges, and a faint scanline
+  // every 36 px. Static (built once, never touched again).
+  private func BuildBackdrop(root: ref<inkCanvas>) -> Void {
+    let v = CMPilotHud.Img(root, inkEAnchor.Fill, 0.0, 0.0, 0.0, 0.0, CMPilotHud.Blobs(), n"vignette", CMPilotHud.Black(), 0.4);
+    v.SetAnchor(inkEAnchor.Fill);
+    let y = 0.0;
+    while y < 2160.0 {
+      CMPilotHud.Box(root, inkEAnchor.TopFillHorizontaly, 0.0, y, 0.0, 3.0, CMPilotHud.Black(), 0.05);
+      y += 36.0;
+    }
+  }
+
+  // The frame is four fine corner brackets and nothing else: the display is sparse on
   // purpose (the compass tape, the sight, one chassis plate, one weapons plate).
   private func BuildFrame(root: ref<inkCanvas>) -> Void {
     this.Corner(root, inkEAnchor.TopLeft, 1.0, 1.0);
@@ -161,26 +279,66 @@ public class CMPilotHud {
     this.Corner(root, inkEAnchor.BottomRight, -1.0, -1.0);
   }
 
-  // The display's wear, kept very faint: a scanline every 36 px and slightly darker glass
-  // at the left and right edges. Static (built once, never touched again).
+  // On top of everything: the tearing lines a hit throws across the display (hidden until
+  // Damage plays them) and the boot text (StartBoot / Boot run it).
   private func BuildEffects(root: ref<inkCanvas>) -> Void {
-    let y = 0.0;
-    while y < 2160.0 {
-      CMPilotHud.Box(root, inkEAnchor.TopFillHorizontaly, 0.0, y, 0.0, 3.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.05);
-      y += 36.0;
-    }
-    let i = 0;
-    while i < 2 {
-      let w = 120.0 + Cast<Float>(i) * 120.0;
-      CMPilotHud.Box(root, inkEAnchor.LeftFillVerticaly, 0.0, 0.0, w, 0.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.07);
-      let r = CMPilotHud.Box(root, inkEAnchor.RightFillVerticaly, 0.0, 0.0, w, 0.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.07);
-      r.SetAnchorPoint(Vector2(1.0, 0.0));
-      i += 1;
-    }
-    // the boot text (StartBoot / Boot run it)
+    this.GlitchBand(root, n"bw_h_lines_01", CMPilotHud.Amber(), 3840.0, 200.0);
+    this.GlitchBand(root, n"bw_big_lines", CMPilotHud.Red(), 3400.0, 520.0);
+    this.GlitchBand(root, n"bw_big_lines", new HDRColor(0.20, 0.95, 1.05, 1.0), 3400.0, 520.0);
     this.m_boot = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, -330.0, "", 34, n"Semi-Bold", CMPilotHud.Amber());
     this.m_boot.SetAnchorPoint(Vector2(0.5, 0.0));
     this.m_boot.SetVisible(false);
+  }
+
+  private func GlitchBand(root: ref<inkCanvas>, part: CName, color: HDRColor, w: Float, h: Float) -> Void {
+    let g = CMPilotHud.Img(root, inkEAnchor.Centered, 0.0, 0.0, w, h, CMPilotHud.Glitch(), part, color, 0.0);
+    g.SetAnchorPoint(Vector2(0.5, 0.5));
+    ArrayPush(this.m_glitch, g);
+  }
+
+  // The display's idle flicker: two short dips in brightness every 5.5 s, looped by the
+  // engine for as long as the HUD is up.
+  private func Flicker() -> Void {
+    let def = new inkAnimDef();
+    def.AddInterpolator(CMPilotHud.Fade(1.0, 0.72, 0.04, 4.20));
+    def.AddInterpolator(CMPilotHud.Fade(0.72, 1.0, 0.05, 4.24));
+    def.AddInterpolator(CMPilotHud.Fade(1.0, 0.86, 0.03, 4.45));
+    def.AddInterpolator(CMPilotHud.Fade(0.86, 1.0, 0.05, 4.48));
+    def.AddInterpolator(CMPilotHud.Fade(1.0, 1.0, 1.0, 4.53));
+    let opt: inkAnimOptions;
+    opt.loopType = inkanimLoopType.Cycle;
+    opt.loopInfinite = true;
+    this.m_face.PlayAnimationWithOptions(def, opt);
+  }
+
+  // The mech took damage: the display jolts sideways and tearing lines flash across it,
+  // harder the more hull the hit took (`lost` is the fraction of the hull lost since the
+  // last reading; 8% or more is the full effect). Three short engine animations per hit.
+  public func Damage(lost: Float) -> Void {
+    if !IsDefined(this.m_root) {
+      return;
+    }
+    let k = ClampF(lost * 12.0, 0.25, 1.0);
+    let jolt = new inkAnimDef();
+    let move = new inkAnimTranslation();
+    move.SetStartTranslation(Vector2(RandRangeF(-46.0, 46.0) * k, RandRangeF(-18.0, 18.0) * k));
+    move.SetEndTranslation(Vector2(0.0, 0.0));
+    move.SetDuration(0.16 + 0.14 * k);
+    move.SetType(inkanimInterpolationType.Quadratic);
+    move.SetMode(inkanimInterpolationMode.EasyOut);
+    jolt.AddInterpolator(move);
+    this.m_face.PlayAnimation(jolt);
+    let i = 0;
+    while i < ArraySize(this.m_glitch) {
+      let g = this.m_glitch[i];
+      // the red and the cyan band sit a few pixels either side of each other: a colour split
+      let y = i == 0 ? RandRangeF(-520.0, 520.0) : RandRangeF(-260.0, 260.0);
+      g.SetMargin(inkMargin(i == 1 ? -14.0 * k : (i == 2 ? 14.0 * k : 0.0), y, 0.0, 0.0));
+      let def = new inkAnimDef();
+      def.AddInterpolator(CMPilotHud.Fade((i == 0 ? 0.8 : 0.45) * k, 0.0, 0.14 + 0.3 * k, 0.0));
+      g.PlayAnimation(def);
+      i += 1;
+    }
   }
 
   // The link coming up: for BOOT_TIME the display flickers for the first half second and
@@ -233,7 +391,7 @@ public class CMPilotHud {
   private let m_tagT: array<Float>;
   private let m_tagDim: array<Float>;   // each tag's resting opacity
   private let m_tagSplit: Bool;
-  private let TAG_DIM: Float = 0.28;
+  private let TAG_DIM: Float = 0.4;
   private let TAG_INTRO: Float = 7.0;    // seconds bright after the link comes up (boot included)
   private let TAG_FLASH: Float = 1.2;    // seconds bright after its key is used
 
@@ -255,6 +413,15 @@ public class CMPilotHud {
     ArrayPush(this.m_tags, t);
     ArrayPush(this.m_tagT, this.TAG_INTRO);
     ArrayPush(this.m_tagDim, this.TAG_DIM);
+    return t;
+  }
+
+  // a status line with its key in front: readable at rest, brighter when the key is used
+  private func StatusTag(root: ref<inkCanvas>, x: Float, y: Float, text: String) -> ref<inkText> {
+    let t = this.Tag(root, inkEAnchor.BottomRight, x, y, text, true);
+    t.SetFontSize(30);
+    t.SetTintColor(CMPilotHud.Amber());
+    this.m_tagDim[ArraySize(this.m_tagDim) - 1] = 0.85;
     return t;
   }
 
@@ -287,31 +454,65 @@ public class CMPilotHud {
     this.m_tags[3].SetText(split ? "[MMB] ZOOM" : "[RMB] ZOOM");
   }
 
-  // a dark steel plate behind a block of readouts, with a heavy edge bar
-  private func Plate(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, w: Float, h: Float) -> Void {
-    let right = Equals(anchor, inkEAnchor.TopRight) || Equals(anchor, inkEAnchor.BottomRight);
-    let ap = Vector2(right ? 1.0 : 0.0, 0.0);
-    let plate = CMPilotHud.Box(root, anchor, x, y, w, h, CMPilotHud.Steel(), 0.55);
-    plate.SetAnchorPoint(ap);
-    let edge = CMPilotHud.Box(root, anchor, x, y, 10.0, h, CMPilotHud.Amber(), 0.9);
-    edge.SetAnchorPoint(ap);
-  }
-
-  // nine dark dividers over a bar, so it reads as ten armoured segments
-  private func Segments(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, h: Float) -> Void {
-    let right = Equals(anchor, inkEAnchor.TopRight) || Equals(anchor, inkEAnchor.BottomRight);
-    let i = 1;
-    while i < 10 {
-      let d = CMPilotHud.Box(root, anchor, x + this.BAR_W * Cast<Float>(i) / 10.0 - 3.0, y, 6.0, h, CMPilotHud.Steel(), 1.0);
-      d.SetAnchorPoint(Vector2(right ? 1.0 : 0.0, 0.0));
-      i += 1;
+  // A plate behind a block of readouts, from the game's own HUD art: a soft shadow, the
+  // Basilisk HUD's cut-corner glass (solid at the screen edge, fading toward the middle)
+  // and the Militech turret HUD's hairline frames above and below. `y` is the plate's top,
+  // measured up from the bottom of the screen; right-hand plates are mirrored.
+  private func Plate(root: ref<inkCanvas>, right: Bool, x: Float, y: Float, w: Float, h: Float) -> Void {
+    let anchor = right ? inkEAnchor.BottomRight : inkEAnchor.BottomLeft;
+    let pieces: array<ref<inkImage>>;
+    ArrayPush(pieces, CMPilotHud.Img(root, anchor, x - 90.0, y + 80.0, w + 180.0, h + 160.0, CMPilotHud.Blobs(), n"shadowBlobSquare_big", CMPilotHud.Black(), 0.55));
+    ArrayPush(pieces, CMPilotHud.Img(root, anchor, x, y, w, h, CMPilotHud.Panzer(), n"ramp", CMPilotHud.Steel(), 0.92));
+    ArrayPush(pieces, CMPilotHud.Img(root, anchor, x, y + 30.0, w, 34.0, CMPilotHud.Turret(), n"frame_top", CMPilotHud.Amber(), 0.9));
+    ArrayPush(pieces, CMPilotHud.Img(root, anchor, x, y - h + 4.0, w, 42.0, CMPilotHud.Turret(), n"frame_bottom", CMPilotHud.Amber(), 0.9));
+    if right {
+      for p in pieces {
+        p.SetAnchorPoint(Vector2(1.0, 0.0));
+        p.SetBrushMirrorType(inkBrushMirrorType.Horizontal);
+      }
     }
   }
 
+  // A bar of `n` cells in its own canvas (so the whole bar can pulse), with the Basilisk
+  // HUD's tick ruler under it. `y` is the bar's top, measured up from the screen bottom.
+  private func CellBar(root: ref<inkCanvas>, right: Bool, x: Float, y: Float, h: Float) -> ref<CMHudCells> {
+    let anchor = right ? inkEAnchor.BottomRight : inkEAnchor.BottomLeft;
+    let bar = new CMHudCells();
+    let box = new inkCanvas();
+    box.SetAnchor(anchor);
+    box.SetAnchorPoint(Vector2(right ? 1.0 : 0.0, 0.0));
+    box.SetMargin(CMPilotHud.Edge(anchor, x, y));
+    box.SetSize(Vector2(this.BAR_W, h));
+    box.Reparent(root);
+    bar.box = box;
+    let i = 0;
+    while i < 20 {
+      ArrayPush(bar.cells, CMPilotHud.Bar(box, Cast<Float>(i) * 21.0, 0.0, 16.0, h, CMPilotHud.Dim(), 0.3));
+      i += 1;
+    }
+    let ruler = CMPilotHud.Img(root, anchor, x, y - h - 8.0, this.BAR_W, 10.0, CMPilotHud.Panzer(), n"gauge_hp", CMPilotHud.Dim(), 0.9);
+    if right {
+      ruler.SetAnchorPoint(Vector2(1.0, 0.0));
+    }
+    return bar;
+  }
+
+  // the soft glow behind a main readout (left-anchored text `w` wide, or right-anchored)
+  private func Glow(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, w: Float, h: Float, color: HDRColor) -> ref<inkImage> {
+    let g = CMPilotHud.Img(root, anchor, x, y, w, h, CMPilotHud.Blobs(), n"shadowBlobText", color, 0.2);
+    if Equals(anchor, inkEAnchor.BottomRight) || Equals(anchor, inkEAnchor.TopRight) {
+      g.SetAnchorPoint(Vector2(1.0, 0.0));
+    }
+    if Equals(anchor, inkEAnchor.TopCenter) || Equals(anchor, inkEAnchor.Centered) {
+      g.SetAnchorPoint(Vector2(0.5, 0.0));
+    }
+    return g;
+  }
+
   private func Corner(root: ref<inkCanvas>, anchor: inkEAnchor, sx: Float, sy: Float) -> Void {
-    let inset = 90.0;   // 4% of the screen height in from every edge
+    let inset = 80.0;   // clear of the screen edge on any aspect ratio
     let len = 170.0;
-    let t = 10.0;
+    let t = 6.0;
     let ax = sx > 0.0 ? 0.0 : 1.0;
     let ay = sy > 0.0 ? 0.0 : 1.0;
     let h = new inkRectangle();
@@ -340,16 +541,16 @@ public class CMPilotHud {
     r.Reparent(root);
     this.m_reticle = r;
     let c = CMPilotHud.Amber();
-    // the sight: four heavy arms with a wide centre gap and a chevron at the aim point
-    CMPilotHud.Bar(r, 200.0 - 5.0, 200.0 - 110.0, 10.0, 60.0, c, 0.95);   // up
-    CMPilotHud.Bar(r, 200.0 - 5.0, 200.0 + 50.0, 10.0, 60.0, c, 0.95);    // down
-    CMPilotHud.Bar(r, 200.0 - 150.0, 200.0 - 5.0, 100.0, 10.0, c, 0.95);  // left
-    CMPilotHud.Bar(r, 200.0 + 50.0, 200.0 - 5.0, 100.0, 10.0, c, 0.95);   // right
+    // the sight: four arms with a wide centre gap and a chevron at the aim point
+    CMPilotHud.Bar(r, 200.0 - 4.0, 200.0 - 110.0, 8.0, 60.0, c, 0.95);   // up
+    CMPilotHud.Bar(r, 200.0 - 4.0, 200.0 + 50.0, 8.0, 60.0, c, 0.95);    // down
+    CMPilotHud.Bar(r, 200.0 - 150.0, 200.0 - 4.0, 100.0, 8.0, c, 0.95);  // left
+    CMPilotHud.Bar(r, 200.0 + 50.0, 200.0 - 4.0, 100.0, 8.0, c, 0.95);   // right
     let cl = CMPilotHud.Bar(r, 200.0 - 17.0, 200.0 + 3.0, 22.0, 5.0, CMPilotHud.Pale(), 1.0);
     cl.SetRotation(-38.0);
     let cr = CMPilotHud.Bar(r, 200.0 - 5.0, 200.0 + 3.0, 22.0, 5.0, CMPilotHud.Pale(), 1.0);
     cr.SetRotation(38.0);
-    // hit marker: four short diagonals round the centre, shown when a round connects (M1)
+    // hit marker: four short diagonals round the centre, shown when a round connects
     for sx in [-1.0, 1.0] {
       for sy in [-1.0, 1.0] {
         let d = CMPilotHud.Bar(r, 200.0 + sx * 34.0 - 12.0, 200.0 + sy * 34.0 - 3.0, 24.0, 6.0, CMPilotHud.Pale(), 0.0);
@@ -358,12 +559,13 @@ public class CMPilotHud {
       }
     }
     // barrel markers at the ends of the side arms: light up when that gun fires
-    this.m_markL = CMPilotHud.Bar(r, 200.0 - 166.0, 200.0 - 30.0, 10.0, 60.0, c, 0.35);
-    this.m_markR = CMPilotHud.Bar(r, 200.0 + 156.0, 200.0 - 30.0, 10.0, 60.0, c, 0.35);
-    // each gun's own reticle (hidden until the pilot system places them)
+    this.m_markL = CMPilotHud.Bar(r, 200.0 - 166.0, 200.0 - 30.0, 8.0, 60.0, c, 0.35);
+    this.m_markR = CMPilotHud.Bar(r, 200.0 + 158.0, 200.0 - 30.0, 8.0, 60.0, c, 0.35);
+    // each gun's own reticle (hidden until the unit places them)
     this.m_pipL = this.GunReticle(root, true);
     this.m_pipR = this.GunReticle(root, false);
     // the rangefinder box under the sight, the zoom key beside it, the optics line below
+    this.Glow(root, inkEAnchor.Centered, 0.0, 156.0, 420.0, 76.0, c);
     this.m_range = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, 170.0, "[ LRF ---- M ]", 38, n"Semi-Bold", c);
     this.m_range.SetAnchorPoint(Vector2(0.5, 0.0));
     this.m_zoom = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, 262.0, "", 26, n"Semi-Bold", CMPilotHud.Dim());
@@ -374,7 +576,7 @@ public class CMPilotHud {
 
   private func BuildTop(root: ref<inkCanvas>) -> Void {
     // the unit, once, small, in the top-left corner
-    this.m_title = CMPilotHud.Label(root, inkEAnchor.TopLeft, 200.0, 130.0, "MILITECH MINOTAUR", 26, n"Semi-Bold", CMPilotHud.Dim());
+    this.m_title = CMPilotHud.Label(root, inkEAnchor.TopLeft, 200.0, 110.0, "MILITECH MINOTAUR", 26, n"Semi-Bold", CMPilotHud.Dim());
 
     // the compass tape: nine bearings 15 deg apart and a tick every 5, sliding under a
     // fixed index; SetAttitude moves it every frame (SPACING px per 15 deg)
@@ -402,11 +604,13 @@ public class CMPilotHud {
     // the fixed index and the boxed bearing under the tape
     let idx = CMPilotHud.Box(root, inkEAnchor.TopCenter, 0.0, this.TAPE_Y + 38.0, 6.0, 36.0, CMPilotHud.Caution(), 1.0);
     idx.SetAnchorPoint(Vector2(0.5, 0.0));
+    this.Glow(root, inkEAnchor.TopCenter, 0.0, 126.0, 420.0, 76.0, CMPilotHud.Pale());
     this.m_heading = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 140.0, "[ HDG 000 N ]", 38, n"Semi-Bold", CMPilotHud.Pale());
     this.m_heading.SetAnchorPoint(Vector2(0.5, 0.0));
 
-    // the warning panel: a steel plate with hazard stripes either end, shown and flashed
-    // only while there is a warning
+    // The warning panel: dark glass between two red rules, the Basilisk HUD's hatch
+    // blocks either end, and a bright bar that sweeps across it. Shown only while there
+    // is a warning; its pulse and sweep are two engine animations that run only then.
     let wp = new inkCanvas();
     wp.SetAnchor(inkEAnchor.TopCenter);
     wp.SetAnchorPoint(Vector2(0.5, 0.0));
@@ -414,17 +618,15 @@ public class CMPilotHud {
     wp.SetMargin(inkMargin(0.0, 230.0, 0.0, 0.0));
     wp.SetVisible(false);
     wp.Reparent(root);
-    CMPilotHud.Bar(wp, -560.0, 0.0, 1120.0, 74.0, CMPilotHud.Steel(), 0.8);
-    CMPilotHud.Bar(wp, -560.0, 0.0, 1120.0, 6.0, CMPilotHud.Red(), 0.95);
-    CMPilotHud.Bar(wp, -560.0, 68.0, 1120.0, 6.0, CMPilotHud.Red(), 0.95);
-    let s = 0;
-    while s < 3 {
-      let l = CMPilotHud.Bar(wp, -540.0 + Cast<Float>(s) * 36.0, 8.0, 16.0, 58.0, CMPilotHud.Caution(), 0.9);
-      l.SetRotation(28.0);
-      let r = CMPilotHud.Bar(wp, 524.0 - Cast<Float>(s) * 36.0, 8.0, 16.0, 58.0, CMPilotHud.Caution(), 0.9);
-      r.SetRotation(-28.0);
-      s += 1;
-    }
+    let shadow = CMPilotHud.Img(wp, inkEAnchor.TopLeft, -620.0, -40.0, 1240.0, 160.0, CMPilotHud.Blobs(), n"shadowBlobSquare_big", CMPilotHud.Black(), 0.6);
+    shadow.SetAnchor(inkEAnchor.TopLeft);
+    CMPilotHud.Bar(wp, -560.0, 0.0, 1120.0, 74.0, CMPilotHud.Steel(), 0.85);
+    CMPilotHud.Bar(wp, -560.0, 0.0, 1120.0, 4.0, CMPilotHud.Red(), 0.95);
+    CMPilotHud.Bar(wp, -560.0, 70.0, 1120.0, 4.0, CMPilotHud.Red(), 0.95);
+    CMPilotHud.Img(wp, inkEAnchor.TopLeft, -546.0, 14.0, 220.0, 46.0, CMPilotHud.Panzer(), n"gauge_boost", CMPilotHud.Caution(), 0.9);
+    let hr = CMPilotHud.Img(wp, inkEAnchor.TopLeft, 326.0, 14.0, 220.0, 46.0, CMPilotHud.Panzer(), n"gauge_boost", CMPilotHud.Caution(), 0.9);
+    hr.SetBrushMirrorType(inkBrushMirrorType.Horizontal);
+    this.m_warnSweep = CMPilotHud.Bar(wp, -40.0, 4.0, 80.0, 66.0, CMPilotHud.Red(), 0.22);
     this.m_warnPlate = wp;
     this.m_warn = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 240.0, "", 44, n"Semi-Bold", CMPilotHud.Red());
     this.m_warn.SetAnchorPoint(Vector2(0.5, 0.0));
@@ -493,67 +695,49 @@ public class CMPilotHud {
     return CMPilotHud.Pad3(b);
   }
 
-  // The chassis plate, bottom left: the hull as a ten-segment bar, the uplink and ground
-  // speed on one small line, and the view and disconnect keys.
+  // The chassis plate, bottom left: the hull as a bar of twenty cells, the uplink and
+  // ground speed on one small line, and the view and disconnect keys.
   private func BuildLeft(root: ref<inkCanvas>) -> Void {
-    let x = 200.0;   // the plate's edge sits 160 px in from the screen edge
-    this.Plate(root, inkEAnchor.BottomLeft, x - 40.0, 420.0, this.BAR_W + 80.0, 290.0);
-    this.m_integrityText = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, 395.0, "HULL 100%", 38, n"Semi-Bold", CMPilotHud.Amber());
-    CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, 336.0, this.BAR_W, 28.0, CMPilotHud.Dim(), 0.35);
-    this.m_integrityBar = CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, 336.0, this.BAR_W, 28.0, CMPilotHud.Amber(), 0.95);
-    this.Segments(root, inkEAnchor.BottomLeft, x, 336.0, 28.0);
-    this.m_signalText = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, 286.0, "UPLINK", 26, n"Semi-Bold", CMPilotHud.Pale());
-    this.m_speed = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x + 250.0, 286.0, "GND 0.0 M/S", 26, n"Semi-Bold", CMPilotHud.Pale());
-    // the uplink has no bar any more; the widget stays so the refresh has something to set
-    this.m_signalBar = CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, 286.0, 0.0, 0.0, CMPilotHud.Amber(), 0.0);
-    this.Tag(root, inkEAnchor.BottomLeft, x, 226.0, "[V] VIEW", false);            // TagView = 4 (pushed in index order below)
-    this.Tag(root, inkEAnchor.BottomLeft, x + 190.0, 226.0, "[\\] DISCONNECT", false);   // TagExit = 5
+    let h = 300.0;
+    let top = this.PLATE_GAP + h;          // the plate's top, up from the screen bottom
+    let x = this.PLATE_X + 60.0;           // the text column
+    this.Plate(root, false, this.PLATE_X, top, this.PLATE_W, h);
+    this.Glow(root, inkEAnchor.BottomLeft, x - 30.0, top - 14.0, 300.0, 76.0, CMPilotHud.Amber());
+    this.m_integrityText = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, top - 28.0, "HULL 100%", 40, n"Semi-Bold", CMPilotHud.Amber());
+    this.m_hull = this.CellBar(root, false, x, top - 88.0, 28.0);
+    this.m_signalText = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, top - 150.0, "UPLINK", 26, n"Medium", CMPilotHud.Pale());
+    this.m_speed = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x + 240.0, top - 150.0, "GND 0.0 M/S", 26, n"Medium", CMPilotHud.Pale());
+    this.Tag(root, inkEAnchor.BottomLeft, x, top - 218.0, "[V] VIEW", false);                  // TagView = 4
+    this.Tag(root, inkEAnchor.BottomLeft, x + 190.0, top - 218.0, "[\\] DISCONNECT", false);   // TagExit = 5
   }
 
-  // The operator range and the old fire-control lines are folded into the two plates; the
-  // widgets the refresh still writes to are kept, hidden.
+  // the operator's range, small, in the top-right corner
   private func BuildRight(root: ref<inkCanvas>) -> Void {
-    this.m_link = CMPilotHud.Label(root, inkEAnchor.TopRight, 200.0, 130.0, "", 26, n"Semi-Bold", CMPilotHud.Dim());
+    this.m_link = CMPilotHud.Label(root, inkEAnchor.TopRight, 200.0, 110.0, "", 26, n"Semi-Bold", CMPilotHud.Dim());
     this.m_link.SetAnchorPoint(Vector2(1.0, 0.0));
   }
 
-  // The weapons plate, bottom right: each MK.31's state and a ten-segment temperature bar,
-  // the fire mode, the missile, and their keys.
-  private func BuildGuns(root: ref<inkCanvas>) -> Void {
-    let x = 200.0;
-    this.Plate(root, inkEAnchor.BottomRight, x - 40.0, 520.0, this.BAR_W + 80.0, 390.0);
+  // The weapons plate, bottom right: each MK.31's state over a bar of twenty heat cells,
+  // then the fire mode and the missile with their keys, and the trigger. The zoom key sits
+  // under the sight, on `sight` (the layer that doesn't flicker).
+  private func BuildGuns(root: ref<inkCanvas>, sight: ref<inkCanvas>) -> Void {
+    let h = 400.0;
+    let top = this.PLATE_GAP + h;
+    let x = this.PLATE_X + 60.0;
+    this.Plate(root, true, this.PLATE_X, top, this.PLATE_W, h);
     // the four tags are pushed in index order: fire 0, mode 1, missile 2, zoom 3
-    this.Tag(root, inkEAnchor.BottomRight, x, 226.0, "[LMB] FIRE", true);
-    // the fire mode and the missile are status lines with their key in front, so they stay
-    // readable at rest and only brighten when the key is used
-    this.m_mode = this.StatusTag(root, x, 324.0, "[B] MODE STAGGERED");
-    this.m_msl = this.StatusTag(root, x, 276.0, "[G] MSL READY");
-    this.Tag(root, inkEAnchor.Centered, 0.0, 222.0, "[RMB] ZOOM", false);
+    this.Tag(root, inkEAnchor.BottomRight, x, top - 322.0, "[LMB] FIRE", true);
+    this.Glow(root, inkEAnchor.BottomRight, x - 30.0, top - 200.0, 420.0, 76.0, CMPilotHud.Amber());
+    this.m_mode = this.StatusTag(root, x, top - 214.0, "[B] MODE STAGGERED");
+    this.m_msl = this.StatusTag(root, x, top - 262.0, "[G] MSL READY");
+    this.Tag(sight, inkEAnchor.Centered, 0.0, 222.0, "[RMB] ZOOM", false);
 
-    this.m_stateL = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, 495.0, "L  ARMED", 30, n"Semi-Bold", CMPilotHud.Pale());
+    this.m_stateL = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, top - 26.0, "L  ARMED", 30, n"Semi-Bold", CMPilotHud.Pale());
     this.m_stateL.SetAnchorPoint(Vector2(1.0, 0.0));
-    let bgL = CMPilotHud.Box(root, inkEAnchor.BottomRight, x, 450.0, this.BAR_W, 24.0, CMPilotHud.Dim(), 0.35);
-    bgL.SetAnchorPoint(Vector2(1.0, 0.0));
-    this.m_heatL = CMPilotHud.Box(root, inkEAnchor.BottomRight, x, 450.0, 0.0, 24.0, CMPilotHud.Amber(), 0.95);
-    this.m_heatL.SetAnchorPoint(Vector2(1.0, 0.0));
-    this.Segments(root, inkEAnchor.BottomRight, x, 450.0, 24.0);
-
-    this.m_stateR = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, 410.0, "R  ARMED", 30, n"Semi-Bold", CMPilotHud.Pale());
+    this.m_heatL = this.CellBar(root, true, x, top - 70.0, 24.0);
+    this.m_stateR = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, top - 112.0, "R  ARMED", 30, n"Semi-Bold", CMPilotHud.Pale());
     this.m_stateR.SetAnchorPoint(Vector2(1.0, 0.0));
-    let bgR = CMPilotHud.Box(root, inkEAnchor.BottomRight, x, 365.0, this.BAR_W, 24.0, CMPilotHud.Dim(), 0.35);
-    bgR.SetAnchorPoint(Vector2(1.0, 0.0));
-    this.m_heatR = CMPilotHud.Box(root, inkEAnchor.BottomRight, x, 365.0, 0.0, 24.0, CMPilotHud.Amber(), 0.95);
-    this.m_heatR.SetAnchorPoint(Vector2(1.0, 0.0));
-    this.Segments(root, inkEAnchor.BottomRight, x, 365.0, 24.0);
-
-  }
-
-  private func StatusTag(root: ref<inkCanvas>, x: Float, y: Float, text: String) -> ref<inkText> {
-    let t = this.Tag(root, inkEAnchor.BottomRight, x, y, text, true);
-    t.SetFontSize(30);
-    t.SetTintColor(CMPilotHud.Amber());
-    this.m_tagDim[ArraySize(this.m_tagDim) - 1] = 0.85;
-    return t;
+    this.m_heatR = this.CellBar(root, true, x, top - 156.0, 24.0);
   }
 
   // the old hint line is replaced by the key tags; the widget stays for the refresh, hidden
@@ -561,7 +745,7 @@ public class CMPilotHud {
     this.m_hints = CMPilotHud.Label(root, inkEAnchor.BottomCenter, 0.0, 70.0, "", 26, n"Medium", CMPilotHud.Dim());
     this.m_hints.SetAnchorPoint(Vector2(0.5, 1.0));
     this.m_hints.SetVisible(false);
-    // diagnostics (SETTINGS > DEBUG READOUT); a line that never changes means the frame loop never ran
+    // a diagnostics line; one that never changes means the frame loop never ran
     this.m_debug = CMPilotHud.Label(root, inkEAnchor.BottomCenter, 0.0, 70.0, "DBG  WAITING FOR FIRST FRAME", 26, n"Medium", CMPilotHud.Pale());
     this.m_debug.SetAnchorPoint(Vector2(0.5, 1.0));
     this.m_debug.SetVisible(false);
@@ -585,7 +769,7 @@ public class CMPilotHud {
     }
   }
 
-  // the optics (M1): dark bands close in from the sides and a fine range scale sits
+  // the optics: dark bands close in from the sides and a fine range scale sits
   // under the reticle; built on first use, then only shown or hidden
   private let m_optics: ref<inkCanvas>;
 
@@ -601,8 +785,8 @@ public class CMPilotHud {
       o.SetAnchor(inkEAnchor.Fill);
       o.SetInteractive(false);
       o.Reparent(this.m_root);
-      let left = CMPilotHud.Box(o, inkEAnchor.LeftFillVerticaly, 0.0, 0.0, 700.0, 0.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.8);
-      let right = CMPilotHud.Box(o, inkEAnchor.RightFillVerticaly, 0.0, 0.0, 700.0, 0.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.8);
+      let left = CMPilotHud.Box(o, inkEAnchor.LeftFillVerticaly, 0.0, 0.0, 700.0, 0.0, CMPilotHud.Black(), 0.8);
+      let right = CMPilotHud.Box(o, inkEAnchor.RightFillVerticaly, 0.0, 0.0, 700.0, 0.0, CMPilotHud.Black(), 0.8);
       right.SetAnchorPoint(Vector2(1.0, 0.0));
       // stadiametric ticks under the centre, and a long horizon line either side
       let i = 1;
@@ -670,7 +854,7 @@ public class CMPilotHud {
   // A gun's reticle, where its barrel points: a broken ring of eight short segments with a
   // centre dot and an L / R tag, and outside it a ring of twelve heat ticks that light up
   // as that gun heats (red near overheat). Locked (the barrel inside the fire gate) the
-  // reticle is tight and bright; converging it's larger and dim. Shapes only, no assets.
+  // reticle is tight and bright; converging it's larger and dim.
   private func GunReticle(root: ref<inkCanvas>, left: Bool) -> ref<inkCanvas> {
     let c = new inkCanvas();
     c.SetAnchor(inkEAnchor.Centered);
@@ -714,7 +898,8 @@ public class CMPilotHud {
   }
 
   // every frame while piloting, but widgets are only touched when something changed:
-  // each gun's lock state, and how many of its heat ticks are lit
+  // each gun's lock state, how many of its heat ticks are lit, and its heat cells on the
+  // weapons plate (so the bars fill and drain smoothly, a quarter cell at a time)
   public func SetGunState(lockedL: Bool, heatL: Float, lockedR: Bool, heatR: Float) -> Void {
     if !IsDefined(this.m_root) {
       return;
@@ -739,6 +924,8 @@ public class CMPilotHud {
       this.m_litR = litR;
       CMPilotHud.LightTicks(this.m_heatTicksR, litR);
     }
+    this.m_heatL.Set(heatL, heatL > 0.8 ? 2 : (heatL > 0.5 ? 1 : 0));
+    this.m_heatR.Set(heatR, heatR > 0.8 ? 2 : (heatR > 0.5 ? 1 : 0));
   }
 
   private static func LightTicks(ticks: array<ref<inkRectangle>>, lit: Int32) -> Void {
@@ -774,9 +961,11 @@ public class CMPilotHud {
     this.m_range.SetText(s.range > 0.0 ? "[ LRF " + CMPilotHud.Pad4(RoundF(s.range)) + " M ]" : "[ LRF ---- M ]");
     this.m_zoom.SetText(s.zoomed ? "OPTICS 2.5X" : "");
 
-    this.m_integrityText.SetText("HULL " + IntToString(RoundF(s.integrity * 100.0)) + "%" + (s.integrity < 0.3 ? "  CRITICAL" : ""));
-    this.m_integrityBar.SetWidth(this.BAR_W * ClampF(s.integrity, 0.0, 1.0));
-    this.m_integrityBar.SetTintColor(s.integrity < 0.3 ? CMPilotHud.Red() : CMPilotHud.Amber());
+    let low = s.integrity < 0.3;
+    this.m_integrityText.SetText("HULL " + IntToString(RoundF(s.integrity * 100.0)) + "%" + (low ? "  CRITICAL" : ""));
+    this.m_integrityText.SetTintColor(low ? CMPilotHud.Red() : CMPilotHud.Amber());
+    this.m_hull.Set(s.integrity, low ? 2 : (s.integrity < 0.6 ? 1 : 0));
+    this.m_hull.Pulse(low);
     this.m_signalText.SetText("UPLINK " + IntToString(RoundF(s.signal * 100.0)) + "%");
     this.m_signalText.SetTintColor(s.signal < 0.25 ? CMPilotHud.Red() : CMPilotHud.Pale());
     this.m_speed.SetText("GND " + FloatToStringPrec(s.speed, 1) + " M/S");
@@ -793,13 +982,7 @@ public class CMPilotHud {
     this.Gun(this.m_heatR, this.m_stateR, "R  ", s.heatR, s.lockedR, s.hasR);
 
     this.m_warn.SetText(s.warning);
-    // the warning panel shows and flashes only while there is a warning
-    let warned = StrLen(s.warning) > 0;
-    this.m_flash = !this.m_flash;
-    this.m_warnPlate.SetVisible(warned);
-    if warned {
-      this.m_warnPlate.SetOpacity(this.m_flash ? 1.0 : 0.5);
-    }
+    this.Warn(StrLen(s.warning) > 0);
     this.m_msl.SetText(StrLen(s.missile) > 0 ? "[G] " + s.missile : "");
     this.m_msl.SetTintColor(StrContains(s.missile, "READY") ? CMPilotHud.Amber() : CMPilotHud.Caution());
     this.m_hints.SetText(s.hints);
@@ -808,9 +991,44 @@ public class CMPilotHud {
     }
   }
 
-  private func Gun(bar: ref<inkRectangle>, state: ref<inkText>, side: String, heat: Float, locked: Bool, has: Bool) -> Void {
-    bar.SetWidth(this.BAR_W * ClampF(heat, 0.0, 1.0));
-    bar.SetTintColor(locked || heat > 0.8 ? CMPilotHud.Red() : (heat > 0.5 ? CMPilotHud.Caution() : CMPilotHud.Amber()));
+  // the warning panel: shown with its pulse and its sweep while there is a warning; the
+  // two animations start when it appears and stop when it goes
+  private func Warn(on: Bool) -> Void {
+    if Equals(on, this.m_warnOn) {
+      return;
+    }
+    this.m_warnOn = on;
+    this.m_warnPlate.SetVisible(on);
+    if on {
+      this.m_warnPulse = CMPilotHud.Loop(this.m_warnPlate, 1.0, 0.6, 0.35);
+      let def = new inkAnimDef();
+      let move = new inkAnimTranslation();
+      move.SetStartTranslation(Vector2(-520.0, 0.0));
+      move.SetEndTranslation(Vector2(520.0, 0.0));
+      move.SetDuration(1.1);
+      move.SetType(inkanimInterpolationType.Linear);
+      move.SetMode(inkanimInterpolationMode.EasyIn);
+      def.AddInterpolator(move);
+      let opt: inkAnimOptions;
+      opt.loopType = inkanimLoopType.Cycle;
+      opt.loopInfinite = true;
+      this.m_warnSweepAnim = this.m_warnSweep.PlayAnimationWithOptions(def, opt);
+    } else {
+      if IsDefined(this.m_warnPulse) {
+        this.m_warnPulse.Stop();
+      }
+      if IsDefined(this.m_warnSweepAnim) {
+        this.m_warnSweepAnim.Stop();
+      }
+      this.m_warnPulse = null;
+      this.m_warnSweepAnim = null;
+    }
+  }
+
+  // ten times a second: a gun's state line, and its bar throbbing while it is near or past
+  // overheat (the cells themselves are set every frame by SetGunState)
+  private func Gun(bar: ref<CMHudCells>, state: ref<inkText>, side: String, heat: Float, locked: Bool, has: Bool) -> Void {
+    bar.Pulse(locked || heat > 0.8);
     if !has {
       state.SetText(side + "NO WEAPON");
       state.SetTintColor(CMPilotHud.Red());
@@ -853,6 +1071,21 @@ public class CMPilotHud {
     return r;
   }
 
+  // one part of a game atlas, stretched to w x h and tinted
+  public static func Img(parent: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, w: Float, h: Float, atlas: ResRef, part: CName, color: HDRColor, opacity: Float) -> ref<inkImage> {
+    let i = new inkImage();
+    i.SetAtlasResource(atlas);
+    i.SetTexturePart(part);
+    i.SetAnchor(anchor);
+    i.SetMargin(CMPilotHud.Edge(anchor, x, y));
+    i.SetSize(Vector2(w, h));
+    i.SetTintColor(color);
+    i.SetOpacity(opacity);
+    i.SetInteractive(false);
+    i.Reparent(parent);
+    return i;
+  }
+
   // a rectangle at an absolute position inside a canvas
   public static func Bar(parent: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, color: HDRColor, opacity: Float) -> ref<inkRectangle> {
     let r = new inkRectangle();
@@ -862,6 +1095,28 @@ public class CMPilotHud {
     r.SetOpacity(opacity);
     r.Reparent(parent);
     return r;
+  }
+
+  // one step of opacity: from -> to over `duration`, starting after `delay`
+  public static func Fade(from: Float, to: Float, duration: Float, delay: Float) -> ref<inkAnimTransparency> {
+    let a = new inkAnimTransparency();
+    a.SetStartTransparency(from);
+    a.SetEndTransparency(to);
+    a.SetDuration(duration);
+    a.SetStartDelay(delay);
+    a.SetType(inkanimInterpolationType.Linear);
+    a.SetMode(inkanimInterpolationMode.EasyIn);
+    return a;
+  }
+
+  // an endless back-and-forth of a widget's opacity, run by the engine until stopped
+  public static func Loop(widget: ref<inkWidget>, from: Float, to: Float, duration: Float) -> ref<inkAnimProxy> {
+    let def = new inkAnimDef();
+    def.AddInterpolator(CMPilotHud.Fade(from, to, duration, 0.0));
+    let opt: inkAnimOptions;
+    opt.loopType = inkanimLoopType.PingPong;
+    opt.loopInfinite = true;
+    return widget.PlayAnimationWithOptions(def, opt);
   }
 
   // x/y measured in from the anchored edge(s)
@@ -908,13 +1163,13 @@ public class CMPilotHud {
   }
 }
 
-// What the HUD shows, filled by CMPilotSystem each slow tick
+// What the HUD shows, filled by the pilot session and the unit each slow tick
 public class CMPilotHudState {
   public let title: String;
   public let heading: Int32;
   public let range: Float;
   public let zoomed: Bool;
-  public let missile: String;   // the secondary's status line ("MSL READY", "MSL 4S"), empty when there is none
+  public let missile: String;   // the secondary's status ("MSL READY", "MSL RELOAD 4S"), empty when there is none
   public let integrity: Float;
   public let signal: Float;
   public let distance: Float;

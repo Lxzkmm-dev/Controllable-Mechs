@@ -641,6 +641,13 @@ public class CMUMinotaur extends CMCUnit {
     if AbsF(frac - this.m_hull) >= 0.01 {
       CMCSession.Log("hull " + FloatToStringPrec(points, 0) + " / " + FloatToStringPrec(max, 0) + " (" + IntToString(RoundF(frac * 100.0)) + "%), pool percent " + FloatToStringPrec(pools.GetStatPoolValue(id, gamedataStatPoolType.Health, true), 1));
     }
+    // a hit that took hull: the display jolts and tears, harder for a bigger loss
+    if this.m_hull >= 0.0 && frac < this.m_hull - 0.002 {
+      let hud = CMCSession.Get(this.m_game).Hud();
+      if IsDefined(hud) {
+        hud.Damage(this.m_hull - frac);
+      }
+    }
     this.m_hull = frac;
     return frac;
   }
