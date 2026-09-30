@@ -21,6 +21,17 @@ The first playable build: the proof of concept works in game.
 - **Test tools:** spawn a Militech Minotaur from the terminal.
 - **Diagnostics:** an optional DBG readout on the pilot HUD (SETTINGS > DEBUG READOUT). Log lines, including a note when the mech jumps more than 3 m in one frame, go to TOOLS > LOG.
 
+### Since the first alpha build
+- **Aim along the barrels (new default):** each round now flies along its own MK.31 barrel, so the rounds always leave the way the muzzle flash does. Two diamond pips on the HUD show where the barrels point. SETTINGS > AIM MODE can switch back to aiming at the reticle, where the guns wait for the chassis to line up.
+- **Traverse:** the torso turns slower and heavier by default, 40 deg/s with a softer start. There's a TRAVERSE SPEED slider in SETTINGS.
+- **Sound:**
+  - the game's own sensor-camera servo loops while the view traverses;
+  - a heavy servo thunk marks each start;
+  - the chassis plays the Minotaur's own turn-in-place sound when it swings round.
+- **No run:** Shift no longer does anything, because the Minotaur's "run" came out slower than its walk.
+- **Walls:** walk orders stop 2.5 m short of walls and buildings instead of targeting through them. An unreachable target seems to be what made the game teleport the mech.
+- **Diagnostics:** each trigger pull logs how far each barrel and the chassis are off the view (TOOLS > LOG).
+
 Known issues:
 - **Mech jumps:** the mech has been seen jumping away while piloted. That's now logged so the cause can be found.
 - **Jump key:** Space can still make V jump if the game's NoJump restriction doesn't hold.

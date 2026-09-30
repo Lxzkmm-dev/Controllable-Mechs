@@ -87,6 +87,12 @@ public class CMContent extends TKContent {
       case "sens":
         pilot.SetSensPct(StringToInt(arg, pilot.SensPct()));
         break;
+      case "aimmode":
+        pilot.SetAimMode(StringToInt(arg, 0));
+        break;
+      case "traverse":
+        pilot.SetTraverse(StringToInt(arg, pilot.Traverse()));
+        break;
       case "camreset":
         pilot.ResetCamera();
         p.SetMessage("*CAMERA SETTINGS RESET");
@@ -150,13 +156,16 @@ public class CMContent extends TKContent {
       IntToString(pilot.FireMode()),
       CMFireMode.Name(0) + "|" + CMFireMode.Name(1) + "|" + CMFireMode.Name(2), "0|1|2", "firemode", "");
     p.SetTip("STAGGERED: LMB fires both, barrels alternating. LINKED SALVO: LMB fires both at once. SPLIT: LMB left gun, RMB right gun, MMB optics.");
+    p.Dropdown("AIM MODE", "Where the rounds go", IntToString(pilot.AimMode()), "ALONG THE BARRELS|TO THE RETICLE", "0|1", "aimmode", "");
+    p.SetTip("ALONG THE BARRELS: rounds follow each MK.31's real barrel (muzzle flash and rounds agree); two pips on the HUD show where the barrels point. TO THE RETICLE: rounds go to the point under the reticle; the guns wait for the chassis to line up.");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
     p.Heading("SENSOR CAMERA");
     p.Slider("HEIGHT", "Above the mech's feet", "", "100|450|5|" + IntToString(pilot.CamUpCm()) + "| cm", "camup", "");
     p.SetTip("Applies live: change it, then press L to check the view.");
     p.Slider("FORWARD", "Ahead of the mech's centre", "", "0|500|5|" + IntToString(pilot.CamFwdCm()) + "| cm", "camfwd", "");
+    p.Slider("TRAVERSE SPEED", "How fast the torso can turn", "", "15|120|5|" + IntToString(pilot.Traverse()) + "| deg/s", "traverse", "");
     p.Slider("MOUSE SENSITIVITY", "On top of the game's own mouse setting", "", "25|300|5|" + IntToString(pilot.SensPct()) + "|%", "sens", "");
-    p.Item("DEFAULTS", "Height 230 cm, forward 260 cm, sensitivity 100%", "", "RESET", "camreset", "", true);
+    p.Item("DEFAULTS", "Height 230 cm, forward 260 cm, traverse 40 deg/s, sensitivity 100%", "", "RESET", "camreset", "", true);
     p.Check("DEBUG READOUT", "A diagnostic line on the pilot HUD (frames, inputs, locks)", pilot.ShowDebug(), "debug", "");
     p.Heading("PALETTE");
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", pilot.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");

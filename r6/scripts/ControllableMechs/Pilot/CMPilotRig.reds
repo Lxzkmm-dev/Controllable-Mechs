@@ -55,10 +55,10 @@ public class CMPilotRig {
   public func Init(ground: Vector4, up: Float, fwd: Float, facingYaw: Float) -> Void {
     this.m_pitchMin = -35.0;
     this.m_pitchMax = 30.0;
-    this.m_turnK = 26.0;        // stiffness of the torso turn
-    this.m_turnDamp = 6.0;      // < 2*sqrt(K) ~ 10.2: underdamped, a slight overshoot
-    this.m_maxYawRate = 80.0;   // deg/s: the torso can't whip around
-    this.m_maxPitchRate = 55.0;
+    this.m_turnK = 16.0;        // stiffness of the torso turn: slower to get going
+    this.m_turnDamp = 5.2;      // < 2*sqrt(K) = 8: underdamped, a slight overshoot
+    this.m_maxYawRate = 40.0;   // deg/s: the torso can't whip around (SetTraverse overrides)
+    this.m_maxPitchRate = 28.0;
     this.m_stride = 2.4;        // metres per footfall
     this.m_bobAmp = 0.08;
     this.m_fovBase = 68.0;
@@ -84,6 +84,14 @@ public class CMPilotRig {
     this.m_side = 1.0;
     this.m_ready = true;
   }
+
+  // the torso's traverse rate cap, deg/s (SETTINGS slider); pitch follows at 70%
+  public func SetTraverse(degPerSec: Float) -> Void {
+    this.m_maxYawRate = ClampF(degPerSec, 10.0, 180.0);
+    this.m_maxPitchRate = this.m_maxYawRate * 0.7;
+  }
+
+  public func YawRate() -> Float = this.m_yawVel
 
   // mouse deltas, already scaled to degrees
   public func Look(dYaw: Float, dPitch: Float) -> Void {

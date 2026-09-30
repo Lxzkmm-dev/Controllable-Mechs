@@ -39,6 +39,13 @@ public class CMPilotHud {
   private let m_markLOn: Bool;
   private let m_markROn: Bool;
   private let m_reticle: ref<inkCanvas>;
+  // where each barrel points: a small diamond, placed from the centre in 4K units
+  private let m_pipL: ref<inkRectangle>;
+  private let m_pipR: ref<inkRectangle>;
+  private let m_pipLX: Float;
+  private let m_pipLY: Float;
+  private let m_pipRX: Float;
+  private let m_pipRY: Float;
 
   private let BAR_W: Float = 420.0;
 
@@ -171,6 +178,9 @@ public class CMPilotHud {
     // barrel markers: light up when that gun fires
     this.m_markL = CMPilotHud.Bar(r, 200.0 - 150.0, 200.0 - 40.0, 8.0, 80.0, c, 0.35);
     this.m_markR = CMPilotHud.Bar(r, 200.0 + 142.0, 200.0 - 40.0, 8.0, 80.0, c, 0.35);
+    // barrel pips (hidden until the pilot system places them)
+    this.m_pipL = CMPilotHud.Pip(root);
+    this.m_pipR = CMPilotHud.Pip(root);
     // range under the reticle
     this.m_range = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, 130.0, "RNG ---", 34, n"Medium", c);
     this.m_range.SetAnchorPoint(Vector2(0.5, 0.0));
@@ -247,6 +257,38 @@ public class CMPilotHud {
       this.m_markROn = right;
       this.m_markR.SetOpacity(right ? 1.0 : 0.35);
     }
+  }
+
+  // every frame while piloting; widgets only move when a pip shifts by more than 2 units
+  public func SetPips(lx: Float, ly: Float, lOn: Bool, rx: Float, ry: Float, rOn: Bool) -> Void {
+    if !IsDefined(this.m_root) {
+      return;
+    }
+    this.m_pipL.SetVisible(lOn);
+    this.m_pipR.SetVisible(rOn);
+    if lOn && (AbsF(lx - this.m_pipLX) > 2.0 || AbsF(ly - this.m_pipLY) > 2.0) {
+      this.m_pipLX = lx;
+      this.m_pipLY = ly;
+      this.m_pipL.SetMargin(inkMargin(lx, ly, 0.0, 0.0));
+    }
+    if rOn && (AbsF(rx - this.m_pipRX) > 2.0 || AbsF(ry - this.m_pipRY) > 2.0) {
+      this.m_pipRX = rx;
+      this.m_pipRY = ry;
+      this.m_pipR.SetMargin(inkMargin(rx, ry, 0.0, 0.0));
+    }
+  }
+
+  private static func Pip(root: ref<inkCanvas>) -> ref<inkRectangle> {
+    let r = new inkRectangle();
+    r.SetAnchor(inkEAnchor.Centered);
+    r.SetAnchorPoint(Vector2(0.5, 0.5));
+    r.SetSize(Vector2(18.0, 18.0));
+    r.SetRotation(45.0);
+    r.SetTintColor(CMPilotHud.Pale());
+    r.SetOpacity(0.9);
+    r.SetVisible(false);
+    r.Reparent(root);
+    return r;
   }
 
   public func ShowDebug(on: Bool) -> Void {

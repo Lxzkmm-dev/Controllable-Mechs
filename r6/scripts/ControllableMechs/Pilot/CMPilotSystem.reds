@@ -95,6 +95,13 @@ public class CMPilotSystem extends ScriptableSystem {
   private persistent let m_camFwdCm: Int32;
   private persistent let m_sensPct: Int32;
   private persistent let m_showDebug: Bool;
+  private persistent let m_aimMode: Int32;      // 0 = along the barrels (default), 1 = to the reticle point
+  private persistent let m_traverse: Int32;     // torso traverse deg/s, stored +1 (0 = default)
+
+  // sound state: the servo loop plays while the view traverses
+  private let m_servoOn: Bool;
+  private let m_servoHit: Float;
+  private let m_triggerWas: Bool;
 
   // where the sensor sits on the mech (forward, up; metres)
   // defaults for where the sensor sits on the mech (tunable in SETTINGS)
@@ -258,6 +265,11 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_rig.Init(mech.GetWorldPosition(), this.CamUp(), this.CamFwd(), CMPilotRig.YawOf(mech.GetWorldForward()));
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
+    this.m_guns.SetBarrelMode(this.m_aimMode == 0);
+    this.m_rig.SetTraverse(Cast<Float>(this.Traverse()));
+    this.m_servoOn = false;
+    this.m_servoHit = 0.0;
+    this.m_triggerWas = false;
     this.m_hudState = new CMPilotHudState();
     ArrayClear(this.m_keys);
     ArrayResize(this.m_keys, CMPilotKey.Count());
@@ -386,7 +398,9 @@ public class CMPilotSystem extends ScriptableSystem {
     if IsDefined(mech) {
       this.CancelCmd(mech, this.m_moveCmd);
       this.CancelCmd(mech, this.m_turnCmd);
+      this.StopServo(mech);
     }
+    this.m_servoOn = false;
     this.m_moveCmd = null;
     this.m_turnCmd = null;
     this.m_moving = false;
@@ -531,7 +545,7 @@ public class CMPilotSystem extends ScriptableSystem {
     // triggers: the MK.31s are fixed to the body, so they only fire once it faces the reticle
     // (otherwise the flash leaves the barrels one way and the rounds go another)
     this.m_aligned = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))) < this.ALIGN_DEG;
-    if !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
+    if this.m_aimMode == 1 && !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
       this.m_unalignedHeld += dt;
       if this.m_unalignedHeld > 2.0 && this.m_unalignedHeld - dt <= 2.0 {
         TKLog.Add("ControllableMechs", "pilot: trigger held 2 s but the chassis is still " + FloatToStringPrec(AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))), 0) + " deg off the reticle");
@@ -539,8 +553,16 @@ public class CMPilotSystem extends ScriptableSystem {
     } else {
       this.m_unalignedHeld = 0.0;
     }
-    let lmb = this.m_aligned && this.Key(CMPilotKey.Lmb());
-    let rmb = this.m_aligned && this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb());
+    // along the barrels, the rounds always follow the muzzles, so there's nothing to wait for
+    let gate = this.m_aimMode == 0 || this.m_aligned;
+    let lmb = gate && this.Key(CMPilotKey.Lmb());
+    let rmb = gate && this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb());
+    let trigger = this.Key(CMPilotKey.Lmb()) || (this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb()));
+    if trigger && !this.m_triggerWas {
+      // where the barrels really point, once per trigger pull (TOOLS > LOG)
+      TKLog.Add("ControllableMechs", "pilot: barrels vs view  L " + this.m_guns.BarrelOffset(this.m_guns.left, this.m_rig.yaw, this.m_rig.pitch) + "  R " + this.m_guns.BarrelOffset(this.m_guns.right, this.m_rig.yaw, this.m_rig.pitch) + "  chassis " + FloatToStringPrec(CMPilotRig.Wrap(CMPilotRig.YawOf(mech.GetWorldForward()) - this.m_rig.yaw), 1));
+    }
+    this.m_triggerWas = trigger;
     if lmb || rmb {
       this.UpdateAim();
       let shots = this.m_guns.Update(mech, now, dt, lmb, rmb, this.m_fireMode, this.m_aim, this.SPREAD_DEG, this.m_rig.pos);
@@ -551,6 +573,8 @@ public class CMPilotSystem extends ScriptableSystem {
       this.m_guns.Update(mech, now, dt, false, false, this.m_fireMode, this.m_aim, this.SPREAD_DEG, this.m_rig.pos);
     }
     this.m_hud.Flash(this.m_guns.left.flash > 0.0, this.m_guns.right.flash > 0.0);
+    this.PlacePips();
+    this.Servo(mech, now);
 
     this.m_slow += dt;
     if this.m_slow >= 0.1 {
@@ -560,6 +584,60 @@ public class CMPilotSystem extends ScriptableSystem {
       }
     }
     this.ScheduleFrame();
+  }
+
+  // The barrel pips: where each MK.31 points, at the reticle's range, drawn on the HUD.
+  // Screen offset from the view's angles: tan(angle) / tan(fov / 2) x half the 4K height
+  // (the camera's FOV is taken as vertical; unverified, the pips may need a scale fix).
+  private func PlacePips() -> Void {
+    let range = this.m_aimDist > 1.0 ? this.m_aimDist : 150.0;
+    let scale = 1080.0 / TanF(Deg2Rad(this.m_rig.fov * 0.5));
+    let l = this.PipOffset(this.m_guns.BarrelPoint(this.m_guns.left, range), scale);
+    let r = this.PipOffset(this.m_guns.BarrelPoint(this.m_guns.right, range), scale);
+    let lOn = this.m_guns.left.Ready() && AbsF(l.X) < 1900.0 && AbsF(l.Y) < 1050.0;
+    let rOn = this.m_guns.right.Ready() && AbsF(r.X) < 1900.0 && AbsF(r.Y) < 1050.0;
+    this.m_hud.SetPips(l.X, l.Y, lOn, r.X, r.Y, rOn);
+  }
+
+  private func PipOffset(p: Vector4, scale: Float) -> Vector2 {
+    let d = p - this.m_rig.pos;
+    let flat = SqrtF(d.X * d.X + d.Y * d.Y);
+    let yawOff = CMPilotRig.Wrap(CMPilotRig.YawOf(d) - this.m_rig.yaw);
+    let pitchOff = Rad2Deg(AtanF(d.Z, flat)) - this.m_rig.pitch;
+    if AbsF(yawOff) > 80.0 {
+      return Vector2(9999.0, 9999.0);   // behind or far off: hidden
+    }
+    // positive yaw is to the left, positive pitch is up
+    return Vector2(-TanF(Deg2Rad(yawOff)) * scale, -TanF(Deg2Rad(pitchOff)) * scale);
+  }
+
+  // Weight you can hear: the game's own sensor-camera servo loops while the view traverses,
+  // a heavy servo thunk marks each start. Only state changes make sound calls.
+  private func Servo(mech: ref<NPCPuppet>, now: Float) -> Void {
+    let rate = AbsF(this.m_rig.YawRate());
+    if !this.m_servoOn && rate > 10.0 {
+      this.m_servoOn = true;
+      GameObject.PlaySoundEvent(mech, n"dev_surveillance_camera_rotating");
+      if now - this.m_servoHit > 0.6 {
+        this.m_servoHit = now;
+        GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
+      }
+    } else {
+      if this.m_servoOn && rate < 4.0 {
+        this.StopServo(mech);
+      }
+    }
+  }
+
+  private func StopServo(mech: ref<NPCPuppet>) -> Void {
+    if !this.m_servoOn {
+      return;
+    }
+    this.m_servoOn = false;
+    if IsDefined(mech) {
+      GameObject.StopSoundEvent(mech, n"dev_surveillance_camera_rotating");
+      GameObject.PlaySoundEvent(mech, n"dev_surveillance_camera_rotating_stop");
+    }
   }
 
   private func ApplyCamera() -> Void {
@@ -656,13 +734,30 @@ public class CMPilotSystem extends ScriptableSystem {
       return;
     }
     dir = Vector4.Normalize(dir);
-    let run = this.Key(CMPilotKey.Run());
+    // no run: the Minotaur's "run" came out slower than its walk
+    let run = false;
     let turned = !this.m_moving || Vector4.Dot(dir, this.m_moveDir) < 0.94;
     let close = Vector4.Distance(pos, this.m_moveTarget) < 4.0;
     let stale = now - this.m_moveSent > 1.5;
     let swung = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - this.m_moveYaw)) > 25.0;
     if turned || close || stale || swung || NotEquals(run, this.m_moveRun) {
-      let target = pos + dir * 9.0;
+      // never order it into a wall: an unreachable target is when the game teleports it.
+      // Stop 2.5 m short of the first static hit along the way, or don't move at all.
+      let reach = 9.0;
+      let from = new Vector4(pos.X, pos.Y, pos.Z + 1.2, 1.0);
+      let hit: TraceResult;
+      if GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(from + dir * 2.0, from + dir * (reach + 2.5), n"Static", hit, true, false) {
+        reach = Vector4.Distance(from, Cast<Vector4>(hit.position)) - 2.5;
+      }
+      if reach < 1.5 {
+        if this.m_moving {
+          this.CancelCmd(mech, this.m_moveCmd);
+          this.m_moveCmd = null;
+          this.m_moving = false;
+        }
+        return;
+      }
+      let target = pos + dir * reach;
       let world: WorldPosition;
       WorldPosition.SetVector4(world, target);
       let spec: AIPositionSpec;
@@ -714,6 +809,8 @@ public class CMPilotSystem extends ScriptableSystem {
     cmd.angleTolerance = 3.0;
     this.Send(mech, cmd, false);
     this.m_turnSent = now;
+    // the chassis swinging round: the Minotaur's own turn-in-place sound
+    GameObject.PlaySoundEvent(mech, AbsF(CMPilotRig.Wrap(this.m_rig.yaw - body)) > 120.0 ? n"enm_mech_minotaur_loco_idle_to_idle_180_l" : n"enm_mech_minotaur_loco_idle_to_idle_90");
   }
 
   private func Send(mech: ref<NPCPuppet>, cmd: ref<AICommand>, move: Bool) -> Void {
@@ -769,15 +866,15 @@ public class CMPilotSystem extends ScriptableSystem {
       if s.signal < 0.2 {
         s.warning = "SIGNAL DEGRADED - RETURN TO OPERATOR";
       } else {
-        if !this.m_aligned {
+        if this.m_aimMode == 1 && !this.m_aligned {
           s.warning = "ALIGNING CHASSIS";
         }
       }
     }
     if this.m_fireMode == CMFireMode.Split() {
-      s.hints = "[WASD] WALK   [SHIFT] RUN   [LMB] LEFT GUN   [RMB] RIGHT GUN   [MMB] OPTICS   [B] FIRE MODE   [L] DISCONNECT";
+      s.hints = "[WASD] WALK   [LMB] LEFT GUN   [RMB] RIGHT GUN   [MMB] OPTICS   [B] FIRE MODE   [L] DISCONNECT";
     } else {
-      s.hints = "[WASD] WALK   [SHIFT] RUN   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [L] DISCONNECT";
+      s.hints = "[WASD] WALK   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [L] DISCONNECT";
     }
     if this.m_showDebug {
       s.debug = this.DebugLine();
@@ -1003,6 +1100,21 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SensPct() -> Int32 = this.m_sensPct > 0 ? this.m_sensPct - 1 : 100
   public func ShowDebug() -> Bool = this.m_showDebug
 
+  public func AimMode() -> Int32 = this.m_aimMode
+  public func SetAimMode(mode: Int32) -> Void {
+    this.m_aimMode = Clamp(mode, 0, 1);
+    if IsDefined(this.m_guns) {
+      this.m_guns.SetBarrelMode(this.m_aimMode == 0);
+    }
+  }
+  public func Traverse() -> Int32 = this.m_traverse > 0 ? this.m_traverse - 1 : 40
+  public func SetTraverse(v: Int32) -> Void {
+    this.m_traverse = Clamp(v, 15, 120) + 1;
+    if IsDefined(this.m_rig) {
+      this.m_rig.SetTraverse(Cast<Float>(this.Traverse()));
+    }
+  }
+
   public func SetCamUpCm(v: Int32) -> Void { this.m_camUpCm = Clamp(v, 100, 450) + 1; }
   public func SetCamFwdCm(v: Int32) -> Void { this.m_camFwdCm = Clamp(v, 0, 500) + 1; }
   public func SetSensPct(v: Int32) -> Void {
@@ -1022,6 +1134,10 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_camUpCm = 0;
     this.m_camFwdCm = 0;
     this.m_sensPct = 0;
+    this.m_traverse = 0;
+    if IsDefined(this.m_rig) {
+      this.m_rig.SetTraverse(Cast<Float>(this.Traverse()));
+    }
     if this.m_state == 2 {
       this.CacheSensitivity();
     }

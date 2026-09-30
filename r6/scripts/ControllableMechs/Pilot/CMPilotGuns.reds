@@ -47,6 +47,7 @@ public class CMPilotGuns {
   private let m_cycle: Float;       // seconds between shots of one gun
   private let m_turnLeft: Bool;     // stagger: which barrel is next
   private let m_names: String;      // what was found, for the HUD / diagnostics
+  private let m_barrel: Bool;       // aim mode: along the barrels (true) or to the reticle point
 
   private let HEAT_PER_SHOT: Float = 0.022;
   private let COOL_RATE: Float = 0.30;   // per second
@@ -129,6 +130,33 @@ public class CMPilotGuns {
     return 0;
   }
 
+  // Aim mode. Barrel (default): each round flies along its own barrel, so it always
+  // leaves the way the muzzle flash does, and the HUD's pips show where the barrels
+  // point. Reticle: rounds go to the point under the reticle, whatever the barrels do.
+  public func SetBarrelMode(on: Bool) -> Void { this.m_barrel = on; }
+
+  // where gun `g`'s barrel points, `dist` metres out
+  public func BarrelPoint(g: ref<CMGun>, dist: Float) -> Vector4 {
+    if !g.Ready() {
+      return new Vector4(0.0, 0.0, 0.0, 1.0);
+    }
+    let o = g.weapon.GetWorldPosition();
+    let f = g.weapon.GetWorldForward();
+    let d = ClampF(dist, 5.0, 400.0);
+    return new Vector4(o.X + f.X * d, o.Y + f.Y * d, o.Z + f.Z * d, 1.0);
+  }
+
+  // for the log: how far gun `g`'s barrel is off the view, in degrees
+  public func BarrelOffset(g: ref<CMGun>, viewYaw: Float, viewPitch: Float) -> String {
+    if !g.Ready() {
+      return "none";
+    }
+    let f = g.weapon.GetWorldForward();
+    let yaw = CMPilotRig.YawOf(f);
+    let pitch = Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0)));
+    return "yaw " + FloatToStringPrec(CMPilotRig.Wrap(yaw - viewYaw), 1) + " pitch " + FloatToStringPrec(pitch - viewPitch, 1);
+  }
+
   private func CanFire(g: ref<CMGun>, now: Float) -> Bool {
     return g.Ready() && !g.locked && now >= g.nextShot;
   }
@@ -137,11 +165,12 @@ public class CMPilotGuns {
     if !this.CanFire(g, now) {
       return false;
     }
-    // spread grows with heat: a cone around the aim point
+    // spread grows with heat: a cone around the point
     let dist = Vector4.Distance(camPos, aim);
+    let point = this.m_barrel ? this.BarrelPoint(g, dist) : aim;
     let cone = Deg2Rad(spreadDeg * (1.0 + g.heat * 1.5));
     let r = dist * cone;
-    let target = new Vector4(aim.X + RandRangeF(-r, r), aim.Y + RandRangeF(-r, r), aim.Z + RandRangeF(-r, r) * 0.6, 1.0);
+    let target = new Vector4(point.X + RandRangeF(-r, r), point.Y + RandRangeF(-r, r), point.Z + RandRangeF(-r, r) * 0.6, 1.0);
     AIWeapon.Fire(mech, g.weapon, now, 0.0, gamedataTriggerMode.FullAuto, target);
     g.nextShot = now + cycle;
     g.lastShot = now;
