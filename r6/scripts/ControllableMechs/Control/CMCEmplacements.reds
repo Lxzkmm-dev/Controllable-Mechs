@@ -14,7 +14,62 @@ module ControllableMechs.Control
 
 import ControllableMechs.*
 
+// ---- heat (design decision: heat only, no ammo) ----
+// Only our emplacement, and only while V controls it: each shot adds heat, idle time
+// cools it (worked out on the next shot, so nothing ticks), and at full heat the guns
+// lock until it has cooled to UNLOCK. Same numbers as the Minotaur's MK.31s.
+@addField(SecurityTurret)
+public let m_cmEmplacement: Bool;
+@addField(SecurityTurret)
+public let m_cmHeat: Float;
+@addField(SecurityTurret)
+public let m_cmLastShot: Float;
+@addField(SecurityTurret)
+public let m_cmLocked: Bool;
+
+@wrapMethod(SecurityTurret)
+private final func ShootAttachedWeapon(opt shootStart: Bool) -> Void {
+  if !this.m_cmEmplacement || !this.GetDevicePS().IsControlledByPlayer() {
+    wrappedMethod(shootStart);
+    return;
+  }
+  let now = EngineTime.ToFloat(GameInstance.GetSimTime(this.GetGame()));
+  let idle = now - this.m_cmLastShot - CMCEmplacements.CoolDelay();
+  if idle > 0.0 {
+    this.m_cmHeat = MaxF(0.0, this.m_cmHeat - idle * CMCEmplacements.CoolRate());
+  }
+  if this.m_cmLocked {
+    if this.m_cmHeat > CMCEmplacements.Unlock() {
+      this.m_cmLastShot = MaxF(this.m_cmLastShot, now - CMCEmplacements.CoolDelay());   // keep cooling from here
+      return;   // locked: the shot doesn't happen (release and fire again once cooled)
+    }
+    this.m_cmLocked = false;
+    CMCEmplacements.Warn(this.GetGame(), "GUNS COOLED");
+  }
+  wrappedMethod(shootStart);
+  this.m_cmLastShot = now;
+  this.m_cmHeat += CMCEmplacements.HeatPerShot();
+  if this.m_cmHeat >= 1.0 {
+    this.m_cmHeat = 1.0;
+    this.m_cmLocked = true;
+    CMCEmplacements.Warn(this.GetGame(), "OVERHEATED - GUNS LOCKED");
+    CMCSession.Log("emplacement: overheated");
+  }
+}
+
 public class CMCEmplacements extends ScriptableSystem {
+  public static func HeatPerShot() -> Float = 0.022
+  public static func CoolRate() -> Float = 0.30     // heat per second
+  public static func CoolDelay() -> Float = 0.35    // seconds after the last shot before it cools
+  public static func Unlock() -> Float = 0.35       // an overheated gun unlocks below this
+
+  public static func Warn(game: GameInstance, msg: String) -> Void {
+    let player = GetPlayer(game);
+    if IsDefined(player) {
+      player.SetWarningMessage(msg);
+    }
+  }
+
   private let m_id: EntityID;
   private let m_listening: Bool;
   private persistent let m_model: Int32;
@@ -112,6 +167,7 @@ public class CMCEmplacements extends ScriptableSystem {
     let action = turret.GetDevicePS().ActionSetDeviceAttitude();
     action.SetExecutor(GetPlayer(this.GetGameInstance()));
     turret.QueueEvent(action);
+    turret.m_cmEmplacement = true;   // heat applies while V controls it
     CMCSession.Log("emplacement: spawned and set friendly");
   }
 
