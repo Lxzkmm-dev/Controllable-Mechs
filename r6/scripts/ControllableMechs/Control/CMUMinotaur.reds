@@ -1080,8 +1080,8 @@ public class CMUMinotaur extends CMCUnit {
   private func Airborne(s: ref<CMCSession>, mech: ref<NPCPuppet>) -> Bool {
     let pos = mech.GetWorldPosition();
     let hit: TraceResult;
-    let gap = 40.0;
-    if GameInstance.GetSpatialQueriesSystem(this.m_game).SyncRaycastByCollisionGroup(new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 40.0, 1.0), n"Static", hit, true, false) {
+    let gap = 60.0;
+    if GameInstance.GetSpatialQueriesSystem(this.m_game).SyncRaycastByCollisionGroup(new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 60.0, 1.0), n"Static", hit, true, false) {
       gap = pos.Z - Cast<Vector4>(hit.position).Z;
     }
     if gap < 1.0 {
@@ -1097,7 +1097,7 @@ public class CMUMinotaur extends CMCUnit {
       this.m_moving = false;
     }
     this.m_airTime += 0.1;
-    if this.m_airTime >= 0.5 && gap < 40.0 {
+    if this.m_airTime >= 0.5 && gap < 60.0 {
       let ground = Cast<Vector4>(hit.position);
       ground.W = 1.0;
       let e: EulerAngles;

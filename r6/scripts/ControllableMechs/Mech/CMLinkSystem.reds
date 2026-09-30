@@ -451,7 +451,42 @@ public class CMLinkSystem extends ScriptableSystem {
       this.Drop(player, CMLinkSystem.KindName(unit) + " OUT OF SIGNAL RANGE");
       return;
     }
+    let session = CMCSession.Get(this.GetGameInstance());
+    if Equals(unit.GetNPCType(), gamedataNPCType.Mech) && !(IsDefined(session) && session.IsActive()) {
+      this.KeepGrounded(unit);
+    }
     this.Schedule();
+  }
+
+  // The Minotaur has no fall of its own: lifted or knocked high enough it hangs in the air.
+  // A linked mech that isn't being piloted (the pilot session has its own check) is looked
+  // at once a second: with more than 2 m of air under it for two checks running, it is set
+  // down on the ground below. One ray a second, only while a mech is linked.
+  private let m_airChecks: Int32;
+
+  private func KeepGrounded(mech: ref<NPCPuppet>) -> Void {
+    let pos = mech.GetWorldPosition();
+    let hit: TraceResult;
+    let gap = 60.0;
+    if GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 60.0, 1.0), n"Static", hit, true, false) {
+      gap = pos.Z - Cast<Vector4>(hit.position).Z;
+    }
+    if gap < 2.0 {
+      this.m_airChecks = 0;
+      return;
+    }
+    this.m_airChecks += 1;
+    if this.m_airChecks < 2 || gap >= 60.0 {
+      return;
+    }
+    this.m_airChecks = 0;
+    let ground = Cast<Vector4>(hit.position);
+    ground.W = 1.0;
+    let e: EulerAngles;
+    e.Yaw = CMPilotRig.YawOf(mech.GetWorldForward());
+    GameInstance.GetTeleportationFacility(this.GetGameInstance()).Teleport(mech, ground, e);
+    GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
+    CMCSession.Log("AIRBORNE (linked, not piloted): hanging " + FloatToStringPrec(gap, 1) + " m up for 2 s, set down on the ground below");
   }
 
   private func Drop(player: ref<PlayerPuppet>, why: String) -> Void {
