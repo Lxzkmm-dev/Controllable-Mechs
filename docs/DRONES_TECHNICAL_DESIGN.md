@@ -1,6 +1,13 @@
 # Mechs of Night City: drones technical design (0.7.0)
 
-Status: draft for Omar's review (2026-09-30). Nothing is built yet. **[spike]** marks an unknown that a small test build settles first. **[decide]** marks a call for Omar.
+Status: agreed (2026-09-30). Nothing is built yet.
+
+Omar's decisions:
+
+- **Bombus control:** angle mode by default, acro as a setting.
+- **Kamikaze overload on G:** yes.
+- **Left open to keep the focus narrow:** the schematic view for quads and crash loss. The defaults are a front view, and a crashed drone is lost until respawned.
+- **Range:** the mech's 250 m uplink. **[spike]** marks an unknown that a small test build settles first. **[decide]** marks a call for Omar.
 
 ## 1. Goals (Omar)
 

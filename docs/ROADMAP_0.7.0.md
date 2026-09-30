@@ -1,6 +1,15 @@
 # Mechs of Night City 0.7.0: roadmap and design
 
-Status: draft for Omar's review (2026-09-30). Nothing below is built yet. Items marked **[spike]** are unknowns that a small test build settles before anything depends on them. Items marked **[decide]** need Omar's call.
+Status: agreed scope (2026-09-30). Phase 0 is built (7b68341).
+
+Omar's decisions:
+
+- **Focus:** Minotaur variants and drones.
+- **Parked:** persistence and repairs.
+- **mch_004 / mch_005:** in scope if they are mechs.
+- **Bombus FPV:** angle mode by default, acro as a setting, kamikaze overload on G.
+
+The drones are designed in docs/DRONES_TECHNICAL_DESIGN.md. Items marked **[spike]** are unknowns that a small test build settles before anything depends on them. Items marked **[decide]** need Omar's call.
 
 ## 1. Scope (Omar, 2026-09-30)
 
@@ -45,7 +54,11 @@ Status: draft for Omar's review (2026-09-30). Nothing below is built yet. Items 
 ### What exists in the game files
 
 - `base\mechanical\mech\mch_003__minotaur.ent` has four appearances: militech_01, arasaka_01, police_01 and kurt. It is one body with different paint and parts, so the schematic, slots and weak spots are shared.
-- `mch_004_arasaka.ent` and `mch_005__militech.ent` / `mch_005__militech_exo.ent` are separate templates. **[spike]** Are they Minotaur bodies with their own meshes, or different machines? Export and compare the rigs, slots, weak spots and weapon items.
+- `mch_004_arasaka.ent` and `mch_005__militech.ent` / `mch_005__militech_exo.ent` are separate templates. **Found:**
+  - They are not Minotaurs. They are **Centaur-class exo mechs**, built on the Centaur's rig and meshes (`mch_002__centaur.rig`, its base, legs, arm, gun and shield meshes, and its weak spot).
+  - They carry a human pilot inside (the `man_big` / `man_massive` rigs, `connect_npc_to_parent`) and use the same `maelstrom_exo` anim graph.
+  - mch_004 (Arasaka) kitbashes android arms, an Octant body panel, a spiderbot and an HMG receiver onto the Centaur base.
+  - They are mechs, so they are in scope, but as a second mech family: a `CMUCentaur` unit with its own guns, shield, weak spot and schematic, after the Minotaur variants.
 - `mch_002__centaur` is the Centaur exo. It is out of scope for 0.7.0 unless Omar wants it.
 
 ### Design
