@@ -88,6 +88,7 @@ public class CMCSession extends ScriptableSystem {
   private persistent let m_fireMode: Int32;   // CMFireMode
   private persistent let m_chase: Bool;
   private persistent let m_creditVOff: Bool;  // false = kills and aggro credit V (the default)
+  private persistent let m_hullX: Int32;      // hull multiplier while piloted, stored +1 (0 = the default, x4)
 
   private let CHASE_SIDE: Float = 1.8;   // chase view: metres right of the unit's centre line
   private let CHASE_LIFT: Float = 0.5;   // chase view: metres above the chase height
@@ -149,6 +150,12 @@ public class CMCSession extends ScriptableSystem {
     CMCSession.Log("fire call " + CMFireCall.Name(this.m_fireCall));
   }
   public func FireMode() -> Int32 = this.m_fireMode
+  // how much tougher the mech is while piloted: x its health, 4 by default (stored +1)
+  public func HullMult() -> Float = this.m_hullX > 0 ? Cast<Float>(this.m_hullX - 1) : 4.0
+  public func SetHullMult(x: Int32) -> Void {
+    this.m_hullX = Clamp(x, 1, 10) + 1;
+    CMCSession.Log("hull multiplier x" + IntToString(x) + " (applies on the next link)");
+  }
   public func CreditV() -> Bool = !this.m_creditVOff
   public func SetCreditV(on: Bool) -> Void {
     this.m_creditVOff = !on;

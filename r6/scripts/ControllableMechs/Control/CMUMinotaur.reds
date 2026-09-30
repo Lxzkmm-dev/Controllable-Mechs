@@ -83,6 +83,9 @@ public class CMUMinotaur extends CMCUnit {
   private let m_heatWarned: Bool;
   private let m_audioLocked: Bool;
   private let m_lowAlarm: Bool;
+  private let m_hull: Float;          // 0..1, the mech's health against its maximum
+  private let m_beepNext: Float;
+  private let m_armour: ref<gameStatModifierData>;
   private let m_impactToggle: Bool;
 
   private let GATE_DEG: Float = 4.0;
@@ -138,6 +141,9 @@ public class CMUMinotaur extends CMCUnit {
     CMCSession.Log("Minotaur: guns " + this.m_guns.Describe());
     this.LogInventory(mech);
     this.m_missileReady = 0.0;
+    this.m_hull = -1.0;
+    this.Armour(mech, s.HullMult());
+    this.ReadHull(mech);
     CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
     return "";
   }
@@ -182,6 +188,9 @@ public class CMUMinotaur extends CMCUnit {
     let mech = this.Mech();
     this.StopServo(mech);
     this.StopFireLoop(mech);
+    if IsDefined(mech) {
+      this.Armour(mech, 1.0);   // its own health again (the percentage carries over)
+    }
     GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"q110_sc_08c_personal_link_disconnected");
     this.Pacify(mech, false);
     if IsDefined(mech) {
@@ -523,13 +532,55 @@ public class CMUMinotaur extends CMCUnit {
     }
   }
 
-  // ten times a second: the integrity alarm when the mech drops below 30% (once per dip)
-  private func IntegrityAlarm() -> Void {
-    let hp = CMLinkSystem.Get(this.m_game).HealthFraction();
-    if hp < 0.3 && !this.m_lowAlarm {
-      this.m_lowAlarm = true;
-      GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"dev_alarm_02");
-      CMCSession.Log("integrity below 30%: alarm");
+  // ---- hull: the mech's Health pool in points against its maximum (read ten times a
+  // second, logged whenever it moves by a percent), tougher while piloted, and a beep that
+  // quickens as it drops below 30%
+  private func ReadHull(mech: ref<NPCPuppet>) -> Float {
+    let pools = GameInstance.GetStatPoolsSystem(this.m_game);
+    let id = Cast<StatsObjectID>(mech.GetEntityID());
+    let points = pools.GetStatPoolValue(id, gamedataStatPoolType.Health, false);
+    let max = pools.GetStatPoolMaxPointValue(id, gamedataStatPoolType.Health);
+    let frac = max > 0.0 ? ClampF(points / max, 0.0, 1.0) : 0.0;
+    if AbsF(frac - this.m_hull) >= 0.01 {
+      CMCSession.Log("hull " + FloatToStringPrec(points, 0) + " / " + FloatToStringPrec(max, 0) + " (" + IntToString(RoundF(frac * 100.0)) + "%), pool percent " + FloatToStringPrec(pools.GetStatPoolValue(id, gamedataStatPoolType.Health, true), 1));
+    }
+    this.m_hull = frac;
+    return frac;
+  }
+
+  // x the mech's Health stat while piloted; the pool keeps its percentage, so current
+  // health scales with the maximum both when it goes on and when it comes off
+  private func Armour(mech: ref<NPCPuppet>, mult: Float) -> Void {
+    let stats = GameInstance.GetStatsSystem(this.m_game);
+    let pools = GameInstance.GetStatPoolsSystem(this.m_game);
+    let id = Cast<StatsObjectID>(mech.GetEntityID());
+    let before = pools.GetStatPoolMaxPointValue(id, gamedataStatPoolType.Health);
+    if IsDefined(this.m_armour) {
+      stats.RemoveModifier(id, this.m_armour);
+      this.m_armour = null;
+    }
+    if mult > 1.01 {
+      this.m_armour = RPGManager.CreateStatModifier(gamedataStatType.Health, gameStatModifierType.Multiplier, mult);
+      stats.AddModifier(id, this.m_armour);
+    }
+    CMCSession.Log("hull x" + FloatToStringPrec(mult, 1) + ": max health " + FloatToStringPrec(before, 0) + " -> " + FloatToStringPrec(pools.GetStatPoolMaxPointValue(id, gamedataStatPoolType.Health), 0)
+      + ", now " + FloatToStringPrec(pools.GetStatPoolValue(id, gamedataStatPoolType.Health, false), 0));
+  }
+
+  // ten times a second: below 30% a beep repeats, from every 1.2 s at 30% to every 0.25 s
+  // near zero; one alarm as it first crosses the line
+  private func IntegrityAlarm(now: Float) -> Void {
+    let hp = this.m_hull;
+    if hp < 0.3 {
+      if !this.m_lowAlarm {
+        this.m_lowAlarm = true;
+        GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"dev_alarm_02");
+        CMCSession.Log("hull below 30%: alarm");
+      }
+      if now >= this.m_beepNext {
+        this.m_beepNext = now + 0.25 + 0.95 * (hp / 0.3);
+        GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"dev_drone_griffin_default_sgn_idle_beep");
+      }
     }
     if hp > 0.4 {
       this.m_lowAlarm = false;
@@ -602,7 +653,8 @@ public class CMUMinotaur extends CMCUnit {
     }
     this.SendLookAts(mech);
     this.KeepCalm(mech, now);
-    this.IntegrityAlarm();
+    this.ReadHull(mech);
+    this.IntegrityAlarm(now);
     this.Drive(s, mech, now);
     return "";
   }
@@ -762,7 +814,7 @@ public class CMUMinotaur extends CMCUnit {
     if StrLen(name) > 0 {
       st.title = StrUpper(name) + (s.IsChase() ? "  //  CHASE CAM" : "  //  NEURAL LINK") + "  //  FRAMEWORK M1";
     }
-    st.integrity = link.HealthFraction();
+    st.integrity = this.m_hull;
     st.signal = link.SignalFraction();
     st.distance = link.Distance();
     st.heatL = this.m_guns.left.heat;
@@ -775,7 +827,7 @@ public class CMUMinotaur extends CMCUnit {
     st.hints = st.hints + "   [G] MISSILE";
     st.missile = wait > 0.0 ? "MSL  RELOADING  " + IntToString(CeilF(wait)) + "S" : "MSL  READY";
     if st.integrity < 0.3 {
-      st.warning = "INTEGRITY CRITICAL";
+      st.warning = "HULL INTEGRITY LOW";
     } else {
       if st.signal < 0.2 {
         st.warning = "SIGNAL DEGRADED - RETURN TO OPERATOR";

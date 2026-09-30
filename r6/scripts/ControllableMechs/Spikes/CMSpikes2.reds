@@ -760,6 +760,7 @@ public class CMSpike2System extends ScriptableSystem {
     p.Item("M1 PREVIEW", "On: the Pilot key (\\) starts the new framework instead of the alpha's Pilot Mode", "", session.Armed() ? "ON" : "OFF", "sp_m1_arm", session.Armed() ? "0" : "1", true);
     p.Buttons("Fire call (now " + CMFireCall.Name(session.FireCall()) + ")", "", "", "MECH|V, NO POINT|V + POINT", "sp_m1_call|sp_m1_call|sp_m1_call", "0|1|2");
     p.Item("CREDIT V", "The MK.31s' hits count as V's: kills, XP, NCPD heat, who enemies turn on", "", session.CreditV() ? "ON" : "OFF", "sp_m1_credit", session.CreditV() ? "0" : "1", true);
+    p.Slider("HULL", "The mech's health while you pilot it, times its own (takes effect the next time you link in)", "", "1|10|1|" + IntToString(RoundF(session.HullMult())) + "|x", "sp_m1_hull", "");
     p.Item("PILOT THE LINKED MINOTAUR (M1)", "Starts the framework now; \\ disconnects", "", "PILOT", "sp_m1_go", "", true);
     p.ItemNote("Question: does enter and exit work cleanly (view, HUD, V back to normal)? Do the guns follow the reticle while walking and turning, and do the rounds, tracers and flash land on it? V toggles the chase view, B the fire mode.");
 
@@ -801,6 +802,7 @@ public class CMSpike2System extends ScriptableSystem {
       case "sp_m1_arm": CMCSession.Get(this.GetGameInstance()).SetArmed(Equals(arg, "1")); msg = Equals(arg, "1") ? "*M1 PREVIEW ON: \\ STARTS THE FRAMEWORK" : "M1 PREVIEW OFF"; break;
       case "sp_m1_call": CMCSession.Get(this.GetGameInstance()).SetFireCall(StringToInt(arg, 0)); msg = "*M1 FIRE CALL: " + CMFireCall.Name(StringToInt(arg, 0)); break;
       case "sp_m1_credit": CMCSession.Get(this.GetGameInstance()).SetCreditV(Equals(arg, "1")); msg = Equals(arg, "1") ? "*HITS CREDIT V" : "HITS CREDIT THE MECH"; break;
+      case "sp_m1_hull": CMCSession.Get(this.GetGameInstance()).SetHullMult(CMContent.Val(arg, 4)); msg = "*HULL x" + IntToString(CMContent.Val(arg, 4)); break;
       case "sp_m1_go":
         CMTerminal.CloseOpen(this.GetGameInstance());
         CMCSession.Get(this.GetGameInstance()).RequestBegin(0.4);
