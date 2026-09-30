@@ -60,6 +60,8 @@ public class CMUMinotaur extends CMCUnit {
   private let LOOKAT_FOLLOW: Float = 3.0;    // look-at following speed factor (NPC default ~1)
   private let LOOKAT_BLEND: Float = 3.0;     // look-at blend-in speed
 
+  private let ROUND_SPEED: Float = 4.0;      // x the MK.31's smart-round velocity while piloted
+
   private let GATE_DEG: Float = 4.0;
   private let SPREAD_DEG: Float = 0.6;
   private let SIGNAL_RANGE: Float = 250.0;
@@ -110,6 +112,7 @@ public class CMUMinotaur extends CMCUnit {
     this.m_marker = null;
     this.Pacify(mech, true);
     CMCSession.Log("Minotaur: guns " + this.m_guns.Describe());
+    CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
     return "";
   }
 
@@ -175,6 +178,7 @@ public class CMUMinotaur extends CMCUnit {
     // the mech's own hits are its own again (and the alpha's never credit V)
     if IsDefined(this.m_guns) {
       this.SetCredit(false);
+      this.m_guns.SlowDown(this.m_game);
     }
     let link = CMLinkSystem.Get(this.m_game);
     if IsDefined(link) && link.IsLinked() {

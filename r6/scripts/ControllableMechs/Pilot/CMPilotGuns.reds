@@ -151,6 +151,47 @@ public class CMPilotGuns {
     this.m_boostL = null;
     this.m_boostR = null;
   }
+  // ---- round speed (M1): the MK.31s are smart guns, whose rounds are slow homing
+  // projectiles; their speed is a stat on the weapon. A multiplier while piloting,
+  // removed on exit. Returns the velocity before and after, for the log.
+  private let m_speedMods: array<ref<gameStatModifierData>>;
+  private let m_speedIDs: array<StatsObjectID>;
+
+  public func SpeedUp(game: GameInstance, mult: Float) -> String {
+    this.SlowDown(game);
+    let stats = GameInstance.GetStatsSystem(game);
+    let note = "";
+    let weapons: array<wref<WeaponObject>> = [this.left.weapon];
+    if this.right.weapon != this.left.weapon {
+      ArrayPush(weapons, this.right.weapon);
+    }
+    for w in weapons {
+      if IsDefined(w) {
+        let id = Cast<StatsObjectID>(w.GetEntityID());
+        let before = stats.GetStatValue(id, gamedataStatType.SmartGunNPCProjectileVelocity);
+        for t in [gamedataStatType.SmartGunNPCProjectileVelocity, gamedataStatType.SmartGunPlayerProjectileVelocity] {
+          let mod = RPGManager.CreateStatModifier(t, gameStatModifierType.Multiplier, mult);
+          stats.AddModifier(id, mod);
+          ArrayPush(this.m_speedMods, mod);
+          ArrayPush(this.m_speedIDs, id);
+        }
+        note += (StrLen(note) > 0 ? "  " : "") + "NPC round velocity " + FloatToStringPrec(before, 1) + " -> " + FloatToStringPrec(stats.GetStatValue(id, gamedataStatType.SmartGunNPCProjectileVelocity), 1);
+      }
+    }
+    return note;
+  }
+
+  public func SlowDown(game: GameInstance) -> Void {
+    let stats = GameInstance.GetStatsSystem(game);
+    let i = 0;
+    while i < ArraySize(this.m_speedMods) {
+      stats.RemoveModifier(this.m_speedIDs[i], this.m_speedMods[i]);
+      i += 1;
+    }
+    ArrayClear(this.m_speedMods);
+    ArrayClear(this.m_speedIDs);
+  }
+
   public func HasAny() -> Bool = this.left.Ready() || this.right.Ready()
   public func Cycle() -> Float = this.m_cycle
 
