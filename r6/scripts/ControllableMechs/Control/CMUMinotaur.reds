@@ -57,6 +57,8 @@ public class CMUMinotaur extends CMCUnit {
   private let m_turnVel: Float;
   private let m_turnByOrder: Bool;    // rotate with AI turn orders instead of teleports
   private let m_air: Bool;            // nothing under the mech's feet (Airborne)
+  private let m_combatWatch: Int32;   // seconds left to report whether it is still in combat
+  private let m_combatWatchAt: Float;
   private let m_airTime: Float;
   private let m_sentOpen: Bool;       // a rotation request is out and has not landed yet
   private let m_sentYaw: Float;
@@ -171,7 +173,14 @@ public class CMUMinotaur extends CMCUnit {
     spec.attached = true;
     this.m_markerID = GameInstance.GetStaticEntitySystem().SpawnEntity(spec);
     this.m_marker = null;
+    // taken over mid-fight: its combat behaviour would run on (searching for the enemies
+    // it no longer has) for many seconds; its AI is switched off and on again to drop it
+    let fighting = NPCPuppet.IsInCombat(mech) || Equals(mech.GetHighLevelStateFromBlackboard(), gamedataNPCHighLevelState.Combat);
     this.Pacify(mech, true);
+    if fighting {
+      this.Reboot(mech);
+    }
+    this.m_combatWatch = fighting ? 10 : 0;
     GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_q110_personal_link_01");   // link established
     CMCSession.Log("Minotaur: guns " + this.m_guns.Describe());
     this.LogInventory(mech);
@@ -227,8 +236,30 @@ public class CMUMinotaur extends CMCUnit {
     return EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(mech.GetHighLevelStateFromBlackboard())));
   }
 
+  // Its AI controller off and on again: the behaviour tree starts over, with its state
+  // already relaxed and nothing on its threat list, so the fight it was in is gone.
+  private func Reboot(mech: ref<NPCPuppet>) -> Void {
+    let ai = mech.GetAIControllerComponent();
+    if !IsDefined(ai) {
+      return;
+    }
+    ai.Toggle(false);
+    ai.Toggle(true);
+    CMCSession.Log("AI: taken over mid-fight, its AI restarted to drop the fight (in combat now: " + (NPCPuppet.IsInCombat(mech) ? "yes" : "no") + ")");
+  }
+
   // ten times a second: one blackboard read and two flag reads unless something is wrong
   private func KeepCalm(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
+    // after a mid-fight takeover, once a second for ten seconds: still fighting?
+    if this.m_combatWatch > 0 && now - this.m_combatWatchAt >= 1.0 {
+      this.m_combatWatchAt = now;
+      this.m_combatWatch -= 1;
+      let still = NPCPuppet.IsInCombat(mech);
+      CMCSession.Log("AI: " + IntToString(10 - this.m_combatWatch) + " s after the takeover, in combat: " + (still ? "yes" : "no") + ", state " + CMUMinotaur.StateName(mech));
+      if !still {
+        this.m_combatWatch = 0;
+      }
+    }
     let state = mech.GetHighLevelStateFromBlackboard();
     if Equals(state, gamedataNPCHighLevelState.Combat) || Equals(state, gamedataNPCHighLevelState.Alerted) {
       NPCPuppet.ChangeHighLevelState(mech, gamedataNPCHighLevelState.Relaxed);
