@@ -255,7 +255,7 @@ public class CMPilotSystem extends ScriptableSystem {
     link.SetOrder(CMOrder.Pilot());
 
     this.m_rig = new CMPilotRig();
-    this.m_rig.Init(this.Mount(mech), mech.GetWorldPosition(), CMPilotRig.YawOf(mech.GetWorldForward()));
+    this.m_rig.Init(mech.GetWorldPosition(), this.CamUp(), this.CamFwd(), CMPilotRig.YawOf(mech.GetWorldForward()));
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
     this.m_hudState = new CMPilotHudState();
@@ -522,7 +522,7 @@ public class CMPilotSystem extends ScriptableSystem {
 
     let rmbZoom = this.m_fireMode == CMFireMode.Split() ? this.Key(CMPilotKey.Mmb()) : this.Key(CMPilotKey.Rmb());
     this.m_zoom = rmbZoom;
-    this.m_rig.Update(dt, this.Mount(mech), mech.GetWorldPosition(), this.m_zoom);
+    this.m_rig.Update(dt, mech.GetWorldPosition(), this.CamUp(), this.CamFwd(), this.m_zoom);
     if this.m_rig.jumped > 0.0 {
       TKLog.Add("ControllableMechs", "pilot: the mech jumped " + FloatToStringPrec(this.m_rig.jumped, 1) + " m in one frame (moving " + (this.m_moving ? "yes" : "no") + ")");
     }
@@ -660,7 +660,7 @@ public class CMPilotSystem extends ScriptableSystem {
     let turned = !this.m_moving || Vector4.Dot(dir, this.m_moveDir) < 0.94;
     let close = Vector4.Distance(pos, this.m_moveTarget) < 4.0;
     let stale = now - this.m_moveSent > 1.5;
-    let swung = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - this.m_moveYaw)) > 12.0;
+    let swung = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - this.m_moveYaw)) > 25.0;
     if turned || close || stale || swung || NotEquals(run, this.m_moveRun) {
       let target = pos + dir * 9.0;
       let world: WorldPosition;
@@ -692,11 +692,16 @@ public class CMPilotSystem extends ScriptableSystem {
     }
   }
 
-  // standing still: the body keeps turning toward where the torso aims, at its own heavy pace
-  // (the MK.31s are fixed to the body, so this is what points the barrels)
+  // standing still: the body follows where the torso aims, lazily, at its own heavy pace
+  // (the MK.31s are fixed to the body, so this is what points the barrels). Orders go out
+  // sparingly: each one restarts the turn animation. With a trigger held it lines up tighter
+  // so the guns can fire.
   private func TurnToward(mech: ref<NPCPuppet>, now: Float) -> Void {
     let body = CMPilotRig.YawOf(mech.GetWorldForward());
-    if AbsF(CMPilotRig.Wrap(this.m_rig.yaw - body)) < 6.0 || now - this.m_turnSent < 0.35 {
+    let firing = this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb());
+    let slack = firing ? 6.0 : 20.0;
+    let wait = firing ? 0.5 : 0.8;
+    if AbsF(CMPilotRig.Wrap(this.m_rig.yaw - body)) < slack || now - this.m_turnSent < wait {
       return;
     }
     let target = mech.GetWorldPosition() + CMPilotRig.Dir(this.m_rig.yaw, 0.0) * 20.0;
@@ -989,13 +994,8 @@ public class CMPilotSystem extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
-  private func Mount(mech: ref<NPCPuppet>) -> Vector4 {
-    let p = mech.GetWorldPosition();
-    let f = mech.GetWorldForward();
-    let fwd = Cast<Float>(this.CamFwdCm()) / 100.0;
-    let up = Cast<Float>(this.CamUpCm()) / 100.0;
-    return new Vector4(p.X + f.X * fwd, p.Y + f.Y * fwd, p.Z + up, 1.0);
-  }
+  private func CamUp() -> Float = Cast<Float>(this.CamUpCm()) / 100.0
+  private func CamFwd() -> Float = Cast<Float>(this.CamFwdCm()) / 100.0
 
   // ---- camera tuning (SETTINGS sliders; applied live) ----
   public func CamUpCm() -> Int32 = this.m_camUpCm > 0 ? this.m_camUpCm - 1 : this.MOUNT_UP_CM

@@ -12,12 +12,12 @@ The first playable build: the proof of concept works in game.
   - Militech HUD.
   - V is locked in place while piloting, and a save lock is held.
 - **Camera:**
-  - The position is pinned to the sensor mount, so it no longer drifts off the mech or shakes against its steps.
+  - The position rides a ring around the mech's centre, placed by the view's facing and not the chassis's. The chassis turns in jerky AI steps, and tying the camera to it made the view lurch and hitch during 360s.
   - The weight is in the torso turn, footfall jolts and recoil.
   - The default mount is lower and further forward: 2.3 m up, 2.6 m ahead.
   - Height, forward offset and mouse sensitivity can be tuned live in SETTINGS.
 - **Terminal:** built on the standalone TerminalKit. It has LINK, SETTINGS and TOOLS (TerminalKit Tools) tabs, and the palette is saved.
-- **Guns and chassis:** the MK.31s are fixed to the body, so the body now keeps turning toward where the torso aims. It turns in place while standing and faces the aim point while walking. The guns only fire once the chassis is within 15 degrees of the reticle, so the muzzle flash and the rounds agree. Until then the HUD shows ALIGNING CHASSIS.
+- **Guns and chassis:** the MK.31s are fixed to the body, so the body now keeps turning toward where the torso aims. It follows lazily: turn orders go out when it's 20 degrees off (6 with a trigger held), no more than every 0.8 s. It faces the aim point while walking. The guns only fire once the chassis is within 15 degrees of the reticle, so the muzzle flash and the rounds agree. Until then the HUD shows ALIGNING CHASSIS.
 - **Test tools:** spawn a Militech Minotaur from the terminal.
 - **Diagnostics:** an optional DBG readout on the pilot HUD (SETTINGS > DEBUG READOUT). Log lines, including a note when the mech jumps more than 3 m in one frame, go to TOOLS > LOG.
 

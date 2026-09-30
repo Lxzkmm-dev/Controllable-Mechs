@@ -2,14 +2,15 @@
 // CONTROLLABLE MECHS - PILOT CAMERA RIG (the weight)
 //
 // Pure math, no game calls. Each frame it takes where the pilot wants to look
-// (aim yaw/pitch from the mouse), where the sensor mount is on the mech and the
-// mech's ground position, and returns where the virtual camera is:
+// (aim yaw/pitch from the mouse), the mech's ground position and how high and
+// far forward the sensor sits, and returns where the virtual camera is:
 //   - turning is a spring with mass: it accelerates, is capped at the torso's
 //     traverse rate, overshoots a little and settles
-//   - the position is pinned to the mount (no lag: a lagging camera drifts off
-//     the mech and shakes against its steps); the weight is added on top as
-//     small offsets that settle back: a bob and a jolt plus roll on every
-//     footfall, and a kick on every shot
+//   - the position rides a ring around the mech's centre: 'up' above its feet and
+//     'fwd' ahead along the VIEW's facing, not the chassis's (the chassis turns in
+//     jerky AI steps; tying the camera to it made the view lurch). The weight is
+//     added on top as small offsets that settle back: a bob and a jolt plus roll
+//     on every footfall, and a kick on every shot
 // Angles are degrees in the game's convention: yaw 0 faces +Y, positive yaw
 // turns left, positive pitch looks up.
 // =============================================================================
@@ -51,7 +52,7 @@ public class CMPilotRig {
   private let m_fovBase: Float;
   private let m_fovZoom: Float;
 
-  public func Init(mount: Vector4, ground: Vector4, facingYaw: Float) -> Void {
+  public func Init(ground: Vector4, up: Float, fwd: Float, facingYaw: Float) -> Void {
     this.m_pitchMin = -35.0;
     this.m_pitchMax = 30.0;
     this.m_turnK = 26.0;        // stiffness of the torso turn
@@ -68,7 +69,7 @@ public class CMPilotRig {
     this.yaw = facingYaw;
     this.pitch = 0.0;
     this.roll = 0.0;
-    this.pos = mount;
+    this.pos = CMPilotRig.Ring(ground, facingYaw, up, fwd);
     this.fov = this.m_fovBase;
     this.speed = 0.0;
     this.jumped = 0.0;
@@ -97,8 +98,8 @@ public class CMPilotRig {
     this.m_joltVel -= 0.4 * k;
   }
 
-  // `mount`: where the sensor is this frame; `ground`: the mech's own position
-  public func Update(dt: Float, mount: Vector4, ground: Vector4, zoom: Bool) -> Void {
+  // `ground`: the mech's own position; `up` / `fwd`: the sensor's height and reach
+  public func Update(dt: Float, ground: Vector4, up: Float, fwd: Float, zoom: Bool) -> Void {
     if !this.m_ready {
       return;
     }
@@ -138,9 +139,9 @@ public class CMPilotRig {
       }
     }
 
-    // pinned to the mount, weight on top
+    // on the ring, weight on top
     let bob = -this.m_bobAmp * walk * AbsF(SinF(this.m_phase));
-    this.pos = new Vector4(mount.X, mount.Y, mount.Z + bob + this.m_jolt, 1.0);
+    this.pos = CMPilotRig.Ring(ground, this.yaw, up + bob + this.m_jolt, fwd);
 
     let target = zoom ? this.m_fovZoom : this.m_fovBase;
     this.fov += (target - this.fov) * MinF(1.0, dt * 7.0);
@@ -163,6 +164,11 @@ public class CMPilotRig {
     this.roll += this.m_rollVel * h;
     this.m_joltVel += (-120.0 * this.m_jolt - 14.0 * this.m_joltVel) * h;
     this.m_jolt = ClampF(this.m_jolt + this.m_joltVel * h, -0.25, 0.15);
+  }
+
+  public static func Ring(ground: Vector4, yaw: Float, up: Float, fwd: Float) -> Vector4 {
+    let d = CMPilotRig.Dir(yaw, 0.0);
+    return new Vector4(ground.X + d.X * fwd, ground.Y + d.Y * fwd, ground.Z + up, 1.0);
   }
 
   // where the reticle points

@@ -19,7 +19,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 ## Pilot Mode
 
 - **View:** the game's own free camera entity (`base\entities\cameras\simple_free_camera.ent`) sits on the mech's sensor mount and takes over the view.
-- **Weight:** the camera position is pinned to the sensor mount, and the weight is in how it turns and shakes:
+- **Weight:** the camera rides a ring around the mech's centre, placed by where you look (not by the chassis, which turns in heavier AI steps and catches up). The weight is in how it turns and shakes:
   - the torso turn speeds up, is capped at a traverse rate, overshoots a little and settles;
   - every footfall jolts and rolls the view;
   - each shot kicks it.
