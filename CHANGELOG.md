@@ -22,11 +22,16 @@ Part damage, per docs/DAMAGE_DESIGN.md. Untested in game.
   - a broken part is greyed out and blinks as it breaks;
   - the part just hit flashes;
   - a broken gun reads "MK.31 OFFLINE", and a warning names the part that broke.
-- **Damage effects** from the Minotaur's own entity, started when a part breaks and stopped when it's restored:
-  - guns: smoke at the gun port, plus the weak spot's sparks;
-  - legs: malfunction sparks;
+- **Damage effects**, started when a part breaks and stopped when it's restored:
+  - guns: the Minotaur's smoke at the gun port, and the Centaur boss's weak spot sparks attached to the port;
+  - gun warnings: the weak spot's own damage stages at 70% and 35%, before it breaks off;
+  - legs: malfunction sparks and generator smoke;
   - sensor: optics malfunction;
-  - pods: overheat vent smoke.
+  - pods: Minotaur smoke on both pods and the q003 boss's fuel leak, attached to the upper body;
+  - hull under 30%: smoke from every vent;
+  - destroyed while piloted: the Minotaur's own explosion.
+  - Effect files the mech doesn't name are spawned through the FX system (Codeware's `ResourceAsyncRef.SetPath`) and attached to its slots.
+- **Hit mapping re-measured** from the meshes. The Minotaur is about 2.7 m tall, and the first guesses were for a much bigger mech.
 - **CONFIG > CHASSIS > PART DAMAGE** switch, on by default.
 - **Dev tools** (MOTOR POOL, with DIAGNOSTICS on and a mech linked):
   - DAMAGE TEST: shoot the linked mech yourself (it is made neutral to V for the test, since the game drops V's hits on a friendly). It can't die, doesn't turn hostile, its vanilla weak spots can't be destroyed, and each hit names the part it wore on screen.

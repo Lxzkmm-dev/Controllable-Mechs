@@ -47,6 +47,7 @@ public class CMUMinotaur extends CMCUnit {
   private let m_limpHalt: Bool;
   private let m_limpNext: Float;
   private let m_gait: Float;          // the walk's animation speed (a damaged leg slows it)
+  private let m_critFx: Bool;         // the all-vents smoke while the hull is critical
   private let m_mech: wref<NPCPuppet>;
   private let m_sensorUp: Float;      // the sensor mount, read once per session
   private let m_sensorFwd: Float;
@@ -191,6 +192,7 @@ public class CMUMinotaur extends CMCUnit {
     this.m_parts = CMCParts.Get(this.m_game).State(mech.GetEntityID());
     this.m_partNote = "";
     this.m_gait = 1.0;
+    this.m_critFx = false;
     this.ApplyParts(s, mech);
     CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
     return "";
@@ -348,6 +350,14 @@ public class CMUMinotaur extends CMCUnit {
       this.Armour(mech, 1.0);   // its own health again (the percentage carries over)
     }
     GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"q110_sc_08c_personal_link_disconnected");
+    if IsDefined(mech) && this.m_critFx {
+      GameObjectEffectHelper.StopEffectEvent(mech, n"hacks_overheat_lvl2");
+    }
+    this.m_critFx = false;
+    // destroyed under the pilot: the Minotaur's own explosion
+    if IsDefined(mech) && !ScriptedPuppet.IsAlive(mech) {
+      GameObjectEffectHelper.StartEffectEvent(mech, n"explode_death");
+    }
     if IsDefined(mech) && this.m_gait != 1.0 {
       mech.UnsetIndividualTimeDilation();
     }
@@ -1234,6 +1244,19 @@ public class CMUMinotaur extends CMCUnit {
     }
     st.lostL = this.m_guns.left.destroyed;
     st.lostR = this.m_guns.right.destroyed;
+    // hull critical (under 30%): smoke from every vent (the Minotaur's overheat effect)
+    let crit = this.m_hull >= 0.0 && this.m_hull < 0.3;
+    if NotEquals(crit, this.m_critFx) {
+      this.m_critFx = crit;
+      let mech = this.Mech();
+      if IsDefined(mech) {
+        if crit {
+          GameObjectEffectHelper.StartEffectEvent(mech, n"hacks_overheat_lvl2");
+        } else {
+          GameObjectEffectHelper.StopEffectEvent(mech, n"hacks_overheat_lvl2");
+        }
+      }
+    }
     let sensor = this.PartHp(CMPart.Sensor());
     if sensor <= 0.0 || (sensor < 0.5 && RandF() < (0.5 - sensor) * 1.4) {
       st.range = -1.0;   // the rangefinder drops out, always once the sensor is gone

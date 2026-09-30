@@ -72,6 +72,9 @@ public class CMPartState {
   public let id: EntityID;
   public let hp: array<Float>;
   public let fx: array<Bool>;
+  public let stage: array<Int32>;              // each arm's weak spot damage stage shown (0-2)
+  public let fxInst: array<ref<FxInstance>>;   // the effects attached to it, and their parts
+  public let fxPart: array<Int32>;
 }
 
 public class CMCParts extends ScriptableSystem {
@@ -94,6 +97,7 @@ public class CMCParts extends ScriptableSystem {
     while i < CMPart.Count() {
       ArrayPush(st.hp, 1.0);
       ArrayPush(st.fx, false);
+      ArrayPush(st.stage, 0);
       i += 1;
     }
     ArrayPush(this.m_states, st);
@@ -182,8 +186,10 @@ public class CMCParts extends ScriptableSystem {
     return r;
   }
 
-  // The Minotaur's body, from the zone the game names or where the hit landed.
-  // Heights are metres above its feet; its arms and guns stand out about 1.3 m either side.
+  // The Minotaur's body, from the zone the game names or where the hit landed. Measured on
+  // its meshes (metres above its feet): legs up to 1.1 (thighs to 1.9, inside the torso's
+  // width), torso 1.05-2.3, the arms and MK.31s 1.8-2.5 and 0.55-1.2 m out, the sensor dome
+  // above 2.3 in the middle, the pods 0.6-1.05 m behind at 1.55-2.1.
   public static func PartAt(zone: EHitReactionZone, up: Float, side: Float, back: Float) -> Int32 {
     switch zone {
       case EHitReactionZone.Head: return CMPart.Sensor();
@@ -194,16 +200,16 @@ public class CMCParts extends ScriptableSystem {
       case EHitReactionZone.LegLeft: return CMPart.LegL();
       case EHitReactionZone.LegRight: return CMPart.LegR();
     }
-    if up < 2.0 {
+    if up < 1.15 {
       return side < 0.0 ? CMPart.LegL() : CMPart.LegR();
     }
-    if AbsF(side) > 1.3 {
+    if AbsF(side) > 0.62 && up > 1.6 {
       return side < 0.0 ? CMPart.ArmL() : CMPart.ArmR();
     }
-    if back > 0.8 && up > 2.6 {
+    if back > 0.55 && up > 1.45 && up < 2.25 {
       return CMPart.Pods();
     }
-    if up > 3.4 && back < 0.3 {
+    if up > 2.3 && AbsF(side) < 0.4 {
       return CMPart.Sensor();
     }
     return CMPart.Torso();
@@ -296,11 +302,16 @@ public class CMCParts extends ScriptableSystem {
 
   // ---- what a broken part does to the model and the body ----
 
-  // The damage effects the Minotaur's own entity carries, one set per broken part:
-  // its arm smoke at each gun port (l/r_arm_04), the locomotion-malfunction sparks at the
-  // legs, the optics malfunction on the sensor, and the overheat vents (the Scanner slot,
-  // one vent 1.3 m behind it) for the pods. Started once when a part breaks (or on a mech
-  // found broken), stopped when it is restored; nothing runs per frame.
+  // The damage effects, one set per broken part, started once when it breaks (or on a
+  // mech found broken) and stopped when it is restored; nothing runs per frame.
+  //   - named effects the Minotaur's own entity carries (EffectsOf): its arm smoke at each
+  //     gun port (l/r_arm_04), the locomotion-malfunction sparks and generator smoke at the
+  //     legs, the optics malfunction on the sensor
+  //   - effect files it doesn't name, spawned and attached to its slots (Attach): the
+  //     Centaur boss's weak spot sparks at a gun port (slots WeakspotLeft/Right, on the arm),
+  //     Minotaur smoke and the q003 boss's fuel leak on the pods (slot Chest, on the upper
+  //     body)
+  // And warnings before a gun goes: its weak spot's own damage stages at 70% and 35%.
   public func Effects(mech: ref<NPCPuppet>) -> Void {
     if !IsDefined(mech) {
       return;
@@ -318,22 +329,122 @@ public class CMCParts extends ScriptableSystem {
             GameObjectEffectHelper.StopEffectEvent(mech, name);
           }
         }
+        if on {
+          this.Attach(mech, st, i);
+        } else {
+          this.Detach(st, i);
+        }
       }
       i += 1;
     }
+    this.GunStage(mech, st, true);
+    this.GunStage(mech, st, false);
   }
-
 
   public static func EffectsOf(part: Int32) -> array<CName> {
     switch part {
       case 0: return [n"hacks_optics_malfunction"];
       case 2: return [n"left_arm_destroyed"];
       case 3: return [n"right_arm_destroyed"];
-      case 4: return [n"hacks_locomotion_malfunction"];
-      case 5: return [n"hacks_locomotion_malfunction"];
-      case 6: return [n"hacks_overheat_lvl1"];
+      case 4: return [n"hacks_locomotion_malfunction", n"se_locomotion_malfunction_left"];
+      case 5: return [n"hacks_locomotion_malfunction", n"se_locomotion_malfunction_right"];
     }
     return [];
+  }
+
+  private func Attach(mech: ref<NPCPuppet>, st: ref<CMPartState>, part: Int32) -> Void {
+    switch part {
+      case 2:
+        this.AttachFx(mech, st, part, r"base\\fx\\quest\\q003\\boss_centaur\\weakspot_compensating\\weakspot_takedown_sparks.effect", n"WeakspotLeft", 0.0);
+        break;
+      case 3:
+        this.AttachFx(mech, st, part, r"base\\fx\\quest\\q003\\boss_centaur\\weakspot_compensating\\weakspot_takedown_sparks.effect", n"WeakspotRight", 0.0);
+        break;
+      case 6:
+        this.AttachFx(mech, st, part, r"base\\fx\\vehicles\\minotaur\\v_minotaur_smoke.effect", n"Chest", 0.35);
+        this.AttachFx(mech, st, part, r"base\\fx\\vehicles\\minotaur\\v_minotaur_smoke.effect", n"Chest", -0.35);
+        this.AttachFx(mech, st, part, r"base\\fx\\quest\\q003\\boss\\weakspot\\weakspot_fuel.effect", n"Chest", 0.0);
+        break;
+    }
+  }
+
+  // one effect file spawned at the mech and attached to one of its slots, `side` metres
+  // across from it
+  private func AttachFx(mech: ref<NPCPuppet>, st: ref<CMPartState>, part: Int32, path: ResRef, slot: CName, side: Float) -> Void {
+    let fx: FxResource;
+    ResourceAsyncRef.SetPath(fx.effect, path);
+    let at: WorldTransform;
+    WorldTransform.SetPosition(at, mech.GetWorldPosition());
+    let inst = GameInstance.GetFxSystem(mech.GetGame()).SpawnEffect(fx, at);
+    if !IsDefined(inst) {
+      CMCSession.Log("parts: an effect did not spawn on " + NameToString(slot));
+      return;
+    }
+    let rel: WorldTransform;
+    WorldTransform.SetPosition(rel, new Vector4(side, 0.0, 0.0, 1.0));
+    inst.AttachToSlot(mech, entAttachmentTarget.Transform, slot, rel);
+    ArrayPush(st.fxInst, inst);
+    ArrayPush(st.fxPart, part);
+  }
+
+  private func Detach(st: ref<CMPartState>, part: Int32) -> Void {
+    let i = ArraySize(st.fxInst) - 1;
+    while i >= 0 {
+      if st.fxPart[i] == part {
+        if IsDefined(st.fxInst[i]) {
+          st.fxInst[i].BreakLoop();
+          st.fxInst[i].Kill();
+        }
+        ArrayErase(st.fxInst, i);
+        ArrayErase(st.fxPart, i);
+      }
+      i -= 1;
+    }
+  }
+
+  // a gun's weak spot shows the damage it has taken: stage 1 below 70%, stage 2 below 35%
+  private func GunStage(mech: ref<NPCPuppet>, st: ref<CMPartState>, left: Bool) -> Void {
+    let part = left ? CMPart.ArmL() : CMPart.ArmR();
+    let hp = st.hp[part];
+    let stage = hp < 0.35 ? 2 : (hp < 0.7 ? 1 : 0);
+    if stage == st.stage[part] {
+      return;
+    }
+    let spot = CMCParts.Spot(mech, left);
+    if IsDefined(spot) {
+      if stage >= 1 && st.stage[part] < 1 {
+        GameObjectEffectHelper.StartEffectEvent(spot, n"weakspot_damage_stage_01");
+      }
+      if stage >= 2 && st.stage[part] < 2 {
+        GameObjectEffectHelper.StartEffectEvent(spot, n"weakspot_damage_stage_02");
+      }
+      if stage < st.stage[part] {
+        GameObjectEffectHelper.StopEffectEvent(spot, n"weakspot_damage_stage_01");
+        GameObjectEffectHelper.StopEffectEvent(spot, n"weakspot_damage_stage_02");
+      }
+    }
+    st.stage[part] = stage;
+  }
+
+  // the weak spot on one arm, told apart by its side
+  public static func Spot(mech: ref<NPCPuppet>, left: Bool) -> ref<WeakspotObject> {
+    let comp = mech.GetWeakspotComponent();
+    if !IsDefined(comp) {
+      return null;
+    }
+    let spots: array<wref<WeakspotObject>>;
+    comp.GetWeakspots(spots);
+    let right = CMPilotRig.Dir(CMPilotRig.YawOf(mech.GetWorldForward()) - 90.0, 0.0);
+    let pos = mech.GetWorldPosition();
+    for spot in spots {
+      if IsDefined(spot) {
+        let side = Vector4.Dot(spot.GetWorldPosition() - pos, right);
+        if (left && side < 0.0) || (!left && side > 0.0) {
+          return spot;
+        }
+      }
+    }
+    return null;
   }
 
   // the MK.31 on one arm shown or shot off (its mesh component on the Minotaur)
@@ -365,8 +476,6 @@ public class CMCParts extends ScriptableSystem {
           gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"ControllableMechs");
           gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"CMDamageTest");
           ScriptedWeakspotObject.Kill(spot);
-          // and the gun port keeps sparking (the weak spot's own heavy-damage effect)
-          GameObjectEffectHelper.StartEffectEvent(spot, n"weakspot_damage_stage_02");
           CMCSession.Log("parts: weak spot on the " + (left ? "left" : "right") + " (" + FloatToStringPrec(side, 1) + " m to the side) destroyed");
         }
       }
