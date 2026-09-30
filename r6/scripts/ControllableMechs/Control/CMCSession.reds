@@ -34,8 +34,12 @@ public abstract class CMCKey {
 }
 
 public class CMCSession extends ScriptableSystem {
-  // 0 idle, 1 camera spawning, 2 controlling
+  // 0 idle, 1 camera spawning, 2 controlling, 3 in a vanilla turret takeover (M2)
   private let m_state: Int32;
+  // M2: the turret V has taken over; the game owns the camera, HUD and fire meanwhile
+  private let m_takeoverID: EntityID;
+  private let m_takeoverSeen: Bool;
+  private let m_takeoverAt: Float;
   private let m_gen: Int32;
   private let m_unit: ref<CMCUnit>;
 
@@ -293,6 +297,10 @@ public class CMCSession extends ScriptableSystem {
     if this.m_state == 0 {
       return;
     }
+    if this.m_state == 3 {
+      this.EndTakeover(reason);
+      return;
+    }
     let game = this.GetGameInstance();
     this.m_gen += 1;   // stops the frame loop, the watchdog and any pending timeout
     this.m_state = 0;
@@ -353,6 +361,134 @@ public class CMCSession extends ScriptableSystem {
     ArrayClear(this.m_keys);
     this.Warn(reason);
   }
+
+  // ---------------------------------------------------------------------------
+  // M2: the emplacement, through the game's own turret takeover
+  // The game runs the view (the turret's own camera: no chase view there), the turret
+  // HUD, aiming and firing (V-credited, per S0b), and its own Esc exit. The session
+  // starts the takeover, watches it at 10 Hz for the exit, adds \ as a second exit,
+  // and releases it on every teardown path (turret gone, V dead, load, session end).
+  // ---------------------------------------------------------------------------
+  public func BeginTakeover() -> Void {
+    this.Warn(this.StartTakeover());
+  }
+
+  public func RequestTakeover(delay: Float) -> Void {
+    let cb = new CMCTakeoverCb();
+    cb.system = this;
+    GameInstance.GetDelaySystem(this.GetGameInstance()).DelayCallback(cb, delay, false);
+  }
+
+  private func StartTakeover() -> String {
+    if this.m_state != 0 {
+      return "";
+    }
+    let game = this.GetGameInstance();
+    let player = GetPlayer(game);
+    if !IsDefined(player) || player.IsDead() {
+      return "!NO OPERATOR";
+    }
+    if CMPilotSystem.Get(game).IsPiloting() {
+      return "!THE ALPHA PILOT MODE IS ACTIVE";
+    }
+    let veh: wref<VehicleObject>;
+    VehicleComponent.GetVehicle(game, player.GetEntityID(), veh);
+    if IsDefined(veh) {
+      return "!LEAVE THE VEHICLE FIRST";
+    }
+    let turret = CMCEmplacements.Get(game).Turret();
+    if !IsDefined(turret) {
+      return "!NO EMPLACEMENT OUT";
+    }
+    let action = turret.GetDevicePS().ActionToggleTakeOverControl();
+    action.SetExecutor(player);
+    TakeOverControlSystem.RequestTakeControl(turret, action);
+    this.m_gen += 1;
+    this.m_state = 3;
+    this.m_takeoverID = turret.GetEntityID();
+    this.m_takeoverSeen = false;
+    this.m_takeoverAt = this.Now();
+    this.ScheduleTakeoverWatch();
+    CMCSession.Log("takeover requested: " + CMCEmplacements.ModelName(CMCEmplacements.Get(game).Model()) + " (sight view only: the takeover uses the turret's own camera)");
+    return "";
+  }
+
+  private func ScheduleTakeoverWatch() -> Void {
+    let cb = new CMCTakeoverWatchCb();
+    cb.system = this;
+    cb.generation = this.m_gen;
+    GameInstance.GetDelaySystem(this.GetGameInstance()).DelayCallback(cb, 0.1, false);
+  }
+
+  private func TakeoverSystem() -> ref<TakeOverControlSystem> {
+    return GameInstance.GetScriptableSystemsContainer(this.GetGameInstance()).Get(n"TakeOverControlSystem") as TakeOverControlSystem;
+  }
+
+  private func InOurTurret() -> Bool {
+    let tocs = this.TakeoverSystem();
+    if !IsDefined(tocs) {
+      return false;
+    }
+    let obj = tocs.GetControlledObject();
+    return IsDefined(obj) && obj.GetEntityID() == this.m_takeoverID;
+  }
+
+  public func OnTakeoverWatch(generation: Int32) -> Void {
+    if generation != this.m_gen || this.m_state != 3 {
+      return;
+    }
+    let game = this.GetGameInstance();
+    let player = GetPlayer(game);
+    if !IsDefined(player) || player.IsDead() {
+      this.End("", false);
+      return;
+    }
+    let turret = GameInstance.FindEntityByID(game, this.m_takeoverID) as SecurityTurret;
+    if !IsDefined(turret) {
+      this.End("!EMPLACEMENT LOST", false);
+      return;
+    }
+    if this.InOurTurret() {
+      if !this.m_takeoverSeen {
+        this.m_takeoverSeen = true;
+        CMCSession.Log("takeover active");
+      }
+    } else {
+      if this.m_takeoverSeen {
+        this.End("", false);   // the game's own exit (Esc) already put V back
+        return;
+      }
+      if this.Now() - this.m_takeoverAt > 3.0 {
+        this.End("!TAKEOVER FAILED", false);
+        return;
+      }
+    }
+    this.ScheduleTakeoverWatch();
+  }
+
+  private func EndTakeover(reason: String) -> Void {
+    this.m_gen += 1;
+    this.m_state = 0;
+    this.m_lastExit = this.Now();
+    if this.InOurTurret() {
+      TakeOverControlSystem.ReleaseControl(this.GetGameInstance());
+      CMCSession.Log("takeover released by the framework (" + reason + ")");
+    } else {
+      CMCSession.Log("takeover ended (" + reason + ")");
+    }
+    let empty: EntityID;
+    this.m_takeoverID = empty;
+    this.Warn(reason);
+  }
+
+  // the emplacement is being removed: leave it first
+  public func EndIfTakeover(id: EntityID) -> Void {
+    if this.m_state == 3 && this.m_takeoverID == id {
+      this.End("EMPLACEMENT REMOVED", false);
+    }
+  }
+
+  public func InTakeover() -> Bool = this.m_state == 3
 
   // ---------------------------------------------------------------------------
   // The frame loop (only while controlling)
@@ -647,6 +783,14 @@ public class CMCSession extends ScriptableSystem {
   }
 
   protected cb func OnKey(event: ref<KeyInputEvent>) -> Void {
+    if this.m_state == 3 {
+      // in the emplacement: \ leaves it too (not in the first half second, which is
+      // the press that started it arriving through the raw channel)
+      if Equals(event.GetKey(), EInputKey.IK_Backslash) && Equals(event.GetAction(), EInputAction.IACT_Press) && this.Now() - this.m_takeoverAt > 0.5 {
+        this.End("EMPLACEMENT RELEASED", false);
+      }
+      return;
+    }
     if this.m_state != 2 {
       return;
     }
@@ -836,6 +980,25 @@ public class CMCBeginCb extends DelayCallback {
   public func Call() -> Void {
     if IsDefined(this.system) {
       this.system.BeginFromCallback();
+    }
+  }
+}
+
+public class CMCTakeoverCb extends DelayCallback {
+  public let system: wref<CMCSession>;
+  public func Call() -> Void {
+    if IsDefined(this.system) {
+      this.system.BeginTakeover();
+    }
+  }
+}
+
+public class CMCTakeoverWatchCb extends DelayCallback {
+  public let system: wref<CMCSession>;
+  public let generation: Int32;
+  public func Call() -> Void {
+    if IsDefined(this.system) {
+      this.system.OnTakeoverWatch(this.generation);
     }
   }
 }

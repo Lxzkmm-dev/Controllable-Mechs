@@ -31,6 +31,11 @@ public class CMInput extends IScriptable {
     let pilot = CMPilotSystem.Get(this.player.GetGame());
     let session = CMCSession.Get(this.player.GetGame());
     if Equals(name, n"CM_Pilot") {
+      // an emplacement V looks at or stands by (M2) comes first
+      if !session.IsActive() && !pilot.IsPiloting() && CMCEmplacements.Get(this.player.GetGame()).IsNear(this.player) {
+        session.BeginTakeover();
+        return false;
+      }
       // the framework (M1) while its preview is on, else the alpha's Pilot Mode
       if session.IsActive() || (session.Armed() && !pilot.IsPiloting()) {
         session.Toggle();
