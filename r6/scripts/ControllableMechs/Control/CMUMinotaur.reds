@@ -67,6 +67,12 @@ public class CMUMinotaur extends CMCUnit {
   private let SPIN_FIRE: Float = 0.3;        // spin fraction at which rounds start
   private let m_spin: Float;
   private let MUZZLE_AHEAD: Float = 1.2;     // metres ahead of the weapon item where the flash sits
+  private let START_LURCH: Float = 9.0;      // pitch kick into the first step, deg/s
+  private let STOP_ROCK: Float = 7.0;        // pitch kick back on stopping, deg/s
+  // the servo: the game's sensor-camera servo loops while the view traverses, with a heavy
+  // servo thunk on each start (state changes only)
+  private let m_servoOn: Bool;
+  private let m_servoHit: Float;
   private let m_impactToggle: Bool;
 
   private let GATE_DEG: Float = 4.0;
@@ -161,6 +167,7 @@ public class CMUMinotaur extends CMCUnit {
 
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
     let mech = this.Mech();
+    this.StopServo(mech);
     this.Pacify(mech, false);
     if IsDefined(mech) {
       this.CancelCmd(mech, this.m_moveCmd);
@@ -250,6 +257,7 @@ public class CMUMinotaur extends CMCUnit {
       }
     }
     this.AimLog(s, trigger, now);
+    this.Servo(s, mech, now);
     let hud = s.Hud();
     if IsDefined(hud) {
       hud.FadeHit(dt);
@@ -369,6 +377,33 @@ public class CMUMinotaur extends CMCUnit {
     return wt;
   }
 
+  private func Servo(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
+    let rate = AbsF(s.rig.YawRate());
+    if !this.m_servoOn && (rate > 8.0 || this.m_turning) {
+      this.m_servoOn = true;
+      GameObject.PlaySoundEvent(mech, n"dev_surveillance_camera_rotating");
+      if now - this.m_servoHit > 0.6 {
+        this.m_servoHit = now;
+        GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
+      }
+    } else {
+      if this.m_servoOn && rate < 3.0 && !this.m_turning {
+        this.StopServo(mech);
+      }
+    }
+  }
+
+  private func StopServo(mech: ref<NPCPuppet>) -> Void {
+    if !this.m_servoOn {
+      return;
+    }
+    this.m_servoOn = false;
+    if IsDefined(mech) {
+      GameObject.StopSoundEvent(mech, n"dev_surveillance_camera_rotating");
+      GameObject.PlaySoundEvent(mech, n"dev_surveillance_camera_rotating_stop");
+    }
+  }
+
   // the MK.31s' hits credit V while this is on (CMHitLog's pipeline hook reads it)
   private func SetCredit(on: Bool) -> Void {
     if IsDefined(this.m_guns.left.weapon) {
@@ -450,6 +485,7 @@ public class CMUMinotaur extends CMCUnit {
         this.m_moveCmd = null;
         this.m_moving = false;
         CMCSession.Log("walk: stop (keys released)");
+        s.rig.Nudge(this.STOP_ROCK, -0.25);   // the body rocks back as it plants
       }
       this.Hold(mech, now);
       return;   // standing: TurnChassis turns the body, every frame
@@ -482,6 +518,7 @@ public class CMUMinotaur extends CMCUnit {
     }
     if !this.m_moving {
       CMCSession.Log("walk: start");
+      s.rig.Nudge(-this.START_LURCH, -0.3);   // it leans into the first step
     }
     let target = pos + dir * reach;
     let world: WorldPosition;

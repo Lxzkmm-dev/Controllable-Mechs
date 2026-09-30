@@ -114,6 +114,22 @@ public class CMPilotRig {
     this.m_fovZoom = fov;
   }
 
+  // M1's stomp: footfall jolt, dip and roll scaled by k (0 = the alpha's 1.0), and the
+  // walking bob with them
+  private let m_stepK: Float;
+
+  public func SetStepWeight(k: Float) -> Void {
+    this.m_stepK = k;
+  }
+
+  private func StepK() -> Float = this.m_stepK > 0.0 ? this.m_stepK : 1.0
+
+  // a lurch: the body pitching into a start or rocking back on a stop
+  public func Nudge(pitchVel: Float, joltVel: Float) -> Void {
+    this.m_pitchVel += pitchVel;
+    this.m_joltVel += joltVel;
+  }
+
   public func SetWeight(stiffness: Float, damping: Float, maxYawRate: Float, maxPitchRate: Float, lead: Float) -> Void {
     this.m_turnK = stiffness;
     this.m_turnDamp = damping;
@@ -181,14 +197,15 @@ public class CMPilotRig {
       if step != this.m_step {
         this.m_step = step;
         this.m_side = -this.m_side;
-        this.m_joltVel -= 0.9 * walk;
-        this.m_pitchVel -= 5.0 * walk;
-        this.m_rollVel += 8.0 * walk * this.m_side;
+        let k = this.StepK();
+        this.m_joltVel -= 0.9 * walk * k;
+        this.m_pitchVel -= 5.0 * walk * k;
+        this.m_rollVel += 8.0 * walk * this.m_side * k;
       }
     }
 
     // on the ring, weight on top
-    let bob = -this.m_bobAmp * walk * AbsF(SinF(this.m_phase));
+    let bob = -this.m_bobAmp * this.StepK() * walk * AbsF(SinF(this.m_phase));
     if this.m_chase {
       this.m_orbitYaw = CMPilotRig.Wrap(this.m_orbitYaw + CMPilotRig.Wrap(this.yaw - this.m_orbitYaw) * MinF(1.0, dt * 3.0));
     } else {

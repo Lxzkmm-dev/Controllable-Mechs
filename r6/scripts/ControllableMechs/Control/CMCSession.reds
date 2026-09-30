@@ -100,6 +100,7 @@ public class CMCSession extends ScriptableSystem {
   private let LOOK_LEAD: Float = 25.0;        // how far the aim may run ahead of the view, degrees
   private let OPTICS_FOV: Float = 27.0;       // field of view through the optics (the view is 68)
   private let OPTICS_RATE: Float = 0.5;       // traverse rates and lead while zoomed, x
+  private let STOMP: Float = 1.8;             // footfall thump, dip, roll and bob, x the alpha's
 
   public static func Get(game: GameInstance) -> ref<CMCSession> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.Control.CMCSession") as CMCSession;
@@ -555,6 +556,7 @@ public class CMCSession extends ScriptableSystem {
     let k = this.zoom ? this.OPTICS_RATE : 1.0;
     this.rig.SetWeight(this.LOOK_STIFFNESS, this.LOOK_DAMPING, this.LOOK_YAW_RATE * k, this.LOOK_PITCH_RATE * k, this.LOOK_LEAD * k);
     this.rig.SetZoomFov(this.OPTICS_FOV);
+    this.rig.SetStepWeight(this.STOMP);
   }
 
   private func ApplyCamera() -> Void {
