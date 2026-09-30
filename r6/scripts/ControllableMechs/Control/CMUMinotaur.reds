@@ -32,7 +32,6 @@ public class CMUMinotaur extends CMCUnit {
   private let m_moveTarget: Vector4;
   private let m_moveSent: Float;
   private let m_moveYaw: Float;
-  private let m_turnSent: Float;
 
   // the aim log while firing: once a second
   private let m_triggerWas: Bool;
@@ -41,6 +40,16 @@ public class CMUMinotaur extends CMCUnit {
   private let m_shots: Int32;
   private let m_target: wref<GameObject>;
   private let m_targetHP: Float;
+
+  // the weighted chassis turn while standing: the body turns toward the view at a capped
+  // rate, easing in and out (the look-ats cover the last TURN_START_DEG on their own)
+  private let m_bodyYaw: Float;
+  private let m_turnVel: Float;
+  private let m_turning: Bool;
+  private let TURN_RATE: Float = 35.0;       // deg/s, top speed
+  private let TURN_ACCEL: Float = 60.0;      // deg/s², how hard it spins up and brakes
+  private let TURN_K: Float = 2.5;           // wanted speed per degree still to go
+  private let TURN_START_DEG: Float = 20.0;  // the view may be this far off before the body follows
 
   private let GATE_DEG: Float = 4.0;
   private let SPREAD_DEG: Float = 0.6;
@@ -77,6 +86,9 @@ public class CMUMinotaur extends CMCUnit {
     this.m_guns.call = s.FireCall();
     this.m_moving = false;
     this.m_triggerWas = false;
+    this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
+    this.m_turnVel = 0.0;
+    this.m_turning = false;
     ArrayClear(this.m_lookAts);
 
     // the look-at target: never activated, just a point that follows the reticle
@@ -135,6 +147,7 @@ public class CMUMinotaur extends CMCUnit {
   public func Tick(s: ref<CMCSession>, dt: Float, now: Float) -> Void {
     let mech = this.Mech();
     this.MoveMarker(s.aim);
+    this.TurnChassis(s, mech, dt);
     let split = s.FireMode() == CMFireMode.Split();
     let lmb = s.Key(CMCKey.Lmb());
     let rmb = split && s.Key(CMCKey.Rmb());
@@ -171,7 +184,8 @@ public class CMUMinotaur extends CMCUnit {
       this.m_logNext = now;
       this.m_held = 0;
       this.m_shots = 0;
-      this.m_target = GameInstance.GetTargetingSystem(this.m_game).GetLookAtObject(GetPlayer(this.m_game));
+      // what the pilot's reticle is on (V's own look-at target is the mech itself)
+      this.m_target = s.aimEntity as GameObject;
       this.m_targetHP = CMSpike2System.Health(this.m_target);
       CMCSession.Log("fire (" + CMFireCall.Name(this.m_guns.call) + "): target " + CMSpike2System.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1));
       let mech = this.Mech();
@@ -194,6 +208,38 @@ public class CMUMinotaur extends CMCUnit {
   public func Report() -> Void {
     let hp = CMSpike2System.Health(this.m_target);
     CMCSession.Log("result: target " + CMSpike2System.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1) + " -> " + FloatToStringPrec(hp, 1));
+  }
+
+  // standing still: the body swings round toward the view with weight (a rate cap, spin-up
+  // and braking), one rotation-only teleport a frame and only while it turns. Walking hands
+  // the facing back to the walk orders, which already face the view.
+  private func TurnChassis(s: ref<CMCSession>, mech: ref<NPCPuppet>, dt: Float) -> Void {
+    if this.m_moving {
+      this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
+      this.m_turnVel = 0.0;
+      this.m_turning = false;
+      return;
+    }
+    let off = CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw);
+    if !this.m_turning {
+      if AbsF(off) < this.TURN_START_DEG {
+        return;
+      }
+      this.m_turning = true;
+      GameObject.PlaySoundEvent(mech, AbsF(off) > 120.0 ? n"enm_mech_minotaur_loco_idle_to_idle_180_l" : n"enm_mech_minotaur_loco_idle_to_idle_90");
+    }
+    let want = ClampF(off * this.TURN_K, -this.TURN_RATE, this.TURN_RATE);
+    let step = this.TURN_ACCEL * dt;
+    this.m_turnVel += ClampF(want - this.m_turnVel, -step, step);
+    if AbsF(off) < 1.0 && AbsF(this.m_turnVel) < 3.0 {
+      this.m_turnVel = 0.0;
+      this.m_turning = false;
+      return;
+    }
+    this.m_bodyYaw = CMPilotRig.Wrap(this.m_bodyYaw + this.m_turnVel * dt);
+    let e: EulerAngles;
+    e.Yaw = this.m_bodyYaw;
+    GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, mech.GetWorldPosition(), e);
   }
 
   private func MoveMarker(at: Vector4) -> Void {
@@ -263,8 +309,7 @@ public class CMUMinotaur extends CMCUnit {
         this.m_moveCmd = null;
         this.m_moving = false;
       }
-      this.TurnToward(s, mech, now);
-      return;
+      return;   // standing: TurnChassis turns the body, every frame
     }
     dir = Vector4.Normalize(dir);
     let turned = !this.m_moving || Vector4.Dot(dir, this.m_moveDir) < 0.94;
@@ -315,26 +360,6 @@ public class CMUMinotaur extends CMCUnit {
     this.m_moveDir = dir;
     this.m_moveTarget = target;
     this.m_moveSent = now;
-  }
-
-  // standing still: the body follows the view lazily (the look-ats handle the last
-  // stretch; this brings the chassis round for big turns)
-  private func TurnToward(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
-    let body = CMPilotRig.YawOf(mech.GetWorldForward());
-    let off = AbsF(CMPilotRig.Wrap(s.rig.yaw - body));
-    if off < 30.0 || now - this.m_turnSent < 0.8 {
-      return;
-    }
-    let world: WorldPosition;
-    WorldPosition.SetVector4(world, mech.GetWorldPosition() + CMPilotRig.Dir(s.rig.yaw, 0.0) * 20.0);
-    let spec: AIPositionSpec;
-    AIPositionSpec.SetWorldPosition(spec, world);
-    let cmd = new AIRotateToCommand();
-    cmd.target = spec;
-    cmd.angleTolerance = 10.0;
-    this.Send(mech, cmd, false);
-    this.m_turnSent = now;
-    GameObject.PlaySoundEvent(mech, off > 120.0 ? n"enm_mech_minotaur_loco_idle_to_idle_180_l" : n"enm_mech_minotaur_loco_idle_to_idle_90");
   }
 
   private func Send(mech: ref<NPCPuppet>, cmd: ref<AICommand>, move: Bool) -> Void {

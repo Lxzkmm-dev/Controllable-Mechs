@@ -43,6 +43,7 @@ public class CMCSession extends ScriptableSystem {
   public let rig: ref<CMPilotRig>;
   public let aim: Vector4;
   public let aimDist: Float;
+  public let aimEntity: wref<Entity>;   // what the reticle's dynamic ray hit (none on world geometry)
   public let zoom: Bool;
 
   private let m_keys: array<Bool>;
@@ -536,6 +537,7 @@ public class CMCSession extends ScriptableSystem {
     let skip = MaxF(this.m_unit.AimSkip(), Vector4.Dot(this.m_unit.Ground() - this.rig.pos, fwd) + 3.0);
     let sq = GameInstance.GetSpatialQueriesSystem(this.GetGameInstance());
     let best = 0.0;
+    this.aimEntity = null;
     let hit: TraceResult;
     if sq.SyncRaycastByCollisionPreset(this.rig.pos + fwd * 0.3, to, n"World Static", hit, true) {
       this.aim = Cast<Vector4>(hit.position);
@@ -548,6 +550,7 @@ public class CMCSession extends ScriptableSystem {
       if best <= 0.0 || d < best {
         this.aim = p;
         best = d;
+        this.aimEntity = TraceResult.GetHitEntity(dyn);
       }
     }
     if best <= 0.0 {
