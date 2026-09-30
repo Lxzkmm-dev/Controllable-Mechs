@@ -249,6 +249,12 @@ public class CMPilotHud {
     }
   }
 
+  public func SetDebug(text: String) -> Void {
+    if IsDefined(this.m_debug) {
+      this.m_debug.SetText(text);
+    }
+  }
+
   // ten times a second
   public func Refresh(s: ref<CMPilotHudState>) -> Void {
     if !IsDefined(this.m_root) {

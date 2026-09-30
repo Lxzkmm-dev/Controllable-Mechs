@@ -74,6 +74,9 @@ public class CMPilotSystem extends ScriptableSystem {
   private let m_dbgAxis: Int32;
   private let m_dbgActions: Int32;
   private let m_dbgLast: String;
+  private let m_dbgDt: Float;
+  private let m_watchFrames: Int32;
+  private let m_timerLoop: Bool;
 
   private let m_vHealth: Float;
   private let m_restricted: Bool;
@@ -332,7 +335,11 @@ public class CMPilotSystem extends ScriptableSystem {
     TKLog.Add("ControllableMechs", "pilot: camera active, guns " + this.m_guns.Describe() + ", paused " + (GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() ? "yes" : "no"));
     this.m_lastTime = this.Now();
     this.m_slow = 1.0;   // refresh the HUD on the first frame
+    this.m_timerLoop = false;
+    this.m_watchFrames = 0;
+    this.m_hud.SetDebug("DBG  LOOP SCHEDULED, WAITING FOR FIRST FRAME");
     this.ScheduleFrame();
+    this.ScheduleWatchdog();
   }
 
   public func OnTimeout(generation: Int32) -> Void {
@@ -435,11 +442,49 @@ public class CMPilotSystem extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   // The frame loop (only while piloting)
   // ---------------------------------------------------------------------------
+  // Primary: an event queued on V for the next frame, handled by PlayerPuppet.OnCMPilotTick
+  // (the pattern Anti-Theft Measures' tick uses). Fallback, if the watchdog sees no frames:
+  // a short DelayCallback timer.
   private func ScheduleFrame() -> Void {
-    let cb = new CMPilotFrameCb();
+    let game = this.GetGameInstance();
+    if this.m_timerLoop {
+      let cb = new CMPilotFrameCb();
+      cb.system = this;
+      cb.generation = this.m_gen;
+      GameInstance.GetDelaySystem(game).DelayCallback(cb, 0.016, false);
+      return;
+    }
+    let player = GetPlayer(game);
+    if !IsDefined(player) {
+      return;
+    }
+    let evt = new CMPilotTickEvent();
+    evt.generation = this.m_gen;
+    GameInstance.GetDelaySystem(game).DelayEventNextFrame(player, evt);
+  }
+
+  // twice a second while piloting: the frame loop must be advancing, or it's restarted on the timer
+  private func ScheduleWatchdog() -> Void {
+    let cb = new CMPilotWatchCb();
     cb.system = this;
     cb.generation = this.m_gen;
-    GameInstance.GetDelaySystem(this.GetGameInstance()).DelayCallbackNextFrame(cb);
+    GameInstance.GetDelaySystem(this.GetGameInstance()).DelayCallback(cb, 0.5, false);
+  }
+
+  public func OnWatchdog(generation: Int32) -> Void {
+    if generation != this.m_gen || this.m_state != 2 {
+      return;
+    }
+    if this.m_dbgFrames == this.m_watchFrames && !this.m_timerLoop {
+      this.m_timerLoop = true;
+      TKLog.Add("ControllableMechs", "pilot: no frames after 0.5 s, switching the loop to a timer");
+      this.ScheduleFrame();
+    }
+    this.m_watchFrames = this.m_dbgFrames;
+    if IsDefined(this.m_hud) {
+      this.m_hud.SetDebug(this.DebugLine());
+    }
+    this.ScheduleWatchdog();
   }
 
   public func OnFrame(generation: Int32) -> Void {
@@ -447,13 +492,16 @@ public class CMPilotSystem extends ScriptableSystem {
       return;
     }
     this.m_dbgFrames += 1;
+    if this.m_dbgFrames % 10 == 1 && IsDefined(this.m_hud) {
+      this.m_hud.SetDebug(this.DebugLine());
+    }
     let game = this.GetGameInstance();
     let now = this.Now();
     let dt = ClampF(now - this.m_lastTime, 0.0, 0.1);
     this.m_lastTime = now;
+    this.m_dbgDt = dt;
     if dt <= 0.0 {
-      this.ScheduleFrame();   // paused: nothing moves
-      return;
+      dt = 0.016;   // a frame did pass, even if the clock didn't show it
     }
     let mech = GameInstance.FindEntityByID(game, this.m_mechID) as NPCPuppet;
     if !IsDefined(mech) {
@@ -921,7 +969,7 @@ public class CMPilotSystem extends ScriptableSystem {
   }
 
   public func DebugLine() -> String {
-    return "DBG  FRAMES " + IntToString(this.m_dbgFrames) + "  KEYS " + IntToString(this.m_dbgKeys) + "  MOUSE " + IntToString(this.m_dbgAxis) + "  ACTIONS " + IntToString(this.m_dbgActions) + "  PAUSED " + (GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() ? "Y" : "N") + "  " + this.RestrictState();
+    return "DBG  " + (this.m_timerLoop ? "TIMER" : "EVENT") + " FRAMES " + IntToString(this.m_dbgFrames) + "  DT " + FloatToStringPrec(this.m_dbgDt, 3) + "  KEYS " + IntToString(this.m_dbgKeys) + "  MOUSE " + IntToString(this.m_dbgAxis) + "  ACTIONS " + IntToString(this.m_dbgActions) + "  PAUSED " + (GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() ? "Y" : "N") + "  " + this.RestrictState();
   }
 
   // a default Quaternion is all zeros, not identity
@@ -934,6 +982,29 @@ public class CMPilotSystem extends ScriptableSystem {
     let player = GetPlayer(this.GetGameInstance());
     if IsDefined(player) && StrLen(msg) > 0 {
       player.SetWarningMessage(StrReplaceAll(StrReplaceAll(msg, "!", ""), "*", ""));
+    }
+  }
+}
+
+// ---- the per-frame tick: an event V receives next frame (only queued while piloting) ----
+public class CMPilotTickEvent extends Event {
+  public let generation: Int32;
+}
+
+@addMethod(PlayerPuppet)
+protected cb func OnCMPilotTick(evt: ref<CMPilotTickEvent>) -> Bool {
+  if IsDefined(this.m_cmPilot) {
+    this.m_cmPilot.OnFrame(evt.generation);
+  }
+  return true;
+}
+
+public class CMPilotWatchCb extends DelayCallback {
+  public let system: wref<CMPilotSystem>;
+  public let generation: Int32;
+  public func Call() -> Void {
+    if IsDefined(this.system) {
+      this.system.OnWatchdog(this.generation);
     }
   }
 }
