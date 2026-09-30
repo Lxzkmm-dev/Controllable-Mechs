@@ -66,7 +66,8 @@ public class CMUDrone extends CMCUnit {
     let prof = CMDroneProfiles.For(this.m_kind);
     prof.tilt = Cast<Float>(cfg.DroneTilt(this.m_kind, RoundF(prof.tilt)));
     prof.tiltRate = Cast<Float>(cfg.DroneRate(this.m_kind, RoundF(prof.tiltRate)));
-    this.m_flight = CMFlight.Make(prof, drone.GetWorldPosition(), CMPilotRig.YawOf(drone.GetWorldForward()));
+    // the model flies the centre of mass; the drone's origin hangs below it (Root())
+    this.m_flight = CMFlight.Make(prof, drone.GetWorldPosition() + new Vector4(0.0, 0.0, prof.com, 0.0), CMPilotRig.YawOf(drone.GetWorldForward()));
     this.m_flight.level = Cast<Float>(cfg.DroneLevel(this.m_kind)) / 100.0;
     this.m_seen = drone.GetWorldPosition();
     this.m_method = cfg.DroneMove();
@@ -156,9 +157,9 @@ public class CMUDrone extends CMCUnit {
     this.m_last = actual;
     this.m_dt = dt;
     if this.m_method == 2 {
-      this.m_flight.pos = actual;   // the AI does the moving: the model follows it
+      this.m_flight.pos = actual + new Vector4(0.0, 0.0, this.m_flight.p.com, 0.0);   // the AI does the moving
     } else {
-      let err = Vector4.Distance(actual, this.m_flight.pos);
+      let err = Vector4.Distance(actual, this.Root());
       this.m_errSum += err;
       this.m_errMax = MaxF(this.m_errMax, err);
       this.m_errN += 1;
@@ -183,6 +184,17 @@ public class CMUDrone extends CMCUnit {
     }
   }
 
+  // Where the drone's origin goes: the body turns about its centre of mass (the model's
+  // position), and the origin hangs below that along the body's up axis. Turning about the
+  // origin itself, at the base of the Bombus and Wyvern, swung the body like a see-saw.
+  private func Root() -> Vector4 {
+    let fl = this.m_flight;
+    let up = CMFlight.BodyUp(fl.yaw, fl.pitch, fl.roll);
+    let r = fl.pos - up * fl.p.com;
+    r.W = 1.0;
+    return r;
+  }
+
   // The step from `from` to where the model went, swept against the world: into a wall
   // or the ground, the drone stops at the surface, the velocity into it is removed with
   // a little bounce, and a hard hit damages it.
@@ -201,19 +213,25 @@ public class CMUDrone extends CMCUnit {
         let n = Vector4.Normalize(Cast<Vector4>(hit.normal));
         fl.pos = at - dir * r;
         fl.pos.W = 1.0;
-        this.Impact(drone, fl.Contact(n, 0.3));
+        // ground-like surfaces are slid along, not bounced off, and the height hold takes
+        // the new height (it pulled back down into rising ground: the bobbing)
+        let floorish = n.Z > 0.6;
+        this.Impact(drone, fl.Contact(n, floorish ? 0.0 : 0.3));
+        if floorish && fl.holding {
+          fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
+        }
       }
     }
     // the ground under it: measured for the HUD, and a contact only when the drone is
     // actually in it. There is no minimum height (a floor held it half a metre up and
     // bounced it over every curb and bump in the road); flying low is the pilot's call.
-    let r0 = fl.p.radius * 0.5;
+    let r0 = fl.p.com > 0.05 ? fl.p.com + 0.05 : fl.p.radius * 0.5;
     if sq.SyncRaycastByCollisionPreset(fl.pos + new Vector4(0.0, 0.0, r0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), n"World Static", hit, true) {
       let gz = Cast<Vector4>(hit.position).Z;
       this.m_ground = fl.pos.Z - gz;
       if fl.pos.Z < gz + r0 {
         fl.pos.Z = gz + r0;
-        this.Impact(drone, fl.Contact(new Vector4(0.0, 0.0, 1.0, 0.0), 0.25));
+        this.Impact(drone, fl.Contact(new Vector4(0.0, 0.0, 1.0, 0.0), 0.0));
         if fl.holding {
           fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
         }
@@ -247,8 +265,9 @@ public class CMUDrone extends CMCUnit {
         // tilt; an AI teleport four times a second keeps its movement component where
         // the body is
         let wt: WorldTransform;
+        let root = this.Root();
         let world: WorldPosition;
-        WorldPosition.SetVector4(world, fl.pos);
+        WorldPosition.SetVector4(world, root);
         WorldTransform.SetWorldPosition(wt, world);
         let q: EulerAngles;
         q.Yaw = fl.yaw;
@@ -258,7 +277,7 @@ public class CMUDrone extends CMCUnit {
         drone.SetWorldTransform(wt);
         if now - this.m_cmdAt >= 0.25 {
           let sync = new AITeleportCommand();
-          sync.position = fl.pos;
+          sync.position = root;
           sync.rotation = fl.yaw;
           sync.doNavTest = false;
           let ai4 = drone.GetAIControllerComponent();
@@ -274,14 +293,14 @@ public class CMUDrone extends CMCUnit {
         e.Yaw = fl.yaw;
         e.Pitch = fl.pitch;
         e.Roll = fl.roll;
-        GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, fl.pos, e);
+        GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, this.Root(), e);
         break;
       case 1:
         // a teleport lands the frame after it is sent: sent one frame ahead, it lands
         // where the model is when that frame is drawn. It completes at once, so the last
         // one isn't cancelled (cancelling could drop one still pending: a stalled frame)
         let tp = new AITeleportCommand();
-        tp.position = fl.pos + fl.vel * this.m_dt;
+        tp.position = this.Root() + fl.vel * this.m_dt;
         tp.rotation = fl.yaw;
         tp.doNavTest = false;
         let ai = drone.GetAIControllerComponent();

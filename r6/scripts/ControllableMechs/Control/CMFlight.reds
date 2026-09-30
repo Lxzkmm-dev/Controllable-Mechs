@@ -34,6 +34,10 @@ public class CMFlightProfile {
   public let arm: Float;           // m, rotor distance from the centre
   public let impact: Float;        // m/s, a collision faster than this does damage
   public let radius: Float;        // m, its collision sphere
+  public let agility: Float;       // 1/s, how quickly its rotors can swing the body (inertia)
+  public let aero: Float;          // deg/s2 per m/s: airflow pushing the nose up and the tilt back
+  public let yawAccel: Float;      // deg/s2, how hard it can wind into a turn
+  public let com: Float;           // m, its centre of mass above the model's origin
 }
 
 public class CMFlight {
@@ -44,6 +48,7 @@ public class CMFlight {
   public let roll: Float;          // right side down is positive
   public let pitchRate: Float;
   public let rollRate: Float;
+  public let yawRate: Float;
   public let spool: array<Float>;  // four rotors, 0-1: front left, front right, back left, back right
   public let eff: array<Float>;    // each rotor's efficiency, 0-1 (damage)
   public let level: Float;         // self-levelling, 0 (acro) to 1 (angle mode)
@@ -86,8 +91,9 @@ public class CMFlight {
     // The self-levelling setting blends the two.
     let acroPitch = -fwd * p.tiltRate;
     let acroRoll = side * p.tiltRate;
-    let anglePitch = CMPilotRig.Wrap(-fwd * p.tilt - this.pitch) * 6.0;
-    let angleRoll = CMPilotRig.Wrap(side * p.tilt - this.roll) * 6.0;
+    let ka = p.agility * 0.4;
+    let anglePitch = CMPilotRig.Wrap(-fwd * p.tilt - this.pitch) * ka;
+    let angleRoll = CMPilotRig.Wrap(side * p.tilt - this.roll) * ka;
     let wantPitchRate = acroPitch + (anglePitch - acroPitch) * this.level;
     let wantRollRate = acroRoll + (angleRoll - acroRoll) * this.level;
     // --- the rotors: collective for the height, differential for the attitude ---
@@ -108,9 +114,9 @@ public class CMFlight {
       collective = hover / lift + ((this.holdZ - this.pos.Z) * 0.5 - this.vel.Z * 0.6) * 0.08;
     }
     // attitude from rotor differentials: what the rates need, clamped to the margin left
-    // the rate loop's gain is set so every type answers alike (about 15 per second)
+    // the rate loop answers at the type's agility: a Bombus snaps, an Octant swings slowly
     let inertia0 = p.mass * p.arm * p.arm * 0.5;
-    let kp = 15.0 / MaxF(0.001, 4.0 * p.thrust * p.arm / inertia0 * 57.3);
+    let kp = p.agility / MaxF(0.001, 4.0 * p.thrust * p.arm / inertia0 * 57.3);
     let dp = ClampF((wantPitchRate - this.pitchRate) * kp, -0.25, 0.25);
     let dr = ClampF((wantRollRate - this.rollRate) * kp, -0.25, 0.25);
     // the attitude keeps its margin: the collective is held where both corrections fit
@@ -134,15 +140,23 @@ public class CMFlight {
     let inertia = p.mass * p.arm * p.arm * 0.5;
     let pitchTorque = ((t0 + t1) - (t2 + t3)) * p.arm;   // more at the front: nose up
     let rollTorque = ((t0 + t2) - (t1 + t3)) * p.arm;    // more on the left: right side down
-    this.pitchRate += (pitchTorque / inertia * 57.3 - this.pitchRate * 2.0) * dt;
-    this.rollRate += (rollTorque / inertia * 57.3 - this.rollRate * 2.0) * dt;
+    // the airflow: moving through the air pushes the nose up and the tilt back, harder the
+    // faster it goes, so a tilt has to be held into the wind, and letting go flares it
+    let bf = CMPilotRig.Dir(this.yaw, 0.0);
+    let br = CMPilotRig.Dir(this.yaw - 90.0, 0.0);
+    let vf = this.vel.X * bf.X + this.vel.Y * bf.Y;
+    let vr = this.vel.X * br.X + this.vel.Y * br.Y;
+    this.pitchRate += (pitchTorque / inertia * 57.3 + p.aero * vf - this.pitchRate * 2.0) * dt;
+    this.rollRate += (rollTorque / inertia * 57.3 - p.aero * vr - this.rollRate * 2.0) * dt;
     // no limit: at low self-levelling it can loop and roll all the way over (the thrust
     // then points where the body does, so inverted it drives down)
     this.pitch = CMPilotRig.Wrap(this.pitch + this.pitchRate * dt);
     this.roll = CMPilotRig.Wrap(this.roll + this.rollRate * dt);
-    // the body turns toward the view
-    let dy = CMPilotRig.Wrap(view - this.yaw);
-    this.yaw += ClampF(dy, -p.yawRate * dt, p.yawRate * dt);
+    // the body turns toward the view with its own inertia: it winds into the turn and can
+    // run a little past, and the velocity keeps its direction, so it drifts wide
+    let wantYaw = ClampF(CMPilotRig.Wrap(view - this.yaw) * 5.0, -p.yawRate, p.yawRate);
+    this.yawRate += ClampF(wantYaw - this.yawRate, -p.yawAccel * dt, p.yawAccel * dt);
+    this.yaw = CMPilotRig.Wrap(this.yaw + this.yawRate * dt);
     // --- thrust along the body's up axis, gravity and drag ---
     let up = CMFlight.BodyUp(this.yaw, this.pitch, this.roll);
     let speed = Vector4.Length(this.vel);
@@ -190,7 +204,7 @@ public class CMFlight {
 public abstract class CMDroneProfiles {
   // what the CONFIG profile sliders start at, per type: self-levelling (%), tilt limit
   // (deg) and full-stick rate (deg/s). With the stick held, the tilt settles where the rate
-  // and the levelling balance: the limit + rate x (1 - level) / (6 x level), so 65% on the
+  // and the levelling balance: the limit + rate x (1 - level) / (0.4 x agility x level), so 65% on the
   // Bombus leans it about 55 deg, past its 35 deg limit; lower is more acro.
   public static func DefaultLevel(kind: String) -> Int32 {
     switch kind {
@@ -205,15 +219,18 @@ public abstract class CMDroneProfiles {
     switch kind {
       case "bombus":
         p.mass = 6.0; p.thrust = 30.0; p.spool = 0.08; p.tilt = 35.0; p.tiltRate = 220.0; p.top = 18.0;
-        p.dragH = 0.35; p.dragV = 0.8; p.climb = 5.0; p.yawRate = 160.0; p.arm = 0.2; p.impact = 6.0; p.radius = 0.3;
+        p.dragH = 0.35; p.dragV = 0.8; p.climb = 5.0; p.yawRate = 200.0; p.arm = 0.2; p.impact = 6.0; p.radius = 0.3;
+        p.agility = 18.0; p.aero = 30.0; p.yawAccel = 900.0; p.com = 0.13;
         break;
       case "octant":
         p.mass = 180.0; p.thrust = 900.0; p.spool = 0.15; p.tilt = 20.0; p.tiltRate = 90.0; p.top = 10.0;
         p.dragH = 0.5; p.dragV = 1.0; p.climb = 3.0; p.yawRate = 60.0; p.arm = 1.0; p.impact = 5.0; p.radius = 1.1;
+        p.agility = 5.0; p.aero = 6.0; p.yawAccel = 90.0; p.com = 0.15;
         break;
       default:   // griffin, wyvern
         p.mass = 40.0; p.thrust = 190.0; p.spool = 0.11; p.tilt = 22.0; p.tiltRate = 120.0; p.top = 14.0;
-        p.dragH = 0.45; p.dragV = 0.9; p.climb = 4.0; p.yawRate = 100.0; p.arm = 0.45; p.impact = 5.5; p.radius = 0.5;
+        p.dragH = 0.45; p.dragV = 0.9; p.climb = 4.0; p.yawRate = 110.0; p.arm = 0.45; p.impact = 5.5; p.radius = 0.5;
+        p.agility = 10.0; p.aero = 15.0; p.yawAccel = 300.0; p.com = Equals(kind, "wyvern") ? 0.22 : 0.0;
     }
     return p;
   }

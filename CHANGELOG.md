@@ -11,6 +11,17 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 - **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone flight, round 3: physics-based tilt** (Omar: the tilt felt like a fixed axis; bobbing near the ground):
+  - **Centre of mass:** the body turns about its centre of mass, and the model's origin hangs below it. On the Bombus and Wyvern the origin is at the base, so they swung like a see-saw.
+  - **Rotational inertia per type** (agility):
+    - the Bombus snaps;
+    - the Griffin and Wyvern swing slower;
+    - the Octant is slow and heavy (about 1 s to reach its tilt).
+    - Before, all four answered identically.
+  - **Airflow:** moving through the air pushes the nose up and the tilt back, harder with speed. A tilt must be held into the wind, and letting go flares the drone and brakes it.
+  - **Yaw with inertia:** the body winds into turns and can run a little past, while the velocity keeps its direction, so it drifts wide.
+  - **Ground contacts slide instead of bouncing,** and the altitude hold adopts the new height. It used to pull the drone back down into rising ground after each bump, which was the bobbing.
+  - Checked offline for all three weight classes: stable, with a small overshoot into the tilt and a flare on release.
 - **Drone flight, round 2** (Omar's flights, 2026-09-30):
   - **ENTITY TRANSFORM is the move method.** The drone's own transform is set each frame through Codeware, with an AI teleport 4 times a second to keep its movement component in step. It lands exactly where the physics says, and the body really tilts (pitch and roll match).
   - **No minimum altitude:** a floor held the drone half a metre up and bounced it over every curb (the "speed bumps"). The ground is now only a real collision, sized per type.
