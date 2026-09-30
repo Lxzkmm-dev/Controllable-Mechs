@@ -30,6 +30,8 @@ The first playable build: the proof of concept works in game.
   - the chassis plays the Minotaur's own turn-in-place sound when it swings round.
 - **No run:** Shift no longer does anything, because the Minotaur's "run" came out slower than its walk.
 - **Walls:** walk orders stop 2.5 m short of walls and buildings instead of targeting through them. An unreachable target seems to be what made the game teleport the mech.
+- **Third-person chase camera:** V while piloting, or SETTINGS > VIEW. The camera sits behind and above the mech, 8.5 m back and 4.2 m up by default, with sliders for both. Aiming starts past the mech so it can't hit itself.
+- **No camera clipping:** in both views, when geometry is between the mech and the camera, the camera snaps in to just short of it, then eases back out once the way is clear.
 - **Diagnostics:** each trigger pull logs how far each barrel and the chassis are off the view (TOOLS > LOG).
 
 Known issues:
@@ -39,4 +41,3 @@ Known issues:
 - **Gamepad:** not supported yet.
 - **Backing up (S):** on builds before 4e54241 the camera followed the chassis's facing, so when the Minotaur turned round to back up, the view ended up behind and in front of it. The camera now follows the view's facing; still to confirm in game.
 
-Planned: a third-person chase camera (see the README roadmap).

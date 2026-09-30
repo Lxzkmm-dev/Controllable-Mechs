@@ -97,6 +97,12 @@ public class CMPilotSystem extends ScriptableSystem {
   private persistent let m_showDebug: Bool;
   private persistent let m_aimMode: Int32;      // 0 = along the barrels (default), 1 = to the reticle point
   private persistent let m_traverse: Int32;     // torso traverse deg/s, stored +1 (0 = default)
+  private persistent let m_camMode: Int32;      // 0 = sensor view (default), 1 = third-person chase view
+  private persistent let m_chaseDistCm: Int32;  // chase view: how far behind the mech's centre, stored +1
+  private persistent let m_chaseUpCm: Int32;    // chase view: how high above its feet, stored +1
+
+  // clipping: how far out from the mech's centre the camera may sit this frame
+  private let m_clip: Float;
 
   // sound state: the servo loop plays while the view traverses
   private let m_servoOn: Bool;
@@ -263,6 +269,7 @@ public class CMPilotSystem extends ScriptableSystem {
 
     this.m_rig = new CMPilotRig();
     this.m_rig.Init(mech.GetWorldPosition(), this.CamUp(), this.CamFwd(), CMPilotRig.YawOf(mech.GetWorldForward()));
+    this.m_clip = 999.0;
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
     this.m_guns.SetBarrelMode(this.m_aimMode == 0);
@@ -537,6 +544,7 @@ public class CMPilotSystem extends ScriptableSystem {
     let rmbZoom = this.m_fireMode == CMFireMode.Split() ? this.Key(CMPilotKey.Mmb()) : this.Key(CMPilotKey.Rmb());
     this.m_zoom = rmbZoom;
     this.m_rig.Update(dt, mech.GetWorldPosition(), this.CamUp(), this.CamFwd(), this.m_zoom);
+    this.ClipCamera(mech, dt);
     if this.m_rig.jumped > 0.0 {
       TKLog.Add("ControllableMechs", "pilot: the mech jumped " + FloatToStringPrec(this.m_rig.jumped, 1) + " m in one frame (moving " + (this.m_moving ? "yes" : "no") + ")");
     }
@@ -664,7 +672,7 @@ public class CMPilotSystem extends ScriptableSystem {
   // what the reticle is on: first static hit along the view, else far away
   private func UpdateAim() -> Void {
     let fwd = this.m_rig.Forward();
-    let from = this.m_rig.pos + fwd * 4.5;   // clear of the mech's own body
+    let from = this.m_rig.pos + fwd * (4.5 + (this.IsChase() ? this.ChaseDist() : 0.0));   // clear of the mech's own body
     let to = this.m_rig.pos + fwd * 600.0;
     let hit: TraceResult;
     if GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(from, to, n"Static", hit, true, false) {
@@ -843,7 +851,7 @@ public class CMPilotSystem extends ScriptableSystem {
   private func RefreshHud(mech: ref<NPCPuppet>, link: ref<CMLinkSystem>, dist: Float) -> Void {
     let s = this.m_hudState;
     let name = link.UnitName();
-    s.title = (StrLen(name) > 0 ? StrUpper(name) : "MILITECH MINOTAUR") + "  //  NEURAL LINK";
+    s.title = (StrLen(name) > 0 ? StrUpper(name) : "MILITECH MINOTAUR") + (this.IsChase() ? "  //  CHASE CAM" : "  //  NEURAL LINK");
     let h = RoundF(CMPilotRig.Wrap(-this.m_rig.yaw));
     s.heading = h < 0 ? h + 360 : h;
     s.range = this.m_aimDist;
@@ -872,9 +880,9 @@ public class CMPilotSystem extends ScriptableSystem {
       }
     }
     if this.m_fireMode == CMFireMode.Split() {
-      s.hints = "[WASD] WALK   [LMB] LEFT GUN   [RMB] RIGHT GUN   [MMB] OPTICS   [B] FIRE MODE   [L] DISCONNECT";
+      s.hints = "[WASD] WALK   [LMB] LEFT GUN   [RMB] RIGHT GUN   [MMB] OPTICS   [B] FIRE MODE   [V] VIEW   [L] DISCONNECT";
     } else {
-      s.hints = "[WASD] WALK   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [L] DISCONNECT";
+      s.hints = "[WASD] WALK   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [V] VIEW   [L] DISCONNECT";
     }
     if this.m_showDebug {
       s.debug = this.DebugLine();
@@ -976,6 +984,12 @@ public class CMPilotSystem extends ScriptableSystem {
       case EInputKey.IK_LeftMouse: this.SetKey(CMPilotKey.Lmb(), down); break;
       case EInputKey.IK_RightMouse: this.SetKey(CMPilotKey.Rmb(), down); break;
       case EInputKey.IK_MiddleMouse: this.SetKey(CMPilotKey.Mmb(), down); break;
+      case EInputKey.IK_V:
+        if Equals(action, EInputAction.IACT_Press) {
+          this.SetCamMode(this.IsChase() ? 0 : 1);
+          this.m_slow = 1.0;
+        }
+        break;
       case EInputKey.IK_B:
         if Equals(action, EInputAction.IACT_Press) {
           this.CycleFireMode();
@@ -1091,8 +1105,52 @@ public class CMPilotSystem extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
-  private func CamUp() -> Float = Cast<Float>(this.CamUpCm()) / 100.0
-  private func CamFwd() -> Float = Cast<Float>(this.CamFwdCm()) / 100.0
+  // the rig's height and reach: the sensor mount, or behind and above for the chase view
+  private func CamUp() -> Float = this.IsChase() ? this.ChaseUp() : Cast<Float>(this.CamUpCm()) / 100.0
+  private func CamFwd() -> Float = this.IsChase() ? -this.ChaseDist() : Cast<Float>(this.CamFwdCm()) / 100.0
+
+  // ---- camera view: sensor (first person) or chase (third person) ----
+  public func IsChase() -> Bool = this.m_camMode == 1
+  public func CamMode() -> Int32 = this.m_camMode
+  public func SetCamMode(mode: Int32) -> Void {
+    this.m_camMode = Clamp(mode, 0, 1);
+    this.m_clip = 999.0;   // re-measure from the full distance
+  }
+  public func ChaseDistCm() -> Int32 = this.m_chaseDistCm > 0 ? this.m_chaseDistCm - 1 : 850
+  public func ChaseUpCm() -> Int32 = this.m_chaseUpCm > 0 ? this.m_chaseUpCm - 1 : 420
+  public func SetChaseDistCm(v: Int32) -> Void { this.m_chaseDistCm = Clamp(v, 400, 1600) + 1; }
+  public func SetChaseUpCm(v: Int32) -> Void { this.m_chaseUpCm = Clamp(v, 200, 900) + 1; }
+  private func ChaseDist() -> Float = Cast<Float>(this.ChaseDistCm()) / 100.0
+  private func ChaseUp() -> Float = Cast<Float>(this.ChaseUpCm()) / 100.0
+
+  // Keeps the camera out of walls, poles and containers: one static raycast per frame
+  // (piloting only) from the mech's centre at camera height out to where the rig put the
+  // camera. On a hit the camera snaps in to 0.35 m short of it, and eases back out at
+  // 6 m/s once the way is clear, so it doesn't pop.
+  private func ClipCamera(mech: ref<NPCPuppet>, dt: Float) -> Void {
+    let g = mech.GetWorldPosition();
+    let pivot = new Vector4(g.X, g.Y, g.Z + this.CamUp(), 1.0);
+    let want = this.m_rig.pos;
+    let off = want - pivot;
+    let full = Vector4.Length(off);
+    if full < 0.3 {
+      return;
+    }
+    let dir = off * (1.0 / full);
+    let allowed = full;
+    let hit: TraceResult;
+    if GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(pivot, want + dir * 0.35, n"Static", hit, true, false) {
+      allowed = MaxF(0.2, Vector4.Distance(pivot, Cast<Vector4>(hit.position)) - 0.35);
+    }
+    if allowed < this.m_clip {
+      this.m_clip = allowed;
+    } else {
+      this.m_clip = MinF(allowed, this.m_clip + 6.0 * dt);
+    }
+    if this.m_clip < full {
+      this.m_rig.pos = pivot + dir * this.m_clip;
+    }
+  }
 
   // ---- camera tuning (SETTINGS sliders; applied live) ----
   public func CamUpCm() -> Int32 = this.m_camUpCm > 0 ? this.m_camUpCm - 1 : this.MOUNT_UP_CM

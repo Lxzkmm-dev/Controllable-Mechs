@@ -12,6 +12,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 - While piloting:
   - **WASD**: walk, relative to where the torso looks. **Shift**: run.
   - **Mouse**: turn the torso.
+  - **V**: switch between the sensor view and the third-person chase view.
   - **LMB**: fire.
   - **RMB**: optics (x2).
   - **B**: cycle the fire mode.
@@ -24,6 +25,8 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
   - every footfall jolts and rolls the view;
   - each shot kicks it.
   - Height, forward offset and mouse sensitivity are sliders in SETTINGS and apply live.
+  - **Views:** the sensor view (first person) and a chase view (third person), behind and above the mech with its own distance and height sliders. V switches between them.
+  - **No clipping:** in both views, the camera pulls in when a wall, pole or container is between the mech and the camera. It uses one static raycast per frame, only while piloting.
 - **Guns:** both MK.31s fire through the game's NPC firing call (`AIWeapon.Fire`) at the point under the reticle, so rounds leave the real muzzles.
   - Fire modes (terminal Settings, or B):
     - **staggered** (default): LMB fires both, barrels alternating;
@@ -79,6 +82,6 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 
 1. **Command mode:** link a robot, then order it to follow, hold or move to a target.
 2. **Pilot Mode (first build, Minotaur):** direct control with the weighted camera, HUD and both HMGs.
-3. **Third-person camera (requested):** a chase view behind and above the mech, toggled while piloting. It would reuse the same rig at a negative reach and aim through the mech.
+3. **Third-person camera (first build):** a chase view behind and above the mech (V while piloting, or SETTINGS > VIEW).
 4. **Attack orders:** send the robot after the target you look at.
 5. **Your own mech:** spawn one, persist it in the save, and call it in.

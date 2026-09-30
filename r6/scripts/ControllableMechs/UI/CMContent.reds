@@ -87,6 +87,15 @@ public class CMContent extends TKContent {
       case "sens":
         pilot.SetSensPct(StringToInt(arg, pilot.SensPct()));
         break;
+      case "cammode":
+        pilot.SetCamMode(StringToInt(arg, 0));
+        break;
+      case "chasedist":
+        pilot.SetChaseDistCm(StringToInt(arg, pilot.ChaseDistCm()));
+        break;
+      case "chaseup":
+        pilot.SetChaseUpCm(StringToInt(arg, pilot.ChaseUpCm()));
+        break;
       case "aimmode":
         pilot.SetAimMode(StringToInt(arg, 0));
         break;
@@ -159,6 +168,11 @@ public class CMContent extends TKContent {
     p.Dropdown("AIM MODE", "Where the rounds go", IntToString(pilot.AimMode()), "ALONG THE BARRELS|TO THE RETICLE", "0|1", "aimmode", "");
     p.SetTip("ALONG THE BARRELS: rounds follow each MK.31's real barrel (muzzle flash and rounds agree); two pips on the HUD show where the barrels point. TO THE RETICLE: rounds go to the point under the reticle; the guns wait for the chassis to line up.");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
+    p.Heading("CAMERA VIEW");
+    p.Dropdown("VIEW", "V switches it while piloting", IntToString(pilot.CamMode()), "SENSOR (FIRST PERSON)|CHASE (THIRD PERSON)", "0|1", "cammode", "");
+    p.Slider("CHASE DISTANCE", "Chase view: behind the mech's centre", "", "400|1600|25|" + IntToString(pilot.ChaseDistCm()) + "| cm", "chasedist", "");
+    p.Slider("CHASE HEIGHT", "Chase view: above the mech's feet", "", "200|900|10|" + IntToString(pilot.ChaseUpCm()) + "| cm", "chaseup", "");
+    p.SetTip("Both views pull in when a wall, pole or container is between the mech and the camera.");
     p.Heading("SENSOR CAMERA");
     p.Slider("HEIGHT", "Above the mech's feet", "", "100|450|5|" + IntToString(pilot.CamUpCm()) + "| cm", "camup", "");
     p.SetTip("Applies live: change it, then press L to check the view.");
