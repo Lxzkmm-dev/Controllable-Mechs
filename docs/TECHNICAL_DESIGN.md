@@ -1,6 +1,8 @@
 # Controllable Mechs: control framework technical design
 
-Status: **agreed with changes (rev 2, 2026-09-30)**. Omar's review asked for four changes, all folded in below:
+Status: **rev 3 (2026-09-30), after spike batches 1-3.** The plan is now the Minotaur first (M1), then the emplacement through the vanilla turret takeover (M2), then a feel pass (M3). Section 14 has what the spikes showed; sections 10, 11 and 13 carry the revised plan. Where older sections below conflict with section 14, section 14 wins.
+
+Rev 2 (agreed with changes). Omar's review asked for four changes, all folded in below:
 1. Every unit is a **body + skin**.
 2. **S4/S5 move into the first spike batch.**
 3. S2 **prefers real projectiles with V as the instigator**.
@@ -242,7 +244,9 @@ Hard caps:
 
 ---
 
-## 10. The first unit: MG emplacement (`CMUEmplacement`)
+## 10. The emplacement (`CMUEmplacement`), now M2
+
+**Rev 3:** S0/S0b passed. A spawned vanilla turret taken over the game's own way already has a matching barrel, flash and rounds, V-credited damage, and a clean exit. So the emplacement is **M2: spawn the Arasaka floor turret (the Minotaur's HMG look) or Security 1 from the terminal, enter with the Pilot key, V stays visible**. The framework adds the session, keys, HUD and weight on top of the vanilla takeover where it can. The custom skin plan below is kept only as the fallback.
 
 - **S0 first:** if a spawned vanilla security turret accepts the game's own turret takeover (the quickhack route), the emplacement is nearly free: the barrel, flash and rounds already match. The framework then only adds the session, weight, HUD and exits, and its main effort goes to the Minotaur. The rest of this section is the plan if S0 fails or feels too limited.
 - **Spawn:** from the Robot Link terminal (TEST → SPAWN EMPLACEMENT), 4 m ahead of V. It's placed on the ground with a downward raycast **[proven pattern]** and faces V's forward.
@@ -262,23 +266,27 @@ Hard caps:
 - **View:** the sight camera on the pitch part, just behind the guns; V toggles the chase view.
 - **HUD:** reticle, gun pips, heat per barrel, traverse indicator (yaw relative to base), range.
 
-**Test milestones**
+**Test milestones (rev 3)**
 
-Each milestone is a small build Omar can check:
+Each milestone is a small build, or a short series of builds, that Omar checks in game:
 
 | # | Build | Omar checks |
 |---|---|---|
-| M1 | Spawn the emplacement; no control. A debug key spins the yaw part and nods the pitch part. | The parts are the right meshes, sit together, and turn about the right pivots with no gaps or jitter. |
-| M2 | Enter/exit, sight camera on the gun, mouse traverse with weight. | The feel of the traverse, the limits, the camera position; exiting restores everything. |
-| M3 | Firing with our muzzle flash and tracer, and damage (per S2). | Rounds, tracer and flash all come from the barrel you see and land on the reticle; damage lands. |
-| M4 | HUD, heat, sounds, chase view. | Readability and feel. |
-| M5 | Minotaur on the framework (below). | Same checks on the mech. |
+| M1 | The framework core (`ControllableMechs.Control`) with the Minotaur: session, input, sight and chase views, HUD, heat, look-at aim (section 11), V-credited fire. It replaces the alpha's Pilot Mode once it passes. | Enter/exit restores everything; the guns follow the reticle while walking and turning; rounds, tracers and flash come from the barrels and land on the reticle; damage lands and is credited to V. |
+| M2 | The emplacement through the vanilla turret takeover: spawn the Arasaka floor HMG or Security 1 from the terminal, enter with the Pilot key, V visible. | Spawn, enter, fire, damage, exit; V back to normal. |
+| M3 | A feel pass on both: traverse weight, camera, sounds, HUD readability. | Feel. |
 
 ---
 
-## 11. Later: the Minotaur on the framework (`CMUMinotaur`)
+## 11. The Minotaur on the framework (`CMUMinotaur`), now M1
 
-Two routes, decided by spikes, and not built until M4 passes:
+**Rev 3: route (B) won.** Look-at events on **RightWeapon + LeftWeapon + Weapon + Chassis** at a target that moves with the reticle turn the mech's real MK.31s onto it (S6: 45° → under 1° in 1.5 s; S7: mostly 0-5° while piloting). So:
+- **No skin on the Minotaur.** Its own guns stay visible and aim through its own animation; route (A) failed to attach anything (S5/S5b) and isn't needed.
+- **Aim:** the session moves one marker entity to the aim point every frame; the four look-ats follow it. Each gun fires only while its barrel is within a few degrees of the reticle (S7 gate), so the rounds leave along the barrel you see and land on the reticle.
+- **Fire and damage:** `AIWeapon.Fire` on the mech's weapon items. The mech as owner deals damage (proven). V-credited damage uses the call a V-controlled vanilla turret makes (`AIWeapon.Fire(player, weapon, simTime, 1.0, triggerMode)`); which V variant works is being settled by the S7 retest (section 14).
+- **Driving:** unchanged from the alpha (AI walk orders with clipped targets).
+
+The original two-route plan, kept for reference:
 
 - **(A) Our own guns, spike S5:**
   - Hide the skinned MK.31 meshes on the live mech (`FindComponentByName(n"mch_003__minotaur_weapons_l_01" / "_r_01")` + `Toggle(false)`) **[decl]**.
@@ -314,4 +322,23 @@ Two routes, decided by spikes, and not built until M4 passes:
 2. **Damage model:** **real bullets** (projectiles), with V as the instigator.
 3. **Ammo:** **heat only**.
 4. **Chase view:** **kept** for emplacements too.
-5. **The alpha's Pilot Mode:** **kept** until M5, when the framework's Minotaur replaces it.
+5. **The alpha's Pilot Mode:** **kept** until M5, when the framework's Minotaur replaces it. *(Rev 3: until M1 passes, since the Minotaur is now M1.)*
+6. **Rev 3 plan (2026-09-30, after the batch 2 review):** the S0 takeover makes the emplacement nearly free, so the effort goes to the Minotaur. M1 = Minotaur on the framework, M2 = emplacement via takeover, M3 = feel pass.
+
+---
+
+## 14. Spike results (batches 1-3, 2026-09-30)
+
+Logs: `overwrite\bin\x64\plugins\cyber_engine_tweaks\gamelog.log` (tag `CM-SPIKE`).
+
+| # | Result | Decides |
+|---|---|---|
+| S0 | Passed. Security turret 1 spawned, befriended and taken over by both routes (the Take Control action queued on it, and `TakeOverControlSystem.RequestTakeControl`). Aim, fire, barrel/flash/rounds line up; Esc exits. | Emplacement via takeover (M2) |
+| S0b | Security 1, the Arasaka floor turret (the Minotaur's HMG, real damage, NPCs react) and the car-mounted turret work fully. Security 2 has no gun and a fixed view; the big turret is invisible and deals no damage; the vehicle turret's view can't move. After exit, V's camera and restrictions are back to normal. | M2 body: Arasaka floor or Security 1 |
+| S1 | Passed. The MaxTac turret entity and a lone HMG mesh on a host entity spawn and spin smoothly (per-frame `SetWorldTransform`). | Part entities work (fallback skins) |
+| S2 / S2b | No route fired by script with V as the owner dealt damage: the weapon's player or NPC attack record, and a V-instigated area hit from a TweakXL attack record (loaded, but never applied). Mech-owned rounds can hurt (one burst: 29 damage). | V-credited damage needed another route |
+| S2c / S7 | The vanilla turret call. The log and the report disagree: the one kill logged under "V + target point", while "V, no point" in S7 gave slow rounds that vanish after about a foot. The S7 retest (build 3be8ac5, three selectable calls, each logged) settles it. | M1 fire call |
+| S4 | Passed. A mesh component bound to another rotates on its own with `SetLocalOrientation`. | Component skins on static bodies |
+| S5 / S5b | The MK.31 meshes hide and show with `Toggle`. No HMG attached to the Minotaur ever showed: `Entity/Assemble` with a record filter never fired for the spawned mech, and no slot component resolves `r_weapon_jnt`. | Route (A) dropped |
+| S6 | All four look-ats (RightWeapon, LeftWeapon, Weapon, Chassis) together brought both guns to the target (45° → 0.6°). RightWeapon alone and Chassis alone help; Weapon alone and arm IK (`ikRightArm`/`ikLeftArm`) do nothing. | Route (B): the Minotaur's own guns aim |
+| S7 | Piloting with the four look-ats on the moving aim marker: aim error mostly 0-5°, "a bit off but far far improved"; spikes of 40-100° while turning hard. Mech-owned rounds deal damage. Build 3be8ac5 adds the 4° fire gate. | M1 aim |
