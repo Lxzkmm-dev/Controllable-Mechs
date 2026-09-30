@@ -120,11 +120,27 @@ public class CMCSession extends ScriptableSystem {
   private func OnAttach() -> Void {
     let cbs = GameInstance.GetCallbackSystem();
     cbs.RegisterCallback(n"Session/BeforeEnd", this, n"OnSessionEnd").SetLifetime(CallbackLifetime.Forever);
-    cbs.RegisterCallback(n"Input/Key", this, n"OnKey").SetLifetime(CallbackLifetime.Forever);
-    cbs.RegisterCallback(n"Input/Axis", this, n"OnAxis")
-      .AddTarget(InputTarget.Axis(EInputKey.IK_MouseX))
-      .AddTarget(InputTarget.Axis(EInputKey.IK_MouseY))
-      .SetLifetime(CallbackLifetime.Forever);
+  }
+
+  // The raw keyboard and mouse callbacks exist only while piloting: registered on entering,
+  // removed on leaving, so outside a session no key press or mouse move reaches this mod.
+  private let m_inputOn: Bool;
+
+  private func ListenInput(on: Bool) -> Void {
+    if Equals(on, this.m_inputOn) {
+      return;
+    }
+    this.m_inputOn = on;
+    let cbs = GameInstance.GetCallbackSystem();
+    if on {
+      cbs.RegisterCallback(n"Input/Key", this, n"OnKey");
+      cbs.RegisterCallback(n"Input/Axis", this, n"OnAxis")
+        .AddTarget(InputTarget.Axis(EInputKey.IK_MouseX))
+        .AddTarget(InputTarget.Axis(EInputKey.IK_MouseY));
+    } else {
+      cbs.UnregisterCallback(n"Input/Key", this, n"OnKey");
+      cbs.UnregisterCallback(n"Input/Axis", this, n"OnAxis");
+    }
   }
 
   private func OnDetach() -> Void {
@@ -306,6 +322,7 @@ public class CMCSession extends ScriptableSystem {
     }
     this.m_attachPending = true;
     GameInstance.GetCallbackSystem().RegisterCallback(n"Entity/Attached", this, n"OnCamAttached");
+    this.ListenInput(true);
     let timeout = new CMCTimeoutCb();
     timeout.system = this;
     timeout.generation = this.m_gen;
@@ -381,6 +398,7 @@ public class CMCSession extends ScriptableSystem {
       player.m_cmcSession = null;
     }
     CMCSession.Log("end (" + reason + ") after " + IntToString(this.m_frames) + " frames");
+    this.ListenInput(false);
     if this.m_attachPending {
       this.m_attachPending = false;
       GameInstance.GetCallbackSystem().UnregisterCallback(n"Entity/Attached", this, n"OnCamAttached");
