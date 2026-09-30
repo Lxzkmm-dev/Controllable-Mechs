@@ -138,6 +138,7 @@ public class CMPilotHud {
   private let PITCH_PX: Float = 6.0;         // px per degree on the elevation ladder
   private let m_hitBars: array<ref<inkRectangle>>;
   private let m_parts: array<ref<CMHudPart>>;     // the damage schematic, one per CMPart
+  private let m_sensor: Float;                    // the sensor's integrity: below half, the display suffers
   private let m_hitT: Float;
 
   private let BAR_W: Float = 415.0;          // 20 cells of 16 with 5 between
@@ -353,7 +354,7 @@ public class CMPilotHud {
   // behind): a red chevron on a ring round the sight points toward it and fades over a
   // second. Four markers are reused in turn.
   public func HitFrom(off: Float) -> Void {
-    if !IsDefined(this.m_root) || ArraySize(this.m_hitDirs) == 0 {
+    if !IsDefined(this.m_root) || ArraySize(this.m_hitDirs) == 0 || this.m_sensor <= 0.0 {
       return;
     }
     let m = this.m_hitDirs[this.m_hitNext];
@@ -746,6 +747,7 @@ public class CMPilotHud {
   private func BuildParts(root: ref<inkCanvas>) -> Void {
     ArrayClear(this.m_parts);
     ArrayResize(this.m_parts, CMPart.Count());
+    this.m_sensor = 1.0;
     let k = 0.66;                               // atlas pixels to design units
     let w = 460.0 * k;
     let h = 512.0 * k;
@@ -820,6 +822,32 @@ public class CMPilotHud {
       }
       p.canvas.PlayAnimation(blink);
     }
+  }
+
+  // The sensor's state on the display: once it is gone, the compass tape and the pitch
+  // ladder go dark (no heading or attitude), and the hit-direction markers stop.
+  private func SetSensor(hp: Float) -> Void {
+    let was = this.m_sensor;
+    this.m_sensor = hp;
+    if NotEquals(hp <= 0.0, was <= 0.0) {
+      this.m_tape.SetVisible(hp > 0.0);
+      this.m_pitchMark.SetVisible(hp > 0.0);
+    }
+  }
+
+  // a burst of static: the display drops out and jolts for a moment
+  private func Static() -> Void {
+    let def = new inkAnimDef();
+    def.AddInterpolator(CMPilotHud.Fade(1.0, 0.15, 0.03, 0.0));
+    def.AddInterpolator(CMPilotHud.Fade(0.15, 0.8, 0.05, 0.03));
+    def.AddInterpolator(CMPilotHud.Fade(0.8, 0.3, 0.04, 0.08));
+    def.AddInterpolator(CMPilotHud.Fade(0.3, 1.0, 0.1, 0.12));
+    let move = new inkAnimTranslation();
+    move.SetStartTranslation(Vector2(RandRangeF(-18.0, 18.0), RandRangeF(-6.0, 6.0)));
+    move.SetEndTranslation(Vector2(0.0, 0.0));
+    move.SetDuration(0.2);
+    def.AddInterpolator(move);
+    this.m_root.PlayAnimation(def);
   }
 
   // a part that just took a hit flashes, so you can see what is being hit
@@ -1055,7 +1083,14 @@ public class CMPilotHud {
       return;
     }
     this.m_title.SetText(s.title);
-    this.m_heading.SetText("[ HDG " + CMPilotHud.Pad3(s.heading) + " " + CMPilotHud.Cardinal(s.heading) + " ]");
+    if ArraySize(s.parts) > 0 {
+      this.SetSensor(s.parts[CMPart.Sensor()]);
+    }
+    this.m_heading.SetText(this.m_sensor <= 0.0 ? "[ HDG --- ]" : "[ HDG " + CMPilotHud.Pad3(s.heading) + " " + CMPilotHud.Cardinal(s.heading) + " ]");
+    // a damaged sensor throws static bursts on the display, more often once it is gone
+    if this.m_sensor < 0.5 && RandF() < (this.m_sensor <= 0.0 ? 0.05 : 0.025) {
+      this.Static();
+    }
     this.m_range.SetText(s.range > 0.0 ? "[ LRF " + CMPilotHud.Pad4(RoundF(s.range)) + " M ]" : "[ LRF ---- M ]");
     this.m_zoom.SetText(s.zoomed ? "OPTICS 2.5X" : "");
 

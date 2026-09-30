@@ -128,7 +128,7 @@ public class CMCParts extends ScriptableSystem {
     }
     this.State(mech.GetEntityID()).hp[part] = 0.0;
     if part == CMPart.ArmL() || part == CMPart.ArmR() {
-      CMCParts.BreakWeakspot(mech, part == CMPart.ArmL());
+      CMCParts.BlowGun(mech, part == CMPart.ArmL());
       CMCParts.ShowGun(mech, part == CMPart.ArmL(), false);
     }
 
@@ -217,6 +217,7 @@ public class CMCParts extends ScriptableSystem {
     if IsDefined(this.m_test) && (!on || this.m_test != mech) {
       this.m_test.m_cmTestTarget = false;
       GameInstance.GetGodModeSystem(this.m_test.GetGame()).RemoveGodMode(this.m_test.GetEntityID(), gameGodModeType.Immortal, n"CMDamageTest");
+      CMCParts.ShieldSpots(this.m_test, false);
       this.m_test = null;
     }
     if !on || !IsDefined(mech) {
@@ -224,6 +225,8 @@ public class CMCParts extends ScriptableSystem {
     }
     mech.m_cmTestTarget = true;
     GameInstance.GetGodModeSystem(mech.GetGame()).AddGodMode(mech.GetEntityID(), gameGodModeType.Immortal, n"CMDamageTest");
+    // the vanilla weak spots must not die under fire: that takes both guns off (BlowGun)
+    CMCParts.ShieldSpots(mech, true);
     this.m_test = mech;
     CMCSession.Log("parts: damage test on");
   }
@@ -253,6 +256,26 @@ public class CMCParts extends ScriptableSystem {
     CMCParts.Screen(mech.GetGame(), "DAMAGE TEST: " + text);
   }
 
+  // the weak spots made (or no longer) invulnerable for the damage test
+  public static func ShieldSpots(mech: ref<NPCPuppet>, on: Bool) -> Void {
+    let comp = mech.GetWeakspotComponent();
+    if !IsDefined(comp) {
+      return;
+    }
+    let spots: array<wref<WeakspotObject>>;
+    comp.GetWeakspots(spots);
+    let gods = GameInstance.GetGodModeSystem(mech.GetGame());
+    for spot in spots {
+      if IsDefined(spot) {
+        if on {
+          gods.AddGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"CMDamageTest");
+        } else {
+          gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"CMDamageTest");
+        }
+      }
+    }
+  }
+
   // a line in the game's on-screen message slot
   public static func Screen(game: GameInstance, text: String) -> Void {
     let msg: SimpleScreenMessage;
@@ -273,9 +296,11 @@ public class CMCParts extends ScriptableSystem {
     }
   }
 
-  // the weak spot on that arm destroyed as the game does it (its own smoke, sparks and
-  // "destroyed" look). The mech's two weak spots are told apart by which side they sit.
-  public static func BreakWeakspot(mech: ref<NPCPuppet>, left: Bool) -> Void {
+  // A gun shot off: the weak spot on that arm plays its "destroyed" effects, but is not
+  // killed. Killing it (ScriptedWeakspotObject.Kill) takes BOTH guns off the Minotaur and
+  // leaves it unable to fire (Omar's test, 2026-09-30), so the one gun is hidden by its
+  // mesh component instead (ShowGun). The two weak spots are told apart by their side.
+  public static func BlowGun(mech: ref<NPCPuppet>, left: Bool) -> Void {
     let comp = mech.GetWeakspotComponent();
     if !IsDefined(comp) {
       return;
@@ -288,10 +313,9 @@ public class CMCParts extends ScriptableSystem {
       if IsDefined(spot) {
         let side = Vector4.Dot(spot.GetWorldPosition() - pos, right);
         if (left && side < 0.0) || (!left && side > 0.0) {
-          // it has to be able to take the kill: the pilot session shields it
-          GameInstance.GetGodModeSystem(mech.GetGame()).RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"ControllableMechs");
-          ScriptedWeakspotObject.Kill(spot);
-          CMCSession.Log("parts: weak spot on the " + (left ? "left" : "right") + " (" + FloatToStringPrec(side, 1) + " m to the side) destroyed");
+          GameObjectEffectHelper.StartEffectEvent(spot, n"weakspot_destroyed");
+          GameObjectEffectHelper.StartEffectEvent(spot, n"weakspot_broken");
+          CMCSession.Log("parts: " + (left ? "left" : "right") + " gun blown off (" + FloatToStringPrec(side, 1) + " m to the side)");
         }
       }
     }

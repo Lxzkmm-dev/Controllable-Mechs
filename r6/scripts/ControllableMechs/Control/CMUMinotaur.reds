@@ -46,6 +46,7 @@ public class CMUMinotaur extends CMCUnit {
   private let m_partNoteUntil: Float;
   private let m_limpHalt: Bool;
   private let m_limpNext: Float;
+  private let m_gait: Float;          // the walk's animation speed (a damaged leg slows it)
   private let m_mech: wref<NPCPuppet>;
   private let m_sensorUp: Float;      // the sensor mount, read once per session
   private let m_sensorFwd: Float;
@@ -189,6 +190,7 @@ public class CMUMinotaur extends CMCUnit {
     this.m_partsOn = cfg.PartDamage();
     this.m_parts = CMCParts.Get(this.m_game).State(mech.GetEntityID());
     this.m_partNote = "";
+    this.m_gait = 1.0;
     this.ApplyParts(s, mech);
     CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
     return "";
@@ -346,6 +348,10 @@ public class CMUMinotaur extends CMCUnit {
       this.Armour(mech, 1.0);   // its own health again (the percentage carries over)
     }
     GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"q110_sc_08c_personal_link_disconnected");
+    if IsDefined(mech) && this.m_gait != 1.0 {
+      mech.UnsetIndividualTimeDilation();
+    }
+    this.m_gait = 1.0;
     this.Pacify(mech, false);
     if IsDefined(mech) {
       this.CancelCmd(mech, this.m_moveCmd);
@@ -856,6 +862,7 @@ public class CMUMinotaur extends CMCUnit {
     this.m_air = this.Airborne(s, mech);
     if !this.m_air {
       this.Drive(s, mech, now);
+      this.Gait(mech);
     }
     return "";
   }
@@ -1126,6 +1133,28 @@ public class CMUMinotaur extends CMCUnit {
     }
   }
 
+  // A damaged leg slows the walk: the mech's animation runs slower while it walks (one leg
+  // broken 60%, both 40%, a leg under half 85%), so it covers less ground. The Minotaur has
+  // no limping walk of its own. Set only when the speed changes.
+  private func Gait(mech: ref<NPCPuppet>) -> Void {
+    let want = 1.0;
+    if this.m_moving {
+      let l = this.PartHp(CMPart.LegL());
+      let r = this.PartHp(CMPart.LegR());
+      let broken = (l <= 0.0 ? 1 : 0) + (r <= 0.0 ? 1 : 0);
+      want = broken == 2 ? 0.4 : (broken == 1 ? 0.6 : (l < 0.5 || r < 0.5 ? 0.85 : 1.0));
+    }
+    if want == this.m_gait {
+      return;
+    }
+    this.m_gait = want;
+    if want < 1.0 {
+      mech.SetIndividualTimeDilation(n"CMDamagedLeg", want);
+    } else {
+      mech.UnsetIndividualTimeDilation();
+    }
+  }
+
   // A damaged leg: the walk comes in halting strides, the body dipping as it plants on the
   // bad leg. One leg broken: short strides and halts; both: shorter, longer halts; a leg
   // under half: a slight hitch. True while halted (no walk order goes out).
@@ -1165,7 +1194,7 @@ public class CMUMinotaur extends CMCUnit {
   private func BreakPart(s: ref<CMCSession>, mech: ref<NPCPuppet>, part: Int32) -> Void {
     if part == CMPart.ArmL() || part == CMPart.ArmR() {
       let left = part == CMPart.ArmL();
-      CMCParts.BreakWeakspot(mech, left);
+      CMCParts.BlowGun(mech, left);
     }
     this.ApplyParts(s, mech);
     this.m_partNote = CMPart.Name(part) + (part == CMPart.Sensor() ? " DESTROYED - OPTICS OFFLINE" : (part == CMPart.LegL() || part == CMPart.LegR() ? " CRIPPLED" : " DESTROYED"));
