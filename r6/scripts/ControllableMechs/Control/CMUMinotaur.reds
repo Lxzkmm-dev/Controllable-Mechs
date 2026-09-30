@@ -78,6 +78,9 @@ public class CMUMinotaur extends CMCUnit {
   private let MISSILE_RADIUS: Float = 5.0;     // blast radius, metres
   private let MISSILE_DAMAGE: Float = 900.0;   // physical damage added to the blast
   private let m_missileReady: Float;
+  private let m_launchL: wref<WeaponObject>;
+  private let m_launchR: wref<WeaponObject>;
+  private let m_launchLeft: Bool;
   private let m_audioTrigger: Bool;
   private let m_fireLoop: Bool;
   private let m_heatWarned: Bool;
@@ -141,6 +144,7 @@ public class CMUMinotaur extends CMCUnit {
     GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_q110_personal_link_01");   // link established
     CMCSession.Log("Minotaur: guns " + this.m_guns.Describe());
     this.LogInventory(mech);
+    this.FindLaunchers(mech);
     this.m_missileReady = 0.0;
     this.m_hull = -1.0;
     this.Armour(mech, s.HullMult());
@@ -422,6 +426,24 @@ public class CMUMinotaur extends CMCUnit {
     }
     this.m_missileReady = now + this.MISSILE_COOLDOWN;
     let at = s.aim;
+    // the mech's own launchers when they are live weapon objects: left and right in turn,
+    // a real projectile toward the reticle point, its hits credited to V like the MK.31s
+    let launcher = this.NextLauncher();
+    if IsDefined(launcher) {
+      launcher.m_cmWatched = true;
+      launcher.m_cmCreditV = s.CreditV();
+      let trigger = gamedataTriggerMode.SemiAuto;
+      let rec = launcher.GetWeaponRecord();
+      if IsDefined(rec) && IsDefined(rec.PrimaryTriggerMode()) {
+        trigger = rec.PrimaryTriggerMode().Type();
+      }
+      AIWeapon.Fire(mech, launcher, EngineTime.ToFloat(GameInstance.GetSimTime(this.m_game)), 1.0, trigger, at);
+      GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_wpn_missile_fire_single");
+      s.rig.Recoil(1.6);
+      CMCSession.Log("missile: REAL LAUNCHER " + TDBID.ToStringDEBUG(ItemID.GetTDBID(launcher.GetItemID())) + " fired at " + CMHitLog.V(at) + " (its hits show in the hit trace)");
+      return;
+    }
+    CMCSession.Log("missile: no live launcher object, using the stand-in strike");
     let flight = ClampF(Vector4.Distance(mech.GetWorldPosition(), at) / this.MISSILE_SPEED, 0.25, 2.5);
     GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_wpn_missile_fire_single");
     s.rig.Recoil(1.6);
@@ -430,6 +452,35 @@ public class CMUMinotaur extends CMCUnit {
     cb.at = at;
     GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, flight, false);
     CMCSession.Log("missile: launched at " + CMHitLog.V(at) + ", " + FloatToStringPrec(flight, 2) + " s flight");
+  }
+
+  // The launchers are in the mech's inventory (Items.Minotaur_Launcher_Right / _Left); they
+  // can only fire if the game has them out as weapon objects in a slot. Looked up once on
+  // entering.
+  private func FindLaunchers(mech: ref<NPCPuppet>) -> Void {
+    let ts = GameInstance.GetTransactionSystem(this.m_game);
+    let items: array<wref<gameItemData>>;
+    ts.GetItemList(mech, items);
+    this.m_launchL = null;
+    this.m_launchR = null;
+    for item in items {
+      let id = item.GetID();
+      let tdb = ItemID.GetTDBID(id);
+      if tdb == t"Items.Minotaur_Launcher_Left" {
+        this.m_launchL = ts.GetItemInSlotByItemID(mech, id) as WeaponObject;
+      }
+      if tdb == t"Items.Minotaur_Launcher_Right" {
+        this.m_launchR = ts.GetItemInSlotByItemID(mech, id) as WeaponObject;
+      }
+    }
+    CMCSession.Log("launchers: left " + (IsDefined(this.m_launchL) ? "live" : "not in a slot") + ", right " + (IsDefined(this.m_launchR) ? "live" : "not in a slot"));
+  }
+
+  private func NextLauncher() -> ref<WeaponObject> {
+    this.m_launchLeft = !this.m_launchLeft;
+    let first: ref<WeaponObject> = this.m_launchLeft ? this.m_launchL : this.m_launchR;
+    let second: ref<WeaponObject> = this.m_launchLeft ? this.m_launchR : this.m_launchL;
+    return IsDefined(first) ? first : second;
   }
 
   public func Detonate(at: Vector4) -> Void {
@@ -622,6 +673,15 @@ public class CMUMinotaur extends CMCUnit {
     }
     if IsDefined(this.m_guns.right.weapon) {
       this.m_guns.right.weapon.m_cmCreditV = on;
+    }
+    // a launcher's flag is set as it fires; only ever cleared here
+    if !on {
+      if IsDefined(this.m_launchL) {
+        this.m_launchL.m_cmCreditV = false;
+      }
+      if IsDefined(this.m_launchR) {
+        this.m_launchR.m_cmCreditV = false;
+      }
     }
   }
 
