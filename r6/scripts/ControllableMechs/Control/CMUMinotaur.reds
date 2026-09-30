@@ -38,6 +38,8 @@ public class CMUMinotaur extends CMCUnit {
   private let m_holdCmd: ref<AICommand>;
   private let m_holdSent: Float;
   private let m_calmResets: Int32;
+  private let m_threatClears: Int32;
+  private let m_gunsLost: Bool;
   // what the AI still does on its own, for the log: the body moving or turning while we
   // gave no order
   private let m_stoodPos: Vector4;
@@ -157,16 +159,21 @@ public class CMUMinotaur extends CMCUnit {
     return "";
   }
 
-  // While piloted the mech's own AI must not act. What woke it was its reaction component:
-  // gunfire, explosions and bullets landing near it are stimuli, and each one put it in the
-  // Alerted state, where it turns toward the noise and walks over to look (the log showed
-  // 26 of those against one Combat). So that component is switched off, with its senses
-  // and target tracking (no threats, so nothing to fight), and its high-level state is put
-  // back to relaxed ten times a second if anything still moves it. All restored on exit.
+  // While piloted the mech's own AI must not act. Three things woke it, and each is shut:
+  //   - being hit, and threats shared by its squad, made whoever shot it a combat target
+  //     (it turned to them, walked at them and swung at them when close): the flag set
+  //     here makes the game's threat functions skip this puppet (CMCCalm)
+  //   - gunfire and explosions are stimuli that put it in the Alerted state: its reaction
+  //     component is switched off
+  //   - its own senses and target tracking: switched off, the threat list cleared
+  // Ten times a second its state is put back to relaxed and its threat list emptied if
+  // anything still got through. All restored on exit.
   private func Pacify(mech: ref<NPCPuppet>, on: Bool) -> Void {
     if !IsDefined(mech) {
       return;
     }
+    mech.m_cmPiloted = on;
+    this.Shield(mech, on);
     let reactions = mech.GetStimReactionComponent();
     if IsDefined(reactions) {
       reactions.Toggle(!on);
@@ -186,6 +193,7 @@ public class CMUMinotaur extends CMCUnit {
       NPCPuppet.ChangeHighLevelState(mech, gamedataNPCHighLevelState.Relaxed);
     }
     this.m_calmResets = 0;
+    this.m_threatClears = 0;
     this.m_strayLogs = 0;
     CMCSession.Log("AI " + (on ? "suppressed (stimulus reactions" + (IsDefined(reactions) ? "" : " [no component]") + ", senses and target tracking off, relaxed)" : "restored") + ", state now " + CMUMinotaur.StateName(mech));
   }
@@ -195,7 +203,7 @@ public class CMUMinotaur extends CMCUnit {
   }
 
   // ten times a second: one blackboard read and two flag reads unless something is wrong
-  private func KeepCalm(mech: ref<NPCPuppet>, now: Float) -> Void {
+  private func KeepCalm(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
     let state = mech.GetHighLevelStateFromBlackboard();
     if Equals(state, gamedataNPCHighLevelState.Combat) || Equals(state, gamedataNPCHighLevelState.Alerted) {
       NPCPuppet.ChangeHighLevelState(mech, gamedataNPCHighLevelState.Relaxed);
@@ -208,6 +216,16 @@ public class CMUMinotaur extends CMCUnit {
         CMCSession.Log("AI went to " + EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(state))) + ", set back to relaxed (" + IntToString(this.m_calmResets) + "); " + (this.m_moving ? "walking" : "standing") + (this.m_turning ? ", turning" : ""));
       }
     }
+    // a threat that got in some other way: out again
+    let threats = mech.GetTargetTrackerComponent();
+    if IsDefined(threats) && threats.HasHostileThreat(false) {
+      threats.ClearThreats();
+      this.m_threatClears += 1;
+      if this.m_threatClears <= 20 {
+        CMCSession.Log("AI had a hostile threat, threat list cleared (" + IntToString(this.m_threatClears) + ")");
+      }
+    }
+    this.WatchGuns(s, mech);
     // something switched its reactions back on (a quest or a system re-initialising it)
     let reactions = mech.GetStimReactionComponent();
     if IsDefined(reactions) && reactions.IsEnabled() {
@@ -230,6 +248,50 @@ public class CMUMinotaur extends CMCUnit {
       }
     }
   }
+
+  // The Minotaur's weak spots (its arms and weapon mounts) are objects of their own with
+  // little health; shot off, the MK.31 on that arm is gone. While piloted they take no
+  // damage (the hull multiplier would mean nothing if the guns fell off first).
+  private func Shield(mech: ref<NPCPuppet>, on: Bool) -> Void {
+    let comp = mech.GetWeakspotComponent();
+    if !IsDefined(comp) {
+      return;
+    }
+    let spots: array<wref<WeakspotObject>>;
+    comp.GetWeakspots(spots);
+    let gods = GameInstance.GetGodModeSystem(this.m_game);
+    for spot in spots {
+      if IsDefined(spot) {
+        if on {
+          gods.AddGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"ControllableMechs");
+        } else {
+          gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"ControllableMechs");
+        }
+      }
+    }
+    CMCSession.Log("weak spots: " + IntToString(ArraySize(spots)) + (on ? " shielded" : " unshielded"));
+  }
+
+  // ten times a second: a gun whose weapon object has gone is looked up again; the log
+  // says when one is lost and what the mech still carries, and when it comes back
+  private func WatchGuns(s: ref<CMCSession>, mech: ref<NPCPuppet>) -> Void {
+    let ready = (this.m_guns.left.Ready() ? 1 : 0) + (this.m_guns.right.Ready() ? 1 : 0);
+    if ready == 2 {
+      this.m_gunsLost = false;
+      return;
+    }
+    if !this.m_gunsLost {
+      this.m_gunsLost = true;
+      CMCSession.Log("WEAPON LOST: left " + (this.m_guns.left.Ready() ? "ok" : "gone") + ", right " + (this.m_guns.right.Ready() ? "ok" : "gone") + ", hull " + IntToString(RoundF(this.m_hull * 100.0)) + "%");
+      this.LogInventory(mech);
+    }
+    if this.m_guns.Refresh(mech) {
+      this.m_gunsLost = false;
+      CMCSession.Log("weapons found again: " + this.m_guns.Describe());
+      CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
+    }
+  }
+
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
     let mech = this.Mech();
     this.StopServo(mech);
@@ -758,7 +820,7 @@ public class CMUMinotaur extends CMCUnit {
       return "!SIGNAL LOST";
     }
     this.SendLookAts(mech);
-    this.KeepCalm(mech, now);
+    this.KeepCalm(s, mech, now);
     this.ReadHull(mech);
     this.IntegrityAlarm(now);
     this.Drive(s, mech, now);
@@ -932,7 +994,9 @@ public class CMUMinotaur extends CMCUnit {
     let wait = this.m_missileReady - s.Now();
     st.hints = st.hints + "   [G] MISSILE";
     st.missile = wait > 0.0 ? "MSL RELOAD " + IntToString(CeilF(wait)) + "S" : "MSL READY";
-    if st.integrity < 0.3 {
+    if !st.hasL && !st.hasR {
+      st.warning = "NO WEAPONS - MK.31 OFFLINE";
+    } else if st.integrity < 0.3 {
       st.warning = "HULL INTEGRITY LOW";
     } else {
       if st.signal < 0.2 {

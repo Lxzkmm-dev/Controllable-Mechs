@@ -88,6 +88,43 @@ public class CMPilotGuns {
 
   public func Describe() -> String = this.m_names
 
+  // A gun whose weapon object has gone (the game removed or re-created the item): look the
+  // slots up again, keeping each gun's heat. True when a gun got its weapon back.
+  public func Refresh(mech: ref<NPCPuppet>) -> Bool {
+    if this.left.Ready() && this.right.Ready() {
+      return false;
+    }
+    let ts = GameInstance.GetTransactionSystem(mech.GetGame());
+    let r = ScriptedPuppet.GetWeaponRight(mech);
+    let l = ScriptedPuppet.GetWeaponLeft(mech);
+    if !IsDefined(r) {
+      r = ts.GetItemInSlot(mech, t"AttachmentSlots.WeaponRight") as WeaponObject;
+    }
+    if !IsDefined(l) {
+      l = ts.GetItemInSlot(mech, t"AttachmentSlots.WeaponLeft") as WeaponObject;
+    }
+    let back = false;
+    if !this.right.Ready() && IsDefined(r) {
+      this.right.weapon = r;
+      back = true;
+    }
+    if !this.left.Ready() && IsDefined(l) {
+      this.left.weapon = l;
+      back = true;
+    }
+    // one weapon left: both triggers drive it
+    if !this.left.Ready() && this.right.Ready() {
+      this.left.weapon = this.right.weapon;
+      back = true;
+    }
+    if !this.right.Ready() && this.left.Ready() {
+      this.right.weapon = this.left.weapon;
+      back = true;
+    }
+    this.m_names = "L " + CMPilotGuns.ItemName(this.left.weapon) + "  R " + CMPilotGuns.ItemName(this.right.weapon);
+    return back;
+  }
+
   // ---- round speed: the MK.31s are smart guns, whose rounds are slow homing
   // projectiles; their speed is a stat on the weapon. A multiplier while piloting,
   // removed on exit. Returns the velocity before and after, for the log.

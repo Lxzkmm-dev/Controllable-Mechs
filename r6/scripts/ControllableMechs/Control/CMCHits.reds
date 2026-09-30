@@ -79,6 +79,14 @@ public class CMCHits extends ScriptableSystem {
       + (StrLen(cancelled) > 0 ? ", CANCELLED:" + cancelled : ""));
   }
 
+  // a diagnostics line under the same limit (at most 25 lines per 5 s)
+  public static func Trace(game: GameInstance, text: String) -> Void {
+    let sys = CMCHits.Get(game);
+    if IsDefined(sys) && sys.Allow(EngineTime.ToFloat(GameInstance.GetEngineTime(game))) {
+      CMCSession.Log(text);
+    }
+  }
+
   private func Allow(now: Float) -> Bool {
     if now - this.m_window > 5.0 {
       this.m_window = now;
