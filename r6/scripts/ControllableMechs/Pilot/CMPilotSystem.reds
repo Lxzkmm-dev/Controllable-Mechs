@@ -186,7 +186,7 @@ public class CMPilotSystem extends ScriptableSystem {
     if i >= 0 && i < ArraySize(ids) {
       return ids[i];
     }
-    return "militech";
+    return "cm_military";   // our own palette, registered with TerminalKit (CMMilitaryPalette)
   }
 
   public func SetTheme(id: String) -> Void {

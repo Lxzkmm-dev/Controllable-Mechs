@@ -20,7 +20,23 @@ public class CMTerminal extends TKPopup {
   public func Name() -> String = "ROBOT LINK"
   public func Status() -> String = "MT-FCS FIELD TERMINAL // SECURE CH 07 // v" + CMVersion.Text() + " // ] CLOSE"
   public func BootText() -> String = "MILITECH FIELD TERMINAL // AUTHENTICATING OPERATOR..."
+  public func BootLines() -> array<String> = ["MILITECH FIELD TERMINAL // COLD START", "OPERATOR AUTHENTICATED", "SECURE CHANNEL 07 ........ UP", "UNIT BUS ................. OK", "FIRE CONTROL ............. STANDBY"]
+  public func BootSeconds() -> Float = 1.6
   public func StartPage() -> String = "link"
+
+  // the rugged military look (TerminalKit's style hooks): an armoured frame with rivets
+  // and hazard blocks, headings on plates, ten-cell bars, faint scanlines
+  public func Style() -> ref<TKStyle> {
+    let s = new TKStyle();
+    s.frame = 2;
+    s.rivets = true;
+    s.hazard = true;
+    s.scanlines = 0.08;
+    s.headerPlates = true;
+    s.segmentedBars = 10;
+    s.selectSound = n"ui_menu_onpress";
+    return s;
+  }
 
   // Forget the open terminal as it closes. Closing() runs before the popup is torn
   // down (Closed() runs after, when GetGame() may no longer resolve, which left the
@@ -54,6 +70,7 @@ public class CMTerminal extends TKPopup {
       TKLog.Add("ControllableMechs", "terminal: not opened (a menu, pause or photo mode is up)");
       return;
     }
+    TKTheme.Register(new CMMilitaryPalette());   // the same id replaces, so this is safe to repeat
     let terminal = new CMTerminal();
     state.open = terminal;
     TKPopup.Open(player, terminal);
@@ -82,9 +99,29 @@ public class CMTerminal extends TKPopup {
   }
 }
 
+// The terminal's palette, matching the pilot HUD: phosphor olive, amber for emphasis,
+// sand text, dark olive rules. Registered with TerminalKit as "cm_military".
+public class CMMilitaryPalette extends TKPalette {
+  public func Id() -> String = "cm_military"
+  public func Color(role: String) -> HDRColor {
+    switch role {
+      case "title": return new HDRColor(0.58, 0.84, 0.36, 1.0);
+      case "accent": return new HDRColor(1.0, 0.70, 0.10, 1.0);
+      case "text": return new HDRColor(0.72, 0.78, 0.62, 1.0);
+      case "rule": return new HDRColor(0.22, 0.34, 0.15, 1.0);
+      case "frame": return new HDRColor(0.46, 0.68, 0.30, 1.0);
+    }
+    return new HDRColor(0.86, 0.90, 0.76, 1.0);
+  }
+}
+
 // Which terminal is open (one at a time)
 public class CMTerminalState extends ScriptableSystem {
   public let open: wref<CMTerminal>;
+
+  private func OnPlayerAttach(request: ref<PlayerAttachRequest>) -> Void {
+    TKTheme.Register(new CMMilitaryPalette());
+  }
 
   public static func Get(game: GameInstance) -> ref<CMTerminalState> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.CMTerminalState") as CMTerminalState;
