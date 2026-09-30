@@ -84,6 +84,9 @@ public class CMCSession extends ScriptableSystem {
   private persistent let m_chase: Bool;
   private persistent let m_creditVOff: Bool;  // false = kills and aggro credit V (the default)
 
+  private let CHASE_SIDE: Float = 1.8;   // chase view: metres right of the unit's centre line
+  private let CHASE_LIFT: Float = 0.5;   // chase view: metres above the chase height
+
   public static func Get(game: GameInstance) -> ref<CMCSession> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.Control.CMCSession") as CMCSession;
   }
@@ -698,6 +701,10 @@ public class CMCSession extends ScriptableSystem {
     let optics = this.m_fireMode == CMFireMode.Split() ? this.Key(CMCKey.Mmb()) : this.Key(CMCKey.Rmb());
     this.zoom = optics;
     this.rig.Update(dt, this.m_unit.Ground(), this.CamUp(), this.CamFwd(), this.zoom);
+    if this.m_chase {
+      // over the right shoulder, a little higher, so the hull never covers the reticle
+      this.rig.pos += CMPilotRig.Dir(this.rig.yaw - 90.0, 0.0) * this.CHASE_SIDE + new Vector4(0.0, 0.0, this.CHASE_LIFT, 0.0);
+    }
     this.ClipCamera(dt);
     this.ApplyCamera();
     this.UpdateAim();

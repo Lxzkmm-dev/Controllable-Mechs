@@ -50,6 +50,9 @@ public class CMUMinotaur extends CMCUnit {
   private let TURN_ACCEL: Float = 60.0;      // deg/s², how hard it spins up and brakes
   private let TURN_K: Float = 2.5;           // wanted speed per degree still to go
   private let TURN_START_DEG: Float = 20.0;  // the view may be this far off before the body follows
+  private let TURN_START_SWEEP_DEG: Float = 8.0;  // ... or this far while the view is still swinging
+  private let LOOKAT_FOLLOW: Float = 3.0;    // look-at following speed factor (NPC default ~1)
+  private let LOOKAT_BLEND: Float = 3.0;     // look-at blend-in speed
 
   private let GATE_DEG: Float = 4.0;
   private let SPREAD_DEG: Float = 0.6;
@@ -227,7 +230,9 @@ public class CMUMinotaur extends CMCUnit {
     }
     let off = CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw);
     if !this.m_turning {
-      if AbsF(off) < this.TURN_START_DEG {
+      // the chassis leads a sweep: it starts sooner while the view is moving
+      let start = AbsF(s.rig.YawRate()) > 15.0 ? this.TURN_START_SWEEP_DEG : this.TURN_START_DEG;
+      if AbsF(off) < start {
         return;
       }
       this.m_turning = true;
@@ -306,10 +311,13 @@ public class CMUMinotaur extends CMCUnit {
       ev.bodyPart = part;
       ev.SetStyle(animLookAtStyle.Normal);
       ev.SetLimits(animLookAtLimitDegreesType.Wide, animLookAtLimitDegreesType.Wide, animLookAtLimitDistanceType.None, animLookAtLimitDegreesType.Wide);
+      // follow a moving target faster than the NPC default (the guns trailed a sweep by 15-20 deg)
+      ev.request.followingSpeedFactorOverride = this.LOOKAT_FOLLOW;
+      ev.request.transitionSpeed = this.LOOKAT_BLEND;
       mech.QueueEvent(ev);
       ArrayPush(this.m_lookAts, ev);
     }
-    CMCSession.Log("look-ats sent: RightWeapon, LeftWeapon, Weapon, Chassis");
+    CMCSession.Log("look-ats sent: RightWeapon, LeftWeapon, Weapon, Chassis (follow x" + FloatToStringPrec(this.LOOKAT_FOLLOW, 1) + ")");
   }
 
   // WASD relative to where the view looks; the mech walks there on its own legs
