@@ -55,10 +55,15 @@ public class CMUMinotaur extends CMCUnit {
   // rate, easing in and out (the look-ats cover the last TURN_START_DEG on their own)
   private let m_bodyYaw: Float;
   private let m_turnVel: Float;
-  private let m_turnMiss: Float;      // seconds the body has not followed our rotation
-  private let m_turnByOrder: Bool;    // the fallback: AI turn orders instead
-  private let m_turnSent: Float;
-  private let m_turnOrders: Int32;
+  private let m_turnByOrder: Bool;    // rotate with AI turn orders instead of teleports
+  private let m_sentOpen: Bool;       // a rotation request is out and has not landed yet
+  private let m_sentYaw: Float;
+  private let m_sentAt: Float;
+  private let m_landedAt: Float;
+  private let m_sent: Int32;          // since the last report
+  private let m_landed: Int32;
+  private let m_delaySum: Float;
+  private let m_turnReports: Int32;
   private let m_lookMiss: Int32;      // slow ticks the guns have been off with the body on
   private let m_lookSent: Float;
   private let m_turning: Bool;
@@ -141,9 +146,13 @@ public class CMUMinotaur extends CMCUnit {
     this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
     this.m_turnVel = 0.0;
     this.m_turning = false;
-    this.m_turnMiss = 0.0;
     this.m_turnByOrder = false;
-    this.m_turnOrders = 0;
+    this.m_sentOpen = false;
+    this.m_landedAt = 0.0;
+    this.m_sent = 0;
+    this.m_landed = 0;
+    this.m_delaySum = 0.0;
+    this.m_turnReports = 0;
     let turn = Cast<Float>(CMPilotSystem.Get(this.m_game).TurnPct()) / 100.0;
     this.m_turnRate = this.TURN_RATE * turn;
     this.m_gate = CMPilotSystem.Get(this.m_game).FireGate();
@@ -453,17 +462,21 @@ public class CMUMinotaur extends CMCUnit {
     CMCSession.Log("result: target " + CMCHits.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1) + " -> " + FloatToStringPrec(hp, 1));
   }
 
-  // Standing still, the chassis heading is ours: the body swings round toward the view
-  // with weight (a rate cap, spin-up and braking), by one rotation-only teleport a frame
-  // while it turns. Walking hands the facing back to the walk orders, which face the view.
+  // Standing still, the chassis heading is ours. `m_bodyYaw` is the heading we want: it
+  // swings toward the view with weight (a rate cap, spin-up and braking), by time alone.
+  // The body is then steered onto it one request at a time: the next rotation goes out
+  // only when the last one has landed (the body's real heading reached it) or has been
+  // given up on.
   //
-  // The game sometimes puts the body back on an old heading (the log showed it snapping
-  // tens of degrees back to where it stood when the session began). So every frame the
-  // body's real heading is compared with where we last put it:
-  //   - a jump that brings it nearer the view is taken as it is
-  //   - a jump away from the view is put back the same frame
-  // Only if the body does not follow at all for 2 s does the rest of the session fall back
-  // to the AI's own turn order, which turns in steps.
+  // Why one at a time: a rotation request sent every frame never landed at all. The log
+  // showed the body staying on exactly the same heading for seconds while a new request
+  // went out each frame, as if each one cancelled the one before it.
+  //
+  // Two ways of rotating, tried in this order for the session:
+  //   1. a rotation-only teleport
+  //   2. the AI's own turn order, aimed at the heading we want (a small step each time)
+  // If nothing has landed for 2 s while the body is still off, the next way is used, and
+  // the log says so. Walking hands the facing back to the walk orders.
   private func TurnChassis(s: ref<CMCSession>, mech: ref<NPCPuppet>, dt: Float) -> Void {
     let real = CMPilotRig.YawOf(mech.GetWorldForward());
     let now = s.Now();
@@ -472,94 +485,95 @@ public class CMUMinotaur extends CMCUnit {
       this.m_bodyYaw = real;
       this.m_turnVel = 0.0;
       this.m_turning = false;
-      this.m_turnMiss = 0.0;
+      this.m_sentOpen = false;
+      this.m_landedAt = now;
       return;
     }
-    if this.m_turnByOrder {
-      this.TurnByOrder(s, mech, real);
-      return;
+    // has the last request landed?
+    if this.m_sentOpen && AbsF(CMPilotRig.Wrap(real - this.m_sentYaw)) < (this.m_turnByOrder ? 3.5 : 1.0) {
+      this.m_sentOpen = false;
+      this.m_landedAt = now;
+      this.m_landed += 1;
+      this.m_delaySum += now - this.m_sentAt;
     }
-    let lag = CMPilotRig.Wrap(real - this.m_bodyYaw);
-    if AbsF(lag) > 2.0 + AbsF(this.m_turnVel) * dt * 3.0 {
-      let nearer = AbsF(CMPilotRig.Wrap(s.rig.yaw - real)) < AbsF(CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw));
-      this.m_turnMiss += dt;
-      if AbsF(lag) > 8.0 && now - this.m_strayYawAt > 0.5 && this.m_strayLogs < 30 {
-        this.m_strayYawAt = now;
-        this.m_strayLogs += 1;
-        CMCSession.Log("chassis: the body jumped " + FloatToStringPrec(lag, 1) + " deg on its own to " + FloatToStringPrec(real, 1) + (nearer ? " (nearer the view: kept)" : " (away from the view: put back)") + ", state " + CMUMinotaur.StateName(mech) + (this.m_turning ? ", mid-turn" : ", between turns"));
-      }
-      if nearer {
-        this.m_bodyYaw = real;
-      }
-    } else {
-      this.m_turnMiss = 0.0;
-    }
-    if this.m_turnMiss > 2.0 {
-      CMCSession.Log("CHASSIS: THE BODY HAS NOT FOLLOWED OUR ROTATION FOR 2 S (body at " + FloatToStringPrec(real, 1) + " deg, put at " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": falling back to AI turn orders, which turn in steps");
-      this.m_turnByOrder = true;
-      this.m_turning = false;
-      this.m_turnVel = 0.0;
-      this.m_turnMiss = 0.0;
-      this.m_bodyYaw = real;
-      return;
-    }
+    // the heading we want, swinging toward the view
     let off = CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw);
     if !this.m_turning {
       // the chassis leads a sweep: it starts sooner while the view is moving
       let start = AbsF(s.rig.YawRate()) > 15.0 ? this.TURN_START_SWEEP_DEG : this.TURN_START_DEG;
-      if AbsF(off) < start {
-        // at rest: hold the heading against anything that moved it
-        if AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw)) > 0.5 {
-          this.Face(mech, this.m_bodyYaw);
-        }
-        return;
+      if AbsF(off) >= start {
+        this.m_turning = true;
+        GameObject.PlaySoundEvent(mech, AbsF(off) > 120.0 ? n"enm_mech_minotaur_loco_idle_to_idle_180_l" : n"enm_mech_minotaur_loco_idle_to_idle_90");
       }
-      this.m_turning = true;
-      GameObject.PlaySoundEvent(mech, AbsF(off) > 120.0 ? n"enm_mech_minotaur_loco_idle_to_idle_180_l" : n"enm_mech_minotaur_loco_idle_to_idle_90");
     }
-    let want = ClampF(off * this.TURN_K, -this.m_turnRate, this.m_turnRate);
-    let step = this.m_turnAccel * dt;
-    this.m_turnVel += ClampF(want - this.m_turnVel, -step, step);
-    if AbsF(off) < 1.0 && AbsF(this.m_turnVel) < 3.0 {
-      this.m_turnVel = 0.0;
-      this.m_turning = false;
-      return;
+    if this.m_turning {
+      let want = ClampF(off * this.TURN_K, -this.m_turnRate, this.m_turnRate);
+      let step = this.m_turnAccel * dt;
+      this.m_turnVel += ClampF(want - this.m_turnVel, -step, step);
+      if AbsF(off) < 1.0 && AbsF(this.m_turnVel) < 3.0 {
+        this.m_turnVel = 0.0;
+        this.m_turning = false;
+        this.TurnReport(real);
+      } else {
+        this.m_bodyYaw = CMPilotRig.Wrap(this.m_bodyYaw + this.m_turnVel * dt);
+      }
     }
-    this.m_bodyYaw = CMPilotRig.Wrap(this.m_bodyYaw + this.m_turnVel * dt);
-    this.Face(mech, this.m_bodyYaw);
+    // steer the body onto it, one request at a time
+    let lag = AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw));
+    if lag <= 6.0 {
+      this.m_landedAt = now;
+    }
+    if lag > 0.7 && (!this.m_sentOpen || now - this.m_sentAt > (this.m_turnByOrder ? 0.45 : 0.25)) {
+      this.Rotate(mech, this.m_bodyYaw);
+      this.m_sentYaw = this.m_bodyYaw;
+      this.m_sentAt = now;
+      this.m_sentOpen = true;
+      this.m_sent += 1;
+    }
+    // nothing has landed for 2 s and the body is still well off: the other way
+    if lag > 6.0 && now - this.m_landedAt > 2.0 {
+      this.m_landedAt = now;
+      this.TurnReport(real);
+      if !this.m_turnByOrder {
+        this.m_turnByOrder = true;
+        CMCSession.Log("CHASSIS: NO TELEPORT ROTATION HAS LANDED FOR 2 S (body at " + FloatToStringPrec(real, 1) + " deg, wanted " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": rotating with AI turn orders from here");
+      } else {
+        CMCSession.Log("CHASSIS: NO TURN ORDER HAS LANDED FOR 2 S EITHER (body at " + FloatToStringPrec(real, 1) + " deg, wanted " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": back to teleports");
+        this.m_turnByOrder = false;
+      }
+    }
   }
 
-  private func Face(mech: ref<NPCPuppet>, yaw: Float) -> Void {
+  private func Rotate(mech: ref<NPCPuppet>, yaw: Float) -> Void {
+    if this.m_turnByOrder {
+      let world: WorldPosition;
+      WorldPosition.SetVector4(world, mech.GetWorldPosition() + CMPilotRig.Dir(yaw, 0.0) * 20.0);
+      let spec: AIPositionSpec;
+      AIPositionSpec.SetWorldPosition(spec, world);
+      let cmd = new AIRotateToCommand();
+      cmd.target = spec;
+      cmd.angleTolerance = 1.0;
+      this.Send(mech, cmd, false);
+      return;
+    }
     let e: EulerAngles;
     e.Yaw = yaw;
     GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, mech.GetWorldPosition(), e);
   }
-  // the fallback: the AI's own turn order toward the view, when the body is more than a
-  // few degrees off (tighter with the trigger held), at most one order every 0.6 s
-  private func TurnByOrder(s: ref<CMCSession>, mech: ref<NPCPuppet>, real: Float) -> Void {
-    this.m_bodyYaw = real;
-    let off = CMPilotRig.Wrap(s.rig.yaw - real);
-    let firing = s.Key(CMCKey.Lmb());
-    let now = s.Now();
-    if AbsF(off) < (firing ? 6.0 : 12.0) || now - this.m_turnSent < 0.6 {
+
+  // with diagnostics on, after each turn: how the rotation requests fared since the last report
+  private func TurnReport(real: Float) -> Void {
+    if this.m_sent == 0 || this.m_turnReports >= 40 {
       return;
     }
-    let world: WorldPosition;
-    WorldPosition.SetVector4(world, mech.GetWorldPosition() + CMPilotRig.Dir(s.rig.yaw, 0.0) * 20.0);
-    let spec: AIPositionSpec;
-    AIPositionSpec.SetWorldPosition(spec, world);
-    let cmd = new AIRotateToCommand();
-    cmd.target = spec;
-    cmd.angleTolerance = 3.0;
-    this.Send(mech, cmd, false);
-    this.m_turnSent = now;
-    this.m_turnOrders += 1;
-    if this.m_turnOrders <= 10 {
-      CMCSession.Log("chassis: turn order " + IntToString(this.m_turnOrders) + ", " + FloatToStringPrec(off, 1) + " deg to go");
-    }
-    GameObject.PlaySoundEvent(mech, AbsF(off) > 120.0 ? n"enm_mech_minotaur_loco_idle_to_idle_180_l" : n"enm_mech_minotaur_loco_idle_to_idle_90");
+    this.m_turnReports += 1;
+    CMCSession.Log("chassis: " + (this.m_turnByOrder ? "turn orders" : "teleports") + ": " + IntToString(this.m_sent) + " sent, " + IntToString(this.m_landed) + " landed"
+      + (this.m_landed > 0 ? ", " + IntToString(RoundF(this.m_delaySum / Cast<Float>(this.m_landed) * 1000.0)) + " ms each on average" : "")
+      + "; body now " + FloatToStringPrec(AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw)), 1) + " deg from the wanted heading");
+    this.m_sent = 0;
+    this.m_landed = 0;
+    this.m_delaySum = 0.0;
   }
-
   // What a barrel that is off the reticle points at: the nearest hit of a ray along it
   // (world geometry, then characters and vehicles), or a point 150 m out when it points at
   // nothing. Two raycasts, and only in the frame that gun is about to fire.

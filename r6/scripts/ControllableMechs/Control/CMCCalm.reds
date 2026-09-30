@@ -50,9 +50,37 @@ public final static func OnHit(ownerPuppet: wref<ScriptedPuppet>, evt: ref<gameH
 public final static func InjectThreat(puppet: wref<ScriptedPuppet>, threat: wref<Entity>, accuracy: Float, opt cooldown: Float) -> Void {
   if IsDefined(puppet) && puppet.m_cmPiloted {
     CMCCalm.Note(puppet, threat as GameObject, "a shared threat");
+    // the game has just named one of V's enemies to the unit: that enemy gets the unit
+    // as its enemy in return, so it fights the mech and not only V
+    CMCCalm.DrawFire(puppet, threat as ScriptedPuppet);
     return;
   }
   wrappedMethod(puppet, threat, accuracy, cooldown);
+}
+
+// The piloted unit's state stays relaxed: a request to alert it or put it in combat is
+// refused here, where it is made. (Letting it happen and resetting it afterwards made the
+// mech put its guns away and draw them again, and knocked the gun look-ats off.)
+@wrapMethod(NPCPuppet)
+public final static func ChangeHighLevelState(obj: ref<GameObject>, newState: gamedataNPCHighLevelState) -> Void {
+  let puppet = obj as ScriptedPuppet;
+  if IsDefined(puppet) && puppet.m_cmPiloted
+    && (Equals(newState, gamedataNPCHighLevelState.Alerted) || Equals(newState, gamedataNPCHighLevelState.Combat)
+      || Equals(newState, gamedataNPCHighLevelState.Stealth) || Equals(newState, gamedataNPCHighLevelState.Fear)) {
+    if CMPilotSystem.Get(puppet.GetGame()).ShowDebug() {
+      CMCHits.Trace(puppet.GetGame(), "AI kept out: a change of state to " + EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(newState))) + " was refused");
+    }
+    return;
+  }
+  wrappedMethod(obj, newState);
+}
+
+@wrapMethod(NPCStatesComponent)
+public final static func AlertPuppet(ownerPuppet: wref<ScriptedPuppet>) -> Void {
+  if IsDefined(ownerPuppet) && ownerPuppet.m_cmPiloted {
+    return;
+  }
+  wrappedMethod(ownerPuppet);
 }
 
 @wrapMethod(TargetTrackingExtension)
@@ -98,6 +126,34 @@ public abstract class CMCCalm {
       return CMCHits.Blamed(credited.GetGame());
     }
     return null;
+  }
+
+  // An enemy of V's that the game has named to the piloted unit: make it the unit's enemy
+  // too (hostile to the unit, with the unit on its threat list), so it goes for the mech.
+  // With CONFIG > HIDE V WHILE LINKED, V is also taken off its threat list, so it stops
+  // searching for V. Only enemies already hostile to V are touched; the threat call does
+  // nothing when the unit is on the list already.
+  public static func DrawFire(unit: wref<ScriptedPuppet>, enemy: wref<ScriptedPuppet>) -> Void {
+    if !IsDefined(enemy) || enemy.m_cmPiloted || enemy.IsPlayer() || !ScriptedPuppet.IsAlive(enemy) {
+      return;
+    }
+    let player = GetPlayer(unit.GetGame());
+    if !IsDefined(player) || NotEquals(GameObject.GetAttitudeBetween(enemy, player), EAIAttitude.AIA_Hostile) {
+      return;
+    }
+    let turned = false;
+    if NotEquals(GameObject.GetAttitudeBetween(enemy, unit), EAIAttitude.AIA_Hostile) {
+      GameObject.ChangeAttitudeToHostile(enemy, unit);
+      turned = true;
+    }
+    TargetTrackingExtension.InjectThreat(enemy, unit);
+    let cfg = CMPilotSystem.Get(unit.GetGame());
+    if cfg.HideOperator() {
+      TargetTrackingExtension.RemoveThreat(enemy, player);
+    }
+    if turned && cfg.ShowDebug() {
+      CMCHits.Trace(unit.GetGame(), "aggro: " + CMCHits.Describe(enemy) + ", " + FloatToStringPrec(Vector4.Distance(enemy.GetWorldPosition(), unit.GetWorldPosition()), 1) + " m from the mech, was made hostile to the mech and given it as a threat");
+    }
   }
 
   // with diagnostics on: who was made to turn on the unit
