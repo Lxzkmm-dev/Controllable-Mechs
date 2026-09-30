@@ -67,10 +67,11 @@ public class CMPartHit {
   public let broke: Bool;
 }
 
-// one mech's parts, 0..1 each
+// one mech's parts, 0..1 each, and which parts' damage effects are running on it
 public class CMPartState {
   public let id: EntityID;
   public let hp: array<Float>;
+  public let fx: array<Bool>;
 }
 
 public class CMCParts extends ScriptableSystem {
@@ -92,6 +93,7 @@ public class CMCParts extends ScriptableSystem {
     let i = 0;
     while i < CMPart.Count() {
       ArrayPush(st.hp, 1.0);
+      ArrayPush(st.fx, false);
       i += 1;
     }
     ArrayPush(this.m_states, st);
@@ -111,6 +113,7 @@ public class CMCParts extends ScriptableSystem {
     }
     CMCParts.ShowGun(mech, true, true);
     CMCParts.ShowGun(mech, false, true);
+    this.Effects(mech);
     // and the hull full again
     GameInstance.GetStatPoolsSystem(mech.GetGame()).RequestSettingStatPoolMaxValue(Cast<StatsObjectID>(mech.GetEntityID()), gamedataStatPoolType.Health, null);
     let session = CMCSession.Get(mech.GetGame());
@@ -132,6 +135,7 @@ public class CMCParts extends ScriptableSystem {
       CMCParts.ShowGun(mech, part == CMPart.ArmL(), false);
     }
 
+    this.Effects(mech);
     CMCSession.Log("parts: " + CMPart.Name(part) + " broken (dev tool)");
   }
 
@@ -216,6 +220,7 @@ public class CMCParts extends ScriptableSystem {
   public func SetTest(mech: ref<NPCPuppet>, on: Bool) -> Void {
     if IsDefined(this.m_test) && (!on || this.m_test != mech) {
       this.m_test.m_cmTestTarget = false;
+      CMLinkSystem.Get(this.m_test.GetGame()).TestAttitude(this.m_test, false);
       GameInstance.GetGodModeSystem(this.m_test.GetGame()).RemoveGodMode(this.m_test.GetEntityID(), gameGodModeType.Immortal, n"CMDamageTest");
       CMCParts.ShieldSpots(this.m_test, false);
       this.m_test = null;
@@ -224,6 +229,9 @@ public class CMCParts extends ScriptableSystem {
       return;
     }
     mech.m_cmTestTarget = true;
+    // a linked mech is friendly to V, and the game drops V's hits on friendlies: it is made
+    // neutral for the test (and friendly again after)
+    CMLinkSystem.Get(mech.GetGame()).TestAttitude(mech, true);
     GameInstance.GetGodModeSystem(mech.GetGame()).AddGodMode(mech.GetEntityID(), gameGodModeType.Immortal, n"CMDamageTest");
     // the vanilla weak spots only die when part damage breaks that gun (BlowGun), not to\n    // the game's own weak spot damage
     CMCParts.ShieldSpots(mech, true);
@@ -236,8 +244,8 @@ public class CMCParts extends ScriptableSystem {
     if !IsDefined(mech) {
       return;
     }
-    // friendly again, whatever the hit did to how it sees V
-    CMLinkSystem.Get(mech.GetGame()).Befriend(mech);
+    // neutral again, whatever the hit did to how it sees V
+    CMLinkSystem.Get(mech.GetGame()).TestAttitude(mech, true);
     let r = this.Hit(mech, hit);
     if !IsDefined(r) {
       return;
@@ -288,6 +296,46 @@ public class CMCParts extends ScriptableSystem {
 
   // ---- what a broken part does to the model and the body ----
 
+  // The damage effects the Minotaur's own entity carries, one set per broken part:
+  // its arm smoke at each gun port (l/r_arm_04), the locomotion-malfunction sparks at the
+  // legs, the optics malfunction on the sensor, and the overheat vents (the Scanner slot,
+  // one vent 1.3 m behind it) for the pods. Started once when a part breaks (or on a mech
+  // found broken), stopped when it is restored; nothing runs per frame.
+  public func Effects(mech: ref<NPCPuppet>) -> Void {
+    if !IsDefined(mech) {
+      return;
+    }
+    let st = this.State(mech.GetEntityID());
+    let i = 0;
+    while i < CMPart.Count() {
+      let on = st.hp[i] <= 0.0 && i != CMPart.Torso();
+      if NotEquals(on, st.fx[i]) {
+        st.fx[i] = on;
+        for name in CMCParts.EffectsOf(i) {
+          if on {
+            GameObjectEffectHelper.StartEffectEvent(mech, name);
+          } else {
+            GameObjectEffectHelper.StopEffectEvent(mech, name);
+          }
+        }
+      }
+      i += 1;
+    }
+  }
+
+
+  public static func EffectsOf(part: Int32) -> array<CName> {
+    switch part {
+      case 0: return [n"hacks_optics_malfunction"];
+      case 2: return [n"left_arm_destroyed"];
+      case 3: return [n"right_arm_destroyed"];
+      case 4: return [n"hacks_locomotion_malfunction"];
+      case 5: return [n"hacks_locomotion_malfunction"];
+      case 6: return [n"hacks_overheat_lvl1"];
+    }
+    return [];
+  }
+
   // the MK.31 on one arm shown or shot off (its mesh component on the Minotaur)
   public static func ShowGun(mech: ref<NPCPuppet>, left: Bool, on: Bool) -> Void {
     let c = mech.FindComponentByName(left ? n"mch_003__minotaur_weapons_l_01" : n"mch_003__minotaur_weapons_r_01");
@@ -317,6 +365,8 @@ public class CMCParts extends ScriptableSystem {
           gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"ControllableMechs");
           gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"CMDamageTest");
           ScriptedWeakspotObject.Kill(spot);
+          // and the gun port keeps sparking (the weak spot's own heavy-damage effect)
+          GameObjectEffectHelper.StartEffectEvent(spot, n"weakspot_damage_stage_02");
           CMCSession.Log("parts: weak spot on the " + (left ? "left" : "right") + " (" + FloatToStringPrec(side, 1) + " m to the side) destroyed");
         }
       }

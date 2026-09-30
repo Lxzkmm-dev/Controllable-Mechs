@@ -505,6 +505,26 @@ public class CMLinkSystem extends ScriptableSystem {
     this.MakeFriendly(npc);
   }
 
+  // The damage test: neutral both ways, so V's rounds count against it; friendly again after.
+  public func TestAttitude(npc: ref<NPCPuppet>, on: Bool) -> Void {
+    let player = GetPlayer(this.GetGameInstance());
+    if !IsDefined(player) || !IsDefined(npc) {
+      return;
+    }
+    let playerAgent = player.GetAttitudeAgent();
+    let npcAgent = npc.GetAttitudeAgent();
+    if !IsDefined(playerAgent) || !IsDefined(npcAgent) {
+      return;
+    }
+    if on {
+      npcAgent.SetAttitudeTowards(playerAgent, EAIAttitude.AIA_Neutral);
+      playerAgent.SetAttitudeTowards(npcAgent, EAIAttitude.AIA_Neutral);
+    } else {
+      playerAgent.SetAttitudeTowards(npcAgent, EAIAttitude.AIA_Friendly);
+      this.MakeFriendly(npc);
+    }
+  }
+
   private func MakeFriendly(npc: ref<NPCPuppet>) -> Void {
     let player = GetPlayer(this.GetGameInstance());
     if !IsDefined(player) {

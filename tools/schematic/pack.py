@@ -3,7 +3,7 @@
 import os, sys, json, zlib, struct
 
 PARTS_DIR, REF_ATLAS_JSON, RAW_OUT, DEPOT = sys.argv[1:5]
-AW, AH = 1024, 512
+AW, AH = 1024, 1024
 
 
 def read_png(path):

@@ -156,6 +156,7 @@ public class CMPilotHud {
   public static func Caution() -> HDRColor = new HDRColor(1.10, 0.64, 0.14, 1.0)
   public static func Steel() -> HDRColor = new HDRColor(0.015, 0.06, 0.035, 1.0)
   public static func Black() -> HDRColor = new HDRColor(0.0, 0.0, 0.0, 1.0)
+  public static func Grey() -> HDRColor = new HDRColor(0.40, 0.43, 0.41, 1.0)
 
   // the game's own HUD art
   public static func Panzer() -> ResRef = r"base\\gameplay\\gui\\widgets\\tank_hud\\panzer_hud.inkatlas"
@@ -748,9 +749,9 @@ public class CMPilotHud {
     ArrayClear(this.m_parts);
     ArrayResize(this.m_parts, CMPart.Count());
     this.m_sensor = 1.0;
-    let k = 0.66;                               // atlas pixels to design units
-    let w = 460.0 * k;
-    let h = 512.0 * k;
+    let k = 0.62;                               // atlas pixels to design units
+    let w = 689.0 * k;
+    let h = 768.0 * k;
     let top = this.PLATE_GAP + 300.0 + h + 30.0;   // above the chassis plate
     let x = this.PLATE_X + 40.0;
     this.Glow(root, inkEAnchor.BottomLeft, x - 60.0, top + 40.0, w + 120.0, h + 80.0, CMPilotHud.Black());
@@ -761,17 +762,18 @@ public class CMPilotHud {
     box.SetInteractive(false);
     box.Reparent(root);
     CMPilotHud.Label(root, inkEAnchor.BottomLeft, x + w + 10.0, top - h + 30.0, "CHASSIS", 22, n"Medium", CMPilotHud.Dim());
-    // back to front; the offsets and sizes are the layers' place in the 460 x 512 front view
-    this.PartLayer(box, k, CMPart.Pods(), n"pods", 126.0, 108.0, 212.0, 107.0);
-    this.PartLayer(box, k, CMPart.LegL(), n"leg_l", 112.0, 175.0, 101.0, 332.0);
-    this.PartLayer(box, k, CMPart.LegR(), n"leg_r", 248.0, 175.0, 101.0, 332.0);
-    this.PartLayer(box, k, CMPart.Torso(), n"torso", 94.0, 42.0, 273.0, 271.0);
-    this.PartLayer(box, k, CMPart.ArmL(), n"arm_l", 5.0, 44.0, 124.0, 117.0);
-    this.PartLayer(box, k, CMPart.ArmR(), n"arm_r", 331.0, 44.0, 125.0, 117.0);
-    this.PartLayer(box, k, CMPart.Sensor(), n"sensor", 168.0, 5.0, 124.0, 90.0);
+    // back to front; the offsets and sizes are the layers' place in the 689 x 768 front view
+    // (tools/schematic writes them to layout.reds.txt)
+    this.PartLayer(box, k, CMPart.Pods(), n"pods", 188.0, 162.0, 318.0, 159.0);
+    this.PartLayer(box, k, CMPart.LegL(), n"leg_l", 167.0, 262.0, 150.0, 502.0);
+    this.PartLayer(box, k, CMPart.LegR(), n"leg_r", 373.0, 262.0, 150.0, 502.0);
+    this.PartLayer(box, k, CMPart.Torso(), n"torso", 140.0, 59.0, 410.0, 409.0);
+    this.PartLayer(box, k, CMPart.ArmL(), n"arm_l", 4.0, 64.0, 186.0, 174.0);
+    this.PartLayer(box, k, CMPart.ArmR(), n"arm_r", 499.0, 64.0, 186.0, 174.0);
+    this.PartLayer(box, k, CMPart.Sensor(), n"sensor", 252.0, 4.0, 187.0, 136.0);
   }
 
-  // one part: its layer of the atlas, and a red cross over it shown once it breaks
+  // one part: its layer of the atlas
   private func PartLayer(box: ref<inkCanvas>, k: Float, i: Int32, texture: CName, x: Float, y: Float, w: Float, h: Float) -> Void {
     let p = new CMHudPart();
     p.hp = -1.0;
@@ -781,23 +783,10 @@ public class CMPilotHud {
     p.canvas.SetInteractive(false);
     p.canvas.Reparent(box);
     p.image = CMPilotHud.Img(p.canvas, inkEAnchor.TopLeft, 0.0, 0.0, w * k, h * k, CMPilotHud.Schematic(), texture, CMPilotHud.Amber(), 1.0);
-    let cx = w * k * 0.5;
-    let cy = h * k * 0.5;
-    let len = SqrtF(w * w + h * h) * k * 0.8;
-    let angle = Rad2Deg(AtanF(h, w));
-    p.cross = new inkCanvas();
-    p.cross.SetSize(Vector2(w * k, h * k));
-    p.cross.SetInteractive(false);
-    p.cross.Reparent(p.canvas);
-    let a = CMPilotHud.Bar(p.cross, cx - len * 0.5, cy - 3.0, len, 6.0, CMPilotHud.Red(), 0.9);
-    a.SetRotation(angle);
-    let b = CMPilotHud.Bar(p.cross, cx - len * 0.5, cy - 3.0, len, 6.0, CMPilotHud.Red(), 0.9);
-    b.SetRotation(-angle);
-    p.cross.SetVisible(false);
     this.m_parts[i] = p;
   }
-  // A part's integrity (0-1): green, amber below 70%, red below 35%, and dark with the
-  // cross once broken, blinking for two seconds as it goes.
+  // A part's integrity (0-1): green, amber below 70%, red below 35%, and greyed out once
+  // broken, blinking for two seconds as it goes.
   private func SetPart(i: Int32, hp: Float) -> Void {
     if i >= ArraySize(this.m_parts) {
       return;
@@ -808,10 +797,9 @@ public class CMPilotHud {
     }
     let broke = hp <= 0.0 && p.hp > 0.0;
     p.hp = hp;
-    let color = hp <= 0.0 ? CMPilotHud.Dim() : (hp < 0.35 ? CMPilotHud.Red() : (hp < 0.7 ? CMPilotHud.Caution() : CMPilotHud.Amber()));
+    let color = hp <= 0.0 ? CMPilotHud.Grey() : (hp < 0.35 ? CMPilotHud.Red() : (hp < 0.7 ? CMPilotHud.Caution() : CMPilotHud.Amber()));
     p.image.SetTintColor(color);
-    p.image.SetOpacity(hp <= 0.0 ? 0.45 : 1.0);
-    p.cross.SetVisible(hp <= 0.0);
+    p.image.SetOpacity(hp <= 0.0 ? 0.7 : 1.0);   // broken: greyed out
     if broke {
       let blink = new inkAnimDef();
       let t = 0.0;
@@ -1325,6 +1313,5 @@ public class CMPilotHudState {
 public class CMHudPart {
   public let canvas: ref<inkCanvas>;
   public let image: ref<inkImage>;
-  public let cross: ref<inkCanvas>;
   public let hp: Float;
 }

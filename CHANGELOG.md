@@ -17,14 +17,19 @@ Part damage, per docs/DAMAGE_DESIGN.md. Untested in game.
   - **Legs:** a slower walk (the walk animation runs at 60% with one leg broken, 40% with both, 85% with a leg under half) in halting strides, with the view sagging onto the bad leg. The Minotaur has no limping walk of its own, and the game's crippled-leg status did nothing on it.
   - **Pods:** missiles offline. Below 50%, the reload is 1.5x slower.
 - **Broken parts stay broken** for the game session until repaired. Repair is a planned mechanic.
-- **HUD damage schematic** above the chassis plate. It is the Minotaur's own model, wireframed in a straight front view (flipped, so its left gun is on the left) and cut into its seven parts, which are tinted by damage and put back together small. The pods on its back show through the torso. It ships as `archive/pc/mod/MechsOfNightCity.archive`, the mod's first non-script file; `tools/schematic` rebuilds it from the game's meshes.
+- **HUD damage schematic** above the chassis plate. It is the Minotaur's own model, wireframed in a straight front view at 689 x 768 (shown about 430 x 475 in 4K units) (flipped, so its left gun is on the left) and cut into its seven parts, which are tinted by damage and put back together small. The pods on its back show through the torso. It ships as `archive/pc/mod/MechsOfNightCity.archive`, the mod's first non-script file; `tools/schematic` rebuilds it from the game's meshes.
   - each part is green, amber (below 70%) or red (below 35%);
-  - a broken part is dark with a red cross and blinks as it breaks;
+  - a broken part is greyed out and blinks as it breaks;
   - the part just hit flashes;
   - a broken gun reads "MK.31 OFFLINE", and a warning names the part that broke.
+- **Damage effects** from the Minotaur's own entity, started when a part breaks and stopped when it's restored:
+  - guns: smoke at the gun port, plus the weak spot's sparks;
+  - legs: malfunction sparks;
+  - sensor: optics malfunction;
+  - pods: overheat vent smoke.
 - **CONFIG > CHASSIS > PART DAMAGE** switch, on by default.
 - **Dev tools** (MOTOR POOL, with DIAGNOSTICS on and a mech linked):
-  - DAMAGE TEST: shoot the linked mech yourself. It can't die, doesn't turn hostile, its vanilla weak spots can't be destroyed, and each hit names the part it wore on screen.
+  - DAMAGE TEST: shoot the linked mech yourself (it is made neutral to V for the test, since the game drops V's hits on a friendly). It can't die, doesn't turn hostile, its vanilla weak spots can't be destroyed, and each hit names the part it wore on screen.
   - RESTORE MECH PARTS: also refills the hull.
   - BREAK A PART (TEST).
 - With DIAGNOSTICS on, every hit logs its zone, its position on the body and the part it was given, so the mapping can be tuned.

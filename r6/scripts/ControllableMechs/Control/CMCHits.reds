@@ -26,6 +26,11 @@ private final func ProcessPipeline(hitEvent: ref<gameHitEvent>, cache: ref<Cache
   let w = hitEvent.attackData.GetWeapon();
   if !IsDefined(w) || !w.m_cmPiloted {
     wrappedMethod(hitEvent, cache);
+    // the damage test: whether V's rounds on the test mech went through (diagnostics)
+    let test = hitEvent.target as ScriptedPuppet;
+    if IsDefined(test) && test.m_cmTestTarget {
+      CMCHits.Landed(test.GetGame(), hitEvent);
+    }
     return;
   }
   if w.m_cmCreditV {

@@ -2,7 +2,7 @@
 #
 # The Minotaur's meshes are exported from the game, rendered as a front-view wireframe
 # (one white layer per part, hidden lines removed, the back pods ghosted), packed into
-# one 1024x512 atlas with an inkatlas naming the parts, and packed into the archive.
+# one 1024x1024 atlas with an inkatlas naming the parts, and packed into the archive.
 # Needs Python 3 (standard library only) and the WolvenKit CLI 8.17 with an
 # appsettings.json that turns mesh materials off and imports UI textures uncompressed:
 #   "XbmImportArgs": { "TextureGroup": "TEXG_Generic_UI", "IsGamma": false, "GenerateMipMaps": false,
@@ -28,7 +28,7 @@ $meshes = Get-ChildItem (Join-Path $Work "src") -Recurse -Filter *.mesh | ForEac
 & $WolvenKit convert serialize (Get-ChildItem (Join-Path $Work "src") -Recurse -Filter turret_hud.inkatlas | Select-Object -First 1).FullName -o (Join-Path $Work "ref")
 
 # 2. the layers (the sensor is the top of the body mesh)
-$env:H = '512'; $env:ANG = '65'; $env:LW = '2.0'; $env:FILL = '0.18'; $env:SENSOR = '(-0.32, 0.32, 2.30, 9.0)'
+$env:H = '768'; $env:ANG = '50'; $env:LW = '2.2'; $env:FILL = '0.16'; $env:SENSOR = '(-0.32, 0.32, 2.30, 9.0)'
 & $Python (Join-Path $here "render.py") (Join-Path $Work "glb") (Join-Path $Work "parts") parts
 & $Python (Join-Path $here "render.py") (Join-Path $Work "glb") (Join-Path $Work "parts") preview
 

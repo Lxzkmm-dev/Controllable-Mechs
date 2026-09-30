@@ -1100,6 +1100,9 @@ public class CMUMinotaur extends CMCUnit {
     let armR = this.PartHp(CMPart.ArmR()) <= 0.0;
     this.m_guns.left.destroyed = armL;
     this.m_guns.right.destroyed = armR;
+    if this.m_partsOn {
+      CMCParts.Get(this.m_game).Effects(mech);
+    }
     CMCParts.ShowGun(mech, true, !armL);
     CMCParts.ShowGun(mech, false, !armR);
     if !this.OpticsOnline() {
