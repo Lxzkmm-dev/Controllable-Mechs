@@ -6,9 +6,10 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 
 ## Keys
 
-- **K**: open the Robot Link terminal.
-- **J**: link the robot you are looking at (within 60 m).
-- **L**: pilot the linked mech, and disconnect again. L always disconnects while piloting, even if it has been rebound.
+- **]**: open the Robot Link terminal.
+- **[**: link the robot you are looking at (within 60 m).
+- **\\**: pilot the linked mech, and disconnect again. \\ always disconnects while piloting, even if it has been rebound.
+- All three can be rebound in Mod Settings. The defaults avoid K, J and L, which are vanilla crafting, the journal and Night City Empires' Fixer Link.
 - While piloting:
   - **WASD**: walk, relative to where the torso looks. **Shift**: run.
   - **Mouse**: turn the torso.
@@ -41,7 +42,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
   - per-gun heat and state;
   - key hints.
 - **V:** V stays where they are, locked in place by the game's gameplay restrictions. A save lock is held while piloting.
-- **Disconnects:** you are disconnected when you press L, the mech is destroyed, the signal drops (250 m), the link closes, or the session ends. Damage to V also disconnects you, like camera hacking; this can be turned off in Settings.
+- **Disconnects:** you are disconnected when you press \\, the mech is destroyed, the signal drops (250 m), the link closes, or the session ends. Damage to V also disconnects you, like camera hacking; this can be turned off in Settings.
 - **Test spawn:** the terminal's TEST section spawns a Militech Minotaur (`Character.q003_militech_mech`) 14 m in front of V and links it. It is not saved.
 
 ## Layout

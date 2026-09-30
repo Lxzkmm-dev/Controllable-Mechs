@@ -1,7 +1,8 @@
 // =============================================================================
 // CONTROLLABLE MECHS - KEYS
-// K opens the Robot Link, J links the robot V is looking at (mech, android, drone, spiderbot),
-// L pilots the linked mech (and disconnects again)
+// ] opens the Robot Link, [ links the robot V is looking at (mech, android, drone, spiderbot),
+// \ pilots the linked mech (and disconnects again). Not K/J/L: those are vanilla crafting,
+// the journal and Night City Empires' Fixer Link.
 // (r6/input/ControllableMechs.xml, needs Input Loader; rebindable in Mod Settings).
 // =============================================================================
 module ControllableMechs
@@ -9,12 +10,23 @@ module ControllableMechs
 public class CMInput extends IScriptable {
   public let player: wref<PlayerPuppet>;
 
+  private let m_lastName: CName;
+  private let m_lastTime: Float;
+
   protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsumer) -> Bool {
     if !ListenerAction.IsButtonJustPressed(action) {
       return false;
     }
-    let pilot = CMPilotSystem.Get(this.player.GetGame());
     let name = ListenerAction.GetName(action);
+    // the keys live in several input contexts (so they work in combat); one press heard
+    // twice must not toggle twice
+    let now = EngineTime.ToFloat(GameInstance.GetEngineTime(this.player.GetGame()));
+    if Equals(name, this.m_lastName) && now - this.m_lastTime < 0.25 {
+      return false;
+    }
+    this.m_lastName = name;
+    this.m_lastTime = now;
+    let pilot = CMPilotSystem.Get(this.player.GetGame());
     if Equals(name, n"CM_Pilot") {
       pilot.Toggle();
       return false;
@@ -82,19 +94,19 @@ public class CMKeybinds {
   @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
   @runtimeProperty("ModSettings.displayName", "Open Robot Link")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
-  public let cmOpenLink: EInputKey = EInputKey.IK_K;
+  public let cmOpenLink: EInputKey = EInputKey.IK_RightBracket;
 
   @runtimeProperty("ModSettings.mod", "Controllable Mechs")
   @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
   @runtimeProperty("ModSettings.displayName", "Link the robot you look at")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
-  public let cmLinkLookAt: EInputKey = EInputKey.IK_J;
+  public let cmLinkLookAt: EInputKey = EInputKey.IK_LeftBracket;
 
   @runtimeProperty("ModSettings.mod", "Controllable Mechs")
   @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
   @runtimeProperty("ModSettings.displayName", "Pilot the linked mech")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
-  public let cmPilot: EInputKey = EInputKey.IK_L;
+  public let cmPilot: EInputKey = EInputKey.IK_Backslash;
 }
 
 @if(ModuleExists("ModSettingsModule"))

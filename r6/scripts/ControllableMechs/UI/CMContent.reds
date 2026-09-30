@@ -128,7 +128,7 @@ public class CMContent extends TKContent {
     p.SetTitle("ROBOT LINK", "REMOTE OPERATION // NEURAL UPLINK");
     p.SetSection("link");
     if !link.IsLinked() {
-      p.Dossier("NO UNIT LINKED", "Look at a mech, android, drone or spiderbot within 60 m and press J, or link it from here.", "OFFLINE", "red");
+      p.Dossier("NO UNIT LINKED", "Look at a mech, android, drone or spiderbot within 60 m and press [, or link it from here.", "OFFLINE", "red");
       p.Gap();
       p.Button("LINK LOOKED-AT ROBOT", "link", "", true);
       this.Test(p, link);
@@ -141,7 +141,7 @@ public class CMContent extends TKContent {
     p.Stat("ORDER", CMContent.OrderName(link.Order()), "", -1.0);
     if Equals(link.UnitKind(), "MECH") {
       p.Heading("DIRECT CONTROL");
-      p.Item("PILOT THE MECH", "Take its sensor feed: WASD walks, the mouse turns the torso, LMB fires the MK.31s, L disconnects.", "", "PILOT  [L]", "pilot", "", true);
+      p.Item("PILOT THE MECH", "Take its sensor feed: WASD walks, the mouse turns the torso, LMB fires the MK.31s, \\ disconnects.", "", "PILOT  [\\]", "pilot", "", true);
     }
     p.Heading("ORDERS");
     p.Buttons("Command the linked unit", "", "", "FOLLOW|HOLD|MOVE TO TARGET", "follow|hold|move", "||");
@@ -183,7 +183,7 @@ public class CMContent extends TKContent {
     p.SetTip("Both views pull in when a wall, pole or container is between the mech and the camera.");
     p.Heading("SENSOR CAMERA");
     p.Slider("HEIGHT", "Above the mech's feet", "", "100|450|5|" + IntToString(pilot.CamUpCm()) + "| cm", "camup", "");
-    p.SetTip("Applies live: change it, then press L to check the view.");
+    p.SetTip("Applies live: change it, then press \\ to check the view.");
     p.Slider("FORWARD", "Ahead of the mech's centre", "", "0|500|5|" + IntToString(pilot.CamFwdCm()) + "| cm", "camfwd", "");
     p.Slider("TRAVERSE SPEED", "How fast the torso can turn", "", "15|120|5|" + IntToString(pilot.Traverse()) + "| deg/s", "traverse", "");
     p.Slider("MOUSE SENSITIVITY", "On top of the game's own mouse setting", "", "25|300|5|" + IntToString(pilot.SensPct()) + "|%", "sens", "");

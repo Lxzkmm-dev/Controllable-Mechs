@@ -918,9 +918,9 @@ public class CMPilotSystem extends ScriptableSystem {
       }
     }
     if this.m_fireMode == CMFireMode.Split() {
-      s.hints = "[WASD] WALK   [LMB] LEFT GUN   [RMB] RIGHT GUN   [MMB] OPTICS   [B] FIRE MODE   [V] VIEW   [L] DISCONNECT";
+      s.hints = "[WASD] WALK   [LMB] LEFT GUN   [RMB] RIGHT GUN   [MMB] OPTICS   [B] FIRE MODE   [V] VIEW   [\\] DISCONNECT";
     } else {
-      s.hints = "[WASD] WALK   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [V] VIEW   [L] DISCONNECT";
+      s.hints = "[WASD] WALK   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [V] VIEW   [\\] DISCONNECT";
     }
     if this.m_showDebug {
       s.debug = this.DebugLine();
@@ -1034,8 +1034,8 @@ public class CMPilotSystem extends ScriptableSystem {
           this.m_slow = 1.0;
         }
         break;
-      case EInputKey.IK_L:
-        // failsafe: L always disconnects, even if the Input Loader action is blocked
+      case EInputKey.IK_Backslash:
+        // failsafe: \ always disconnects, even if the Input Loader action is blocked
         if Equals(action, EInputAction.IACT_Press) {
           this.Exit("NEURAL LINK CLOSED", false);
         }

@@ -5,7 +5,7 @@
 The first playable build: the proof of concept works in game.
 
 - **Robot Link:** link any mech, android, drone or spiderbot you look at (J, or from the terminal). Quest NPCs are refused. Orders: follow, hold, move to target.
-- **Pilot Mode (Militech Minotaur):** take the mech's sensor feed with L.
+- **Pilot Mode (Militech Minotaur):** take the mech's sensor feed with \\ (was L).
   - WASD walks the mech, relative to where the torso looks.
   - The mouse turns the torso with weight.
   - LMB/RMB fire the two MK.31 HMGs. Fire modes: staggered (default), linked salvo, split.
@@ -32,7 +32,8 @@ The first playable build: the proof of concept works in game.
 - **No run:** Shift no longer does anything, because the Minotaur's "run" came out slower than its walk.
 - **Walls:** walk orders stop 2.5 m short of walls and buildings instead of targeting through them. An unreachable target seems to be what made the game teleport the mech.
 - **Third-person chase camera:** V while piloting, or SETTINGS > VIEW. The camera sits behind and above the mech, 8.5 m back and 4.2 m up by default, with sliders for both. Aiming starts past the mech so it can't hit itself.
-- **Robot Link in combat:** the terminal (K) now opens in combat too. Only menus, pause and photo mode block it.
+- **New default keys:** ] opens the Robot Link, [ links the robot you look at, \\ pilots and disconnects. The old K, J and L clashed: K is vanilla crafting, J the journal, and L opens Night City Empires' Fixer Link, which is why pressing it brought up the Fixer Link. All three can be rebound in Mod Settings.
+- **Robot Link in combat:** the keys now live in the Exploration, Combat and Locomotion input contexts, not just Items, which isn't active while fighting. A 0.25 s debounce stops one press from firing twice. The terminal's own combat block is gone too; only menus, pause and photo mode block it.
 - **Arm tracking (experimental, on by default):** the mech gets the game's look-at requests for its hands and chest, aimed at an invisible marker on the aim point. The goal is for the arms, and the MK.31 barrel effects, to follow the reticle instead of pointing straight ahead. SETTINGS > ARM TRACKING. Which parts the Minotaur's rig answers to is unknown.
 - **MK.31 damage:** a slider in SETTINGS, 100-300% with 150% by default, offsets the aim mismatch. It's a multiplier on the guns' BaseDamage stat while piloting. Whether NPC weapons use that stat is unverified; TOOLS > LOG shows the before and after values.
 - **Chase view:** it's closer by default, 6 m back and 3.2 m up. Turning is critically damped (no snap), and the camera's orbit trails the aim so it swings round the mech smoothly.

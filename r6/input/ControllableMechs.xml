@@ -1,5 +1,7 @@
 <?xml version="1.0"?>
-<!-- Controllable Mechs keys (needs Input Loader). K opens the Robot Link, J links the robot you look at, L pilots the linked mech. -->
+<!-- Controllable Mechs keys (needs Input Loader). ] opens the Robot Link, [ links the robot you look at, \ pilots the linked mech. (K, J and L clash with vanilla crafting, the journal and Night City Empires' Fixer Link.)
+     Added to the Exploration, Combat and Locomotion contexts (as XUtils does), so the keys also work in combat;
+     "Items" alone isn't active while fighting. CMInput debounces, so an action heard from two contexts fires once. -->
 <bindings>
 	<context name="CMMechLink">
 		<action name="CM_OpenLink" map="CM_OpenLink_Button" />
@@ -7,7 +9,13 @@
 		<action name="CM_Pilot" map="CM_Pilot_Button" />
 	</context>
 
-	<context name="Items" append="true">
+	<context name="Exploration" append="true">
+		<include name="CMMechLink" />
+	</context>
+	<context name="Combat" append="true">
+		<include name="CMMechLink" />
+	</context>
+	<context name="Locomotion" append="true">
 		<include name="CMMechLink" />
 	</context>
 
@@ -22,12 +30,12 @@
 	</acceptedEvents>
 
 	<mapping name="CM_OpenLink_Button" type="Button">
-		<button id="IK_K" overridableUI="cmOpenLink" />
+		<button id="IK_RightBracket" overridableUI="cmOpenLink" />
 	</mapping>
 	<mapping name="CM_LinkLookAt_Button" type="Button">
-		<button id="IK_J" overridableUI="cmLinkLookAt" />
+		<button id="IK_LeftBracket" overridableUI="cmLinkLookAt" />
 	</mapping>
 	<mapping name="CM_Pilot_Button" type="Button">
-		<button id="IK_L" overridableUI="cmPilot" />
+		<button id="IK_Backslash" overridableUI="cmPilot" />
 	</mapping>
 </bindings>
