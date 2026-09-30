@@ -32,6 +32,10 @@ public class CMUMinotaur extends CMCUnit {
   private let m_moveTarget: Vector4;
   private let m_moveSent: Float;
   private let m_moveYaw: Float;
+  // standing still: a hold order keeps the mech's own AI from walking or turning it
+  // (it has no order otherwise, and its combat behaviour takes over)
+  private let m_holdCmd: ref<AICommand>;
+  private let m_holdSent: Float;
 
   // the aim log while firing: once a second
   private let m_triggerWas: Bool;
@@ -111,6 +115,7 @@ public class CMUMinotaur extends CMCUnit {
     if IsDefined(mech) {
       this.CancelCmd(mech, this.m_moveCmd);
       this.CancelCmd(mech, this.m_turnCmd);
+      this.CancelCmd(mech, this.m_holdCmd);
       for ev in this.m_lookAts {
         let r = new LookAtRemoveEvent();
         r.lookAtRef = ev.outLookAtRef;
@@ -120,6 +125,7 @@ public class CMUMinotaur extends CMCUnit {
     ArrayClear(this.m_lookAts);
     this.m_moveCmd = null;
     this.m_turnCmd = null;
+    this.m_holdCmd = null;
     this.m_marker = null;
     if EntityID.IsDefined(this.m_markerID) {
       GameInstance.GetStaticEntitySystem().DespawnEntity(this.m_markerID);
@@ -228,6 +234,11 @@ public class CMUMinotaur extends CMCUnit {
       this.m_turning = false;
       return;
     }
+    if !this.m_turning {
+      // between turns, take the body's real heading: never teleport it back against a
+      // rotation something else made (that was a source of the fight-back)
+      this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
+    }
     let off = CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw);
     if !this.m_turning {
       // the chassis leads a sweep: it starts sooner while the view is moving
@@ -331,7 +342,9 @@ public class CMUMinotaur extends CMCUnit {
         this.CancelCmd(mech, this.m_moveCmd);
         this.m_moveCmd = null;
         this.m_moving = false;
+        CMCSession.Log("walk: stop (keys released)");
       }
+      this.Hold(mech, now);
       return;   // standing: TurnChassis turns the body, every frame
     }
     dir = Vector4.Normalize(dir);
@@ -355,8 +368,13 @@ public class CMUMinotaur extends CMCUnit {
         this.CancelCmd(mech, this.m_moveCmd);
         this.m_moveCmd = null;
         this.m_moving = false;
+        CMCSession.Log("walk: stop (wall ahead)");
       }
+      this.Hold(mech, now);
       return;
+    }
+    if !this.m_moving {
+      CMCSession.Log("walk: start");
     }
     let target = pos + dir * reach;
     let world: WorldPosition;
@@ -385,6 +403,23 @@ public class CMUMinotaur extends CMCUnit {
     this.m_moveSent = now;
   }
 
+  // a hold order while standing, renewed every 5 s (one command, not per frame)
+  private func Hold(mech: ref<NPCPuppet>, now: Float) -> Void {
+    if IsDefined(this.m_holdCmd) && now - this.m_holdSent < 5.0 {
+      return;
+    }
+    let ai = mech.GetAIControllerComponent();
+    if !IsDefined(ai) {
+      return;
+    }
+    this.CancelCmd(mech, this.m_holdCmd);
+    let cmd = new AIHoldPositionCommand();
+    cmd.duration = 10.0;
+    ai.SendCommand(cmd);
+    this.m_holdCmd = cmd;
+    this.m_holdSent = now;
+  }
+
   private func Send(mech: ref<NPCPuppet>, cmd: ref<AICommand>, move: Bool) -> Void {
     let ai = mech.GetAIControllerComponent();
     if !IsDefined(ai) {
@@ -392,8 +427,10 @@ public class CMUMinotaur extends CMCUnit {
     }
     this.CancelCmd(mech, this.m_moveCmd);
     this.CancelCmd(mech, this.m_turnCmd);
+    this.CancelCmd(mech, this.m_holdCmd);
     this.m_moveCmd = null;
     this.m_turnCmd = null;
+    this.m_holdCmd = null;
     ai.SendCommand(cmd);
     if move {
       this.m_moveCmd = cmd;

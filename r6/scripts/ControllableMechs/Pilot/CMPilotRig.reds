@@ -105,10 +105,34 @@ public class CMPilotRig {
 
   public func YawRate() -> Float = this.m_yawVel
 
+  // the framework's heavier feel (M1): a softer spring, lower rate caps, and a lead limit:
+  // the aim can only run `lead` degrees ahead of the view, so a flick doesn't leave the view
+  // turning on its own for seconds afterwards (0 = no limit, the alpha's feel)
+  private let m_lead: Float;
+
+  public func SetWeight(stiffness: Float, damping: Float, maxYawRate: Float, maxPitchRate: Float, lead: Float) -> Void {
+    this.m_turnK = stiffness;
+    this.m_turnDamp = damping;
+    this.m_maxYawRate = maxYawRate;
+    this.m_maxPitchRate = maxPitchRate;
+    this.m_lead = lead;
+  }
+
   // mouse deltas, already scaled to degrees
   public func Look(dYaw: Float, dPitch: Float) -> Void {
     this.aimYaw = CMPilotRig.Wrap(this.aimYaw + dYaw);
     this.aimPitch = ClampF(this.aimPitch + dPitch, this.m_pitchMin, this.m_pitchMax);
+    if this.m_lead > 0.0 {
+      let d = CMPilotRig.Wrap(this.aimYaw - this.yaw);
+      if d > this.m_lead {
+        this.aimYaw = CMPilotRig.Wrap(this.yaw + this.m_lead);
+      } else {
+        if d < -this.m_lead {
+          this.aimYaw = CMPilotRig.Wrap(this.yaw - this.m_lead);
+        }
+      }
+      this.aimPitch = ClampF(this.aimPitch, this.pitch - this.m_lead, this.pitch + this.m_lead);
+    }
   }
 
   // a shot: `k` 0..1 scales the kick

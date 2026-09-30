@@ -31,6 +31,15 @@ public abstract class CMCKey {
   public static func Rmb() -> Int32 = 5
   public static func Mmb() -> Int32 = 6
   public static func Count() -> Int32 = 7
+  public static func Name(i: Int32) -> String {
+    switch i {
+      case 0: return "W";
+      case 1: return "A";
+      case 2: return "S";
+      case 3: return "D";
+    }
+    return "?";
+  }
 }
 
 public class CMCSession extends ScriptableSystem {
@@ -86,6 +95,13 @@ public class CMCSession extends ScriptableSystem {
 
   private let CHASE_SIDE: Float = 1.8;   // chase view: metres right of the unit's centre line
   private let CHASE_LIFT: Float = 0.5;   // chase view: metres above the chase height
+
+  // the view's weight: moving a hulking piece of equipment (both views)
+  private let LOOK_STIFFNESS: Float = 7.0;    // spring toward where the mouse points (alpha: 16)
+  private let LOOK_DAMPING: Float = 5.0;      // just under critical (2*sqrt(7) = 5.3): a slow settle
+  private let LOOK_YAW_RATE: Float = 24.0;    // deg/s top traverse (alpha: 40)
+  private let LOOK_PITCH_RATE: Float = 16.0;  // deg/s top elevation
+  private let LOOK_LEAD: Float = 25.0;        // how far the aim may run ahead of the view, degrees
 
   public static func Get(game: GameInstance) -> ref<CMCSession> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.Control.CMCSession") as CMCSession;
@@ -204,7 +220,7 @@ public class CMCSession extends ScriptableSystem {
 
     this.rig.Init(unit.Ground(), this.CamUp(), this.CamFwd(), unit.Facing());
     this.rig.SetChase(this.m_chase);
-    this.rig.SetTraverse(Cast<Float>(CMPilotSystem.Get(game).Traverse()));
+    this.ApplyWeight();
     this.m_clip = 999.0;
     this.m_lastFov = 0.0;
     this.aim = this.rig.pos + this.rig.Forward() * 100.0;
@@ -776,7 +792,12 @@ public class CMCSession extends ScriptableSystem {
     this.m_clip = 999.0;
     if IsDefined(this.rig) {
       this.rig.SetChase(on);
+      this.ApplyWeight();   // SetChase resets the damping
     }
+  }
+
+  private func ApplyWeight() -> Void {
+    this.rig.SetWeight(this.LOOK_STIFFNESS, this.LOOK_DAMPING, this.LOOK_YAW_RATE, this.LOOK_PITCH_RATE, this.LOOK_LEAD);
   }
 
   private func ApplyCamera() -> Void {
@@ -877,8 +898,13 @@ public class CMCSession extends ScriptableSystem {
     return i >= 0 && i < ArraySize(this.m_keys) && this.m_keys[i];
   }
 
-  private func SetKey(i: Int32, down: Bool) -> Void {
+  // `from`: which channel set it, for the log (a key changing state is logged, so a
+  // stuck key shows up)
+  private func SetKey(i: Int32, down: Bool, opt from: String) -> Void {
     if i >= 0 && i < ArraySize(this.m_keys) {
+      if NotEquals(this.m_keys[i], down) && i <= CMCKey.D() {
+        CMCSession.Log("key " + CMCKey.Name(i) + (down ? " down" : " up") + " (" + (StrLen(from) > 0 ? from : "raw") + ")");
+      }
       this.m_keys[i] = down;
     }
   }
@@ -887,18 +913,20 @@ public class CMCSession extends ScriptableSystem {
     if this.m_state != 2 {
       return false;
     }
-    let down = !Equals(type, gameinputActionType.BUTTON_RELEASED);
+    // held only while the value says so: an axis-type event that isn't a button release
+    // (value 0) used to count as held, and left the mech walking on its own
+    let down = !Equals(type, gameinputActionType.BUTTON_RELEASED) && AbsF(value) > 0.1;
     switch name {
-      case n"Forward": this.SetKey(CMCKey.W(), down); break;
-      case n"Back": this.SetKey(CMCKey.S(), down); break;
-      case n"Left": this.SetKey(CMCKey.A(), down); break;
-      case n"Right": this.SetKey(CMCKey.D(), down); break;
+      case n"Forward": this.SetKey(CMCKey.W(), down, "Forward"); break;
+      case n"Back": this.SetKey(CMCKey.S(), down, "Back"); break;
+      case n"Left": this.SetKey(CMCKey.A(), down, "Left"); break;
+      case n"Right": this.SetKey(CMCKey.D(), down, "Right"); break;
       case n"RangedAttack":
       case n"ShootPrimary":
-        this.SetKey(CMCKey.Lmb(), down);
+        this.SetKey(CMCKey.Lmb(), down, "attack");
         break;
       case n"CameraAim":
-        this.SetKey(CMCKey.Rmb(), down);
+        this.SetKey(CMCKey.Rmb(), down, "aim");
         break;
       case n"CameraMouseX":
         if this.m_axisSeen == 0 && IsDefined(this.rig) {
