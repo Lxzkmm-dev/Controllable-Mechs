@@ -39,8 +39,12 @@ public class CMLinkSystem extends ScriptableSystem {
   private let m_listening: Bool;
 
   private let LINK_RANGE: Float = 60.0;    // how far V can be from a robot to link it
-  private let SIGNAL_RANGE: Float = 250.0; // past this the link drops
+  // past this the link drops (the pilot session uses the same range)
+  public static func SignalRange() -> Float = 250.0
   private let CHECK_TICK: Float = 1.0;
+
+  // a terminal message for the HUD: the "!" / "*" colour marks are for the terminal only
+  public static func Plain(msg: String) -> String = StrReplaceAll(StrReplaceAll(msg, "!", ""), "*", "")
 
   public static func Get(game: GameInstance) -> ref<CMLinkSystem> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.CMLinkSystem") as CMLinkSystem;
@@ -308,7 +312,7 @@ public class CMLinkSystem extends ScriptableSystem {
       let msg = this.Link(npc);
       let player = GetPlayer(this.GetGameInstance());
       if IsDefined(player) {
-        player.SetWarningMessage(StrReplaceAll(StrReplaceAll(msg, "!", ""), "*", ""));
+        player.SetWarningMessage(CMLinkSystem.Plain(msg));
       }
     }
   }
@@ -417,7 +421,7 @@ public class CMLinkSystem extends ScriptableSystem {
 
   public func SignalFraction() -> Float {
     let d = this.Distance();
-    return d < 0.0 ? 0.0 : ClampF(1.0 - d / this.SIGNAL_RANGE, 0.0, 1.0);
+    return d < 0.0 ? 0.0 : ClampF(1.0 - d / CMLinkSystem.SignalRange(), 0.0, 1.0);
   }
 
   public func UnitName() -> String {
@@ -447,7 +451,7 @@ public class CMLinkSystem extends ScriptableSystem {
       this.Drop(player, "ROBOT LINK LOST");
       return;
     }
-    if this.Distance() > this.SIGNAL_RANGE {
+    if this.Distance() > CMLinkSystem.SignalRange() {
       this.Drop(player, CMLinkSystem.KindName(unit) + " OUT OF SIGNAL RANGE");
       return;
     }
@@ -482,19 +486,7 @@ public class CMLinkSystem extends ScriptableSystem {
       return;
     }
     this.m_airChecks = -2;
-    let ground = Cast<Vector4>(hit.position);
-    ground.W = 1.0;
-    // the AI's own teleport order (the teleport facility's moves don't land on this mech)
-    let ai = mech.GetAIControllerComponent();
-    if !IsDefined(ai) {
-      return;
-    }
-    let cmd = new AITeleportCommand();
-    cmd.position = new Vector4(ground.X, ground.Y, ground.Z + 0.3, 1.0);   // a touch above: set right on the hit point its legs sank in
-    cmd.rotation = CMPilotRig.YawOf(mech.GetWorldForward());
-    cmd.doNavTest = false;
-    ai.SendCommand(cmd);
-    GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
+    CMGround.SetDown(mech, Cast<Vector4>(hit.position));
     CMCSession.Log("AIRBORNE (linked, not piloted): hanging " + FloatToStringPrec(gap, 1) + " m up for 3 s, teleport order to the ground below");
   }
 
@@ -541,6 +533,22 @@ public abstract class CMGround {
       return true;
     }
     return sq.SyncRaycastByCollisionGroup(from, to, n"Static", hit, true, false);
+  }
+
+  // A mech hanging in the air (the Minotaur has no fall) set down on `ground`, with a heavy
+  // clunk. The AI's own teleport order: the teleport facility's moves don't land on this
+  // mech. 0.3 m above the hit point, or its legs sink into the ground.
+  public static func SetDown(mech: ref<NPCPuppet>, ground: Vector4) -> Void {
+    let ai = mech.GetAIControllerComponent();
+    if !IsDefined(ai) {
+      return;
+    }
+    let cmd = new AITeleportCommand();
+    cmd.position = new Vector4(ground.X, ground.Y, ground.Z + 0.3, 1.0);
+    cmd.rotation = CMPilotRig.YawOf(mech.GetWorldForward());
+    cmd.doNavTest = false;
+    ai.SendCommand(cmd);
+    GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
   }
 }
 

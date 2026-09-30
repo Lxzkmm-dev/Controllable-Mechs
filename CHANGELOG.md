@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0 Beta
+
+The mod is now **Mechs of Night City** (MNC). The folder, the redscript modules and the settings file keep the old name, so nothing needs reinstalling.
+
+- **Tested and settled since 0.2.0:**
+  - smooth chassis turning (AI turn orders, one at a time) with CONFIG > CHASSIS > TURN SPEED;
+  - the mech's AI kept out of the fight (threats, alerts and combat refused at the source);
+  - enemies turning on the mech instead of V;
+  - HIDE V WHILE LINKED;
+  - the HUD art, the red hit flash and direction markers;
+  - the louder low-hull alarm;
+  - ledge checks, and a hanging mech set down on the ground;
+  - taking over a mech mid-fight.
+- **Cleanup:**
+  - Removed the finished investigation code: the rotation-teleport fallback and its reports, the aim and fire-result logs, the stray-movement watch, the hidden hint and debug lines on the HUD, the unused launcher path (the Minotaur's launchers are never live weapon objects, so the missile strike is the mod's own), and the old settings fields kept in saves.
+  - Merged duplicates: one set-down routine, one signal range, one weapon lookup, one HUD message helper.
+- **Performance:** the camera and sensor settings are read once per session instead of every frame. The mech is looked up once instead of several times a frame. The "fired by the pilot" marks on the guns are set on link-in instead of every frame.
+- **Mod Settings:** the key bindings are listed under "Mechs of Night City". Keys you rebound under the old name may need rebinding once.
 ## 0.2.0
 
 The control framework (`ControllableMechs.Control`) is now the mod's pilot mode. The alpha's Pilot Mode is removed.

@@ -62,20 +62,8 @@ public class CMPilotGuns {
     this.left = new CMGun();
     this.right = new CMGun();
     let game = mech.GetGame();
-    let ts = GameInstance.GetTransactionSystem(game);
-    let r = ScriptedPuppet.GetWeaponRight(mech);
-    let l = ScriptedPuppet.GetWeaponLeft(mech);
-    if !IsDefined(r) {
-      r = ts.GetItemInSlot(mech, t"AttachmentSlots.WeaponRight") as WeaponObject;
-    }
-    if !IsDefined(l) {
-      l = ts.GetItemInSlot(mech, t"AttachmentSlots.WeaponLeft") as WeaponObject;
-    }
-    this.right.weapon = r;
-    this.left.weapon = l;
-    // one weapon object for both arms: both triggers drive it
-    if !IsDefined(this.left.weapon) && IsDefined(r) { this.left.weapon = r; }
-    if !IsDefined(this.right.weapon) && IsDefined(l) { this.right.weapon = l; }
+    this.Refresh(mech);   // finds both guns (one for both arms if there is only one)
+    let r = this.right.weapon;
 
     this.m_cycle = 0.1;
     if IsDefined(r) {
@@ -85,7 +73,6 @@ public class CMPilotGuns {
       }
     }
     this.m_turnLeft = true;
-    this.m_names = "L " + CMPilotGuns.ItemName(this.left.weapon) + "  R " + CMPilotGuns.ItemName(this.right.weapon);
   }
 
   public func Describe() -> String = this.m_names

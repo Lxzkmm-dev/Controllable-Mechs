@@ -91,8 +91,6 @@ public class CMPilotHud {
   private let m_mode: ref<inkText>;
   private let m_link: ref<inkText>;
   private let m_speed: ref<inkText>;
-  private let m_hints: ref<inkText>;
-  private let m_debug: ref<inkText>;
   private let m_integrityText: ref<inkText>;
   private let m_signalText: ref<inkText>;
   private let m_hull: ref<CMHudCells>;
@@ -209,7 +207,6 @@ public class CMPilotHud {
     this.BuildGuns(face, root);    // first: its key tags take indices 0-3, the chassis plate's 4-5
     this.BuildLeft(face);
     this.BuildRight(face);
-    this.BuildHints(root);
     this.BuildEffects(root);
     this.Flicker();
     return true;
@@ -425,7 +422,6 @@ public class CMPilotHud {
   public static func TagMissile() -> Int32 = 2
   public static func TagZoom() -> Int32 = 3
   public static func TagView() -> Int32 = 4
-  public static func TagExit() -> Int32 = 5
 
   private func Tag(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, text: String, right: Bool) -> ref<inkText> {
     let t = CMPilotHud.Label(root, anchor, x, y, text, 26, n"Semi-Bold", CMPilotHud.Caution());
@@ -733,7 +729,7 @@ public class CMPilotHud {
     this.m_signalText = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, top - 150.0, "UPLINK", 26, n"Medium", CMPilotHud.Pale());
     this.m_speed = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x + 240.0, top - 150.0, "GND 0.0 M/S", 26, n"Medium", CMPilotHud.Pale());
     this.Tag(root, inkEAnchor.BottomLeft, x, top - 218.0, "[V] VIEW", false);                  // TagView = 4
-    this.Tag(root, inkEAnchor.BottomLeft, x + 190.0, top - 218.0, "[\\] DISCONNECT", false);   // TagExit = 5
+    this.Tag(root, inkEAnchor.BottomLeft, x + 190.0, top - 218.0, "[\\] DISCONNECT", false);   // tag 5
   }
 
   // the operator's range, small, in the top-right corner
@@ -763,17 +759,6 @@ public class CMPilotHud {
     this.m_stateR = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, top - 112.0, "R  ARMED", 30, n"Semi-Bold", CMPilotHud.Pale());
     this.m_stateR.SetAnchorPoint(Vector2(1.0, 0.0));
     this.m_heatR = this.CellBar(root, true, x, top - 156.0, 24.0);
-  }
-
-  // the old hint line is replaced by the key tags; the widget stays for the refresh, hidden
-  private func BuildHints(root: ref<inkCanvas>) -> Void {
-    this.m_hints = CMPilotHud.Label(root, inkEAnchor.BottomCenter, 0.0, 70.0, "", 26, n"Medium", CMPilotHud.Dim());
-    this.m_hints.SetAnchorPoint(Vector2(0.5, 1.0));
-    this.m_hints.SetVisible(false);
-    // a diagnostics line; one that never changes means the frame loop never ran
-    this.m_debug = CMPilotHud.Label(root, inkEAnchor.BottomCenter, 0.0, 70.0, "DBG  WAITING FOR FIRST FRAME", 26, n"Medium", CMPilotHud.Pale());
-    this.m_debug.SetAnchorPoint(Vector2(0.5, 1.0));
-    this.m_debug.SetVisible(false);
   }
 
   // ---------------------------------------------------------------------------
@@ -964,18 +949,6 @@ public class CMPilotHud {
     }
   }
 
-  public func ShowDebug(on: Bool) -> Void {
-    if IsDefined(this.m_debug) {
-      this.m_debug.SetVisible(on);
-    }
-  }
-
-  public func SetDebug(text: String) -> Void {
-    if IsDefined(this.m_debug) {
-      this.m_debug.SetText(text);
-    }
-  }
-
   // ten times a second
   public func Refresh(s: ref<CMPilotHudState>) -> Void {
     if !IsDefined(this.m_root) {
@@ -1010,10 +983,6 @@ public class CMPilotHud {
     this.Warn(StrLen(s.warning) > 0);
     this.m_msl.SetText(StrLen(s.missile) > 0 ? "[G] " + s.missile : "");
     this.m_msl.SetTintColor(StrContains(s.missile, "READY") ? CMPilotHud.Amber() : CMPilotHud.Caution());
-    this.m_hints.SetText(s.hints);
-    if StrLen(s.debug) > 0 {
-      this.m_debug.SetText(s.debug);
-    }
   }
 
   // the warning panel: shown with its pulse and its sweep while there is a warning; the
@@ -1207,6 +1176,4 @@ public class CMPilotHudState {
   public let hasL: Bool;
   public let hasR: Bool;
   public let warning: String;
-  public let hints: String;
-  public let debug: String;
 }

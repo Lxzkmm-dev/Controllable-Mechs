@@ -36,27 +36,17 @@ public class CMUMinotaur extends CMCUnit {
   private let m_calmResets: Int32;
   private let m_threatClears: Int32;
   private let m_gunsLost: Bool;
-  // what the AI still does on its own, for the log: the body moving or turning while we
-  // gave no order
-  private let m_stoodPos: Vector4;
-  private let m_stoodAt: Float;
-  private let m_strayLogs: Int32;
-  private let m_strayYawAt: Float;
-
-  // the aim log while firing: once a second
-  private let m_triggerWas: Bool;
-  private let m_logNext: Float;
-  private let m_held: Int32;
-  private let m_shots: Int32;
-  private let m_target: wref<GameObject>;
-  private let m_targetHP: Float;
+  private let m_stoodAt: Float;       // the last slow tick it was walking: the turn waits for it to settle
+  private let m_triggerWas: Bool;     // for the FIRE tag, on each pull
+  private let m_mech: wref<NPCPuppet>;
+  private let m_sensorUp: Float;      // the sensor mount, read once per session
+  private let m_sensorFwd: Float;
 
   // the weighted chassis turn while standing: the body turns toward the view at a capped
   // rate, easing in and out (the look-ats cover the last TURN_START_DEG on their own)
   private let m_bodyYaw: Float;
   private let m_turnVel: Float;
-  private let m_turnByOrder: Bool;    // rotate with AI turn orders instead of teleports
-  private let m_air: Bool;            // nothing under the mech's feet (Airborne)
+  private let m_air: Bool;           // nothing under the mech's feet (Airborne)
   private let m_combatWatch: Int32;   // seconds left to report whether it is still in combat
   private let m_lookAtsFrom: Float;   // not before this time (after an AI restart)
   private let m_combatWatchAt: Float;
@@ -65,12 +55,7 @@ public class CMUMinotaur extends CMCUnit {
   private let m_sentOpen: Bool;       // a rotation request is out and has not landed yet
   private let m_sentYaw: Float;
   private let m_sentAt: Float;
-  private let m_landedAt: Float;
-  private let m_sent: Int32;          // since the last report
-  private let m_landed: Int32;
-  private let m_delaySum: Float;
-  private let m_turnReports: Int32;
-  private let m_lookMiss: Int32;      // slow ticks the guns have been off with the body on
+  private let m_lookMiss: Int32;     // slow ticks the guns have been off with the body on
   private let m_lookSent: Float;
   private let m_turning: Bool;
   private let TURN_RATE: Float = 35.0;       // deg/s, top speed at TURN SPEED 100% (the setting scales it)
@@ -101,9 +86,6 @@ public class CMUMinotaur extends CMCUnit {
   private let MISSILE_RADIUS: Float = 5.0;     // blast radius, metres
   private let MISSILE_DAMAGE: Float = 900.0;   // physical damage added to the blast
   private let m_missileReady: Float;
-  private let m_launchL: wref<WeaponObject>;
-  private let m_launchR: wref<WeaponObject>;
-  private let m_launchLeft: Bool;
   private let m_audioTrigger: Bool;
   private let m_fireLoop: Bool;
   private let m_heatWarned: Bool;
@@ -117,12 +99,18 @@ public class CMUMinotaur extends CMCUnit {
   private let GATE_DEG: Float = 4.0;
   private let m_gate: Bool;           // CONFIG: hold a gun's fire until its barrel is on the reticle
   private let SPREAD_DEG: Float = 0.6;
-  private let SIGNAL_RANGE: Float = 250.0;
 
   public func Name() -> String = "MILITECH MINOTAUR"
   public func LostReason() -> String = "!MECH DESTROYED"
 
-  private func Mech() -> ref<NPCPuppet> = GameInstance.FindEntityByID(this.m_game, this.m_mechID) as NPCPuppet
+  // the mech, looked up by its id only when the kept reference has gone (it is asked for
+  // several times a frame)
+  private func Mech() -> ref<NPCPuppet> {
+    if !IsDefined(this.m_mech) {
+      this.m_mech = GameInstance.FindEntityByID(this.m_game, this.m_mechID) as NPCPuppet;
+    }
+    return this.m_mech;
+  }
 
   // ---------------------------------------------------------------------------
   // Begin / End
@@ -141,29 +129,24 @@ public class CMUMinotaur extends CMCUnit {
       return "!MECH IS DESTROYED";
     }
     this.m_mechID = mech.GetEntityID();
+    this.m_mech = mech;
+    let cfg = CMPilotSystem.Get(this.m_game);
+    this.m_sensorUp = Cast<Float>(cfg.CamUpCm()) / 100.0;
+    this.m_sensorFwd = Cast<Float>(cfg.CamFwdCm()) / 100.0;
     link.Hold();
     link.SetOrder(CMOrder.Pilot());
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
-    // rounds go to the reticle point (the alpha's damaging path); the look-ats aim the
-    // barrels there and the gate holds each gun until it's on it, so the flash lines up
     this.m_moving = false;
     this.m_triggerWas = false;
     this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
     this.m_turnVel = 0.0;
     this.m_turning = false;
-    this.m_turnByOrder = true;   // turn orders first: they landed 58 of 60, teleports 2 of 18
     this.m_sentOpen = false;
-    this.m_landedAt = 0.0;
-    this.m_sent = 0;
-    this.m_landed = 0;
-    this.m_delaySum = 0.0;
-    this.m_turnReports = 0;
-    let turn = Cast<Float>(CMPilotSystem.Get(this.m_game).TurnPct()) / 100.0;
+    let turn = Cast<Float>(cfg.TurnPct()) / 100.0;
     this.m_turnRate = this.TURN_RATE * turn;
-    this.m_gate = CMPilotSystem.Get(this.m_game).FireGate();
     this.m_turnAccel = this.TURN_ACCEL * turn;
-    this.m_stoodPos = mech.GetWorldPosition();
+    this.m_gate = cfg.FireGate();
     this.m_lookMiss = 0;
     ArrayClear(this.m_lookAts);
 
@@ -189,7 +172,7 @@ public class CMUMinotaur extends CMCUnit {
     GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_q110_personal_link_01");   // link established
     CMCSession.Log("Minotaur: guns " + this.m_guns.Describe());
     this.LogInventory(mech);
-    this.FindLaunchers(mech);
+    this.SetFlags(true, s.CreditV());
     this.m_missileReady = 0.0;
     this.m_hull = -1.0;
     this.Armour(mech, s.HullMult());
@@ -233,7 +216,6 @@ public class CMUMinotaur extends CMCUnit {
     }
     this.m_calmResets = 0;
     this.m_threatClears = 0;
-    this.m_strayLogs = 0;
     CMCSession.Log("AI " + (on ? "suppressed (stimulus reactions" + (IsDefined(reactions) ? "" : " [no component]") + ", senses and target tracking off, relaxed)" : "restored") + ", state now " + CMUMinotaur.StateName(mech));
   }
 
@@ -293,20 +275,8 @@ public class CMUMinotaur extends CMCUnit {
       reactions.Toggle(false);
       CMCSession.Log("AI: stimulus reactions were back on, switched off again");
     }
-    // standing, a second or more after the last walk order: has the body moved by itself?
-    let pos = mech.GetWorldPosition();
-    if !this.m_moving && now - this.m_stoodAt > 1.5 && this.m_strayLogs < 20 {
-      let moved = Vector4.Distance2D(pos, this.m_stoodPos);
-      if moved > 0.6 {
-        this.m_strayLogs += 1;
-        CMCSession.Log("NOT OURS: the mech moved " + FloatToStringPrec(moved, 1) + " m while standing, state " + CMUMinotaur.StateName(mech));
-        this.m_stoodPos = pos;
-      }
-    } else {
-      this.m_stoodPos = pos;
-      if this.m_moving {
-        this.m_stoodAt = now;
-      }
+    if this.m_moving {
+      this.m_stoodAt = now;
     }
   }
 
@@ -348,6 +318,7 @@ public class CMUMinotaur extends CMCUnit {
     }
     if this.m_guns.Refresh(mech) {
       this.m_gunsLost = false;
+      this.SetFlags(true, s.CreditV());
       CMCSession.Log("weapons found again: " + this.m_guns.Describe());
       CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
     }
@@ -380,7 +351,7 @@ public class CMUMinotaur extends CMCUnit {
     }
     let empty: EntityID;
     this.m_markerID = empty;
-    // the mech's own hits are its own again (and the alpha's never credit V)
+    // the mech's own hits are its own again
     if IsDefined(this.m_guns) {
       this.SetFlags(false, false);
       this.m_guns.SlowDown(this.m_game);
@@ -399,8 +370,8 @@ public class CMUMinotaur extends CMCUnit {
 
   public func Ground() -> Vector4 = this.Mech().GetWorldPosition()
   public func Facing() -> Float = CMPilotRig.YawOf(this.Mech().GetWorldForward())
-  public func SensorUp() -> Float = Cast<Float>(CMPilotSystem.Get(this.m_game).CamUpCm()) / 100.0
-  public func SensorFwd() -> Float = Cast<Float>(CMPilotSystem.Get(this.m_game).CamFwdCm()) / 100.0
+  public func SensorUp() -> Float = this.m_sensorUp
+  public func SensorFwd() -> Float = this.m_sensorFwd
   public func AimSkip() -> Float = 4.5
 
   // ---------------------------------------------------------------------------
@@ -410,7 +381,6 @@ public class CMUMinotaur extends CMCUnit {
     let mech = this.Mech();
     this.MoveMarker(s.aim);
     this.TurnChassis(s, mech, dt);
-    this.SetFlags(true, s.CreditV());
     let split = s.FireMode() == CMFireMode.Split();
     let trigger = s.Key(CMCKey.Lmb()) || (split && s.Key(CMCKey.Rmb()));
     // the barrels spin up while the trigger is held and wind down after: no rounds until
@@ -436,14 +406,10 @@ public class CMUMinotaur extends CMCUnit {
     this.m_guns.right.offAim = this.m_gate && offR;
     this.OwnTarget(this.m_guns.left, !this.m_gate && offL && trigger, now, dt);
     this.OwnTarget(this.m_guns.right, !this.m_gate && offR && trigger, now, dt);
-    if this.m_gate && trigger && (offL || offR) {
-      this.m_held += 1;
-    }
     let flashL = this.m_guns.left.flash;
     let flashR = this.m_guns.right.flash;
     let shots = this.m_guns.Update(mech, now, dt, lmb, rmb, s.FireMode(), s.aim, this.SPREAD_DEG, s.rig.pos);
     if shots > 0 {
-      this.m_shots += shots;
       s.rig.Recoil(this.KICK * Cast<Float>(shots));
       // which barrel just fired: its flash timer was reset this frame
       if this.m_guns.left.flash > flashL {
@@ -453,7 +419,10 @@ public class CMUMinotaur extends CMCUnit {
         this.RoundFx(this.m_guns.right.weapon, this.m_guns.right.ownTarget ? this.m_guns.right.target : s.aim);
       }
     }
-    this.AimLog(s, trigger, now);
+    if trigger && !this.m_triggerWas {
+      s.FlashTag(CMPilotHud.TagFire());
+    }
+    this.m_triggerWas = trigger;
     this.Servo(s, mech, now);
     this.GunAudio(mech, trigger, shots > 0);
     let hud = s.Hud();
@@ -468,54 +437,14 @@ public class CMUMinotaur extends CMCUnit {
     }
   }
 
-  // while a trigger is held, once a second: each barrel's error to the reticle, rounds
-  // fired and frames a gun was held back
-  private func AimLog(s: ref<CMCSession>, trigger: Bool, now: Float) -> Void {
-    if trigger && !this.m_triggerWas {
-      s.FlashTag(CMPilotHud.TagFire());
-      this.m_logNext = now;
-      this.m_held = 0;
-      this.m_shots = 0;
-      // what the pilot's reticle is on (V's own look-at target is the mech itself)
-      this.m_target = s.aimEntity as GameObject;
-      this.m_targetHP = CMCHits.Health(this.m_target);
-      CMCSession.Log("fire: target " + CMCHits.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1));
-    }
-    if !trigger && this.m_triggerWas && IsDefined(this.m_target) {
-      let cb = new CMUMinotaurReportCb();
-      cb.unit = this;
-      GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, 1.0, false);
-    }
-    if trigger && now >= this.m_logNext {
-      this.m_logNext = now + 1.0;
-      CMCSession.Log("aim error right " + FloatToStringPrec(CMCSession.AimError(this.m_guns.right.weapon, s.aim), 1)
-        + " deg, left " + FloatToStringPrec(CMCSession.AimError(this.m_guns.left.weapon, s.aim), 1)
-        + " deg, reticle " + FloatToStringPrec(s.aimDist, 0) + " m, rounds " + IntToString(this.m_shots) + ", frames held " + IntToString(this.m_held));
-    }
-    this.m_triggerWas = trigger;
-  }
-
-  public func Report() -> Void {
-    let hp = CMCHits.Health(this.m_target);
-    CMCSession.Log("result: target " + CMCHits.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1) + " -> " + FloatToStringPrec(hp, 1));
-  }
 
   // Standing still, the chassis heading is ours. `m_bodyYaw` is the heading we want: it
   // swings toward the view with weight (a rate cap, spin-up and braking), by time alone.
-  // The body is then steered onto it one request at a time: the next rotation goes out
-  // only when the last one has landed (the body's real heading reached it) or has been
-  // given up on.
-  //
-  // Why one at a time: a rotation request sent every frame never landed at all. The log
-  // showed the body staying on exactly the same heading for seconds while a new request
-  // went out each frame, as if each one cancelled the one before it.
-  //
-  // Two ways of rotating, tried in this order for the session:
-  //   1. the AI's own turn order, aimed at the heading we want (a small step each time):
-  //      in the log they landed 58 of 60 times, within a frame
-  //   2. a rotation-only teleport (2 of 18 landed)
-  // If nothing has landed for 2 s while the body is still off, the other way is used, and
-  // the log says so. Walking hands the facing back to the walk orders.
+  // The body is steered onto it with the AI's own turn order, one at a time: the next goes
+  // out only when the last has landed (the body's real heading reached it) or after
+  // 0.45 s. Sent every frame, rotation requests never landed; one at a time, turn orders
+  // land about 98% of the time within a frame or two (teleports, tried first, almost never
+  // did and were dropped). Walking hands the facing back to the walk orders.
   private func TurnChassis(s: ref<CMCSession>, mech: ref<NPCPuppet>, dt: Float) -> Void {
     let real = CMPilotRig.YawOf(mech.GetWorldForward());
     let now = s.Now();
@@ -525,15 +454,11 @@ public class CMUMinotaur extends CMCUnit {
       this.m_turnVel = 0.0;
       this.m_turning = false;
       this.m_sentOpen = false;
-      this.m_landedAt = now;
       return;
     }
-    // has the last request landed?
-    if this.m_sentOpen && AbsF(CMPilotRig.Wrap(real - this.m_sentYaw)) < (this.m_turnByOrder ? 3.5 : 1.0) {
+    // has the last order landed?
+    if this.m_sentOpen && AbsF(CMPilotRig.Wrap(real - this.m_sentYaw)) < 3.5 {
       this.m_sentOpen = false;
-      this.m_landedAt = now;
-      this.m_landed += 1;
-      this.m_delaySum += now - this.m_sentAt;
     }
     // the heading we want, swinging toward the view
     let off = CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw);
@@ -552,66 +477,24 @@ public class CMUMinotaur extends CMCUnit {
       if AbsF(off) < 1.0 && AbsF(this.m_turnVel) < 3.0 {
         this.m_turnVel = 0.0;
         this.m_turning = false;
-        this.TurnReport(real);
       } else {
         this.m_bodyYaw = CMPilotRig.Wrap(this.m_bodyYaw + this.m_turnVel * dt);
       }
     }
-    // steer the body onto it, one request at a time
-    let lag = AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw));
-    if lag <= 6.0 {
-      this.m_landedAt = now;
-    }
-    if lag > 0.7 && (!this.m_sentOpen || now - this.m_sentAt > (this.m_turnByOrder ? 0.45 : 0.25)) {
-      this.Rotate(mech, this.m_bodyYaw);
-      this.m_sentYaw = this.m_bodyYaw;
-      this.m_sentAt = now;
-      this.m_sentOpen = true;
-      this.m_sent += 1;
-    }
-    // nothing has landed for 2 s and the body is still well off: the other way
-    if lag > 6.0 && now - this.m_landedAt > 2.0 {
-      this.m_landedAt = now;
-      this.TurnReport(real);
-      if !this.m_turnByOrder {
-        this.m_turnByOrder = true;
-        CMCSession.Log("CHASSIS: NO TELEPORT ROTATION HAS LANDED FOR 2 S (body at " + FloatToStringPrec(real, 1) + " deg, wanted " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": back to AI turn orders");
-      } else {
-        CMCSession.Log("CHASSIS: NO TURN ORDER HAS LANDED FOR 2 S (body at " + FloatToStringPrec(real, 1) + " deg, wanted " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": trying teleports");
-        this.m_turnByOrder = false;
-      }
-    }
-  }
-
-  private func Rotate(mech: ref<NPCPuppet>, yaw: Float) -> Void {
-    if this.m_turnByOrder {
+    // steer the body onto it, one order at a time
+    if AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw)) > 0.7 && (!this.m_sentOpen || now - this.m_sentAt > 0.45) {
       let world: WorldPosition;
-      WorldPosition.SetVector4(world, mech.GetWorldPosition() + CMPilotRig.Dir(yaw, 0.0) * 20.0);
+      WorldPosition.SetVector4(world, mech.GetWorldPosition() + CMPilotRig.Dir(this.m_bodyYaw, 0.0) * 20.0);
       let spec: AIPositionSpec;
       AIPositionSpec.SetWorldPosition(spec, world);
       let cmd = new AIRotateToCommand();
       cmd.target = spec;
       cmd.angleTolerance = 1.0;
       this.Send(mech, cmd, false);
-      return;
+      this.m_sentYaw = this.m_bodyYaw;
+      this.m_sentAt = now;
+      this.m_sentOpen = true;
     }
-    let e: EulerAngles;
-    e.Yaw = yaw;
-    GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, mech.GetWorldPosition(), e);
-  }
-
-  // with diagnostics on, after each turn: how the rotation requests fared since the last report
-  private func TurnReport(real: Float) -> Void {
-    if this.m_sent == 0 || this.m_turnReports >= 40 {
-      return;
-    }
-    this.m_turnReports += 1;
-    CMCSession.Log("chassis: " + (this.m_turnByOrder ? "turn orders" : "teleports") + ": " + IntToString(this.m_sent) + " sent, " + IntToString(this.m_landed) + " landed"
-      + (this.m_landed > 0 ? ", " + IntToString(RoundF(this.m_delaySum / Cast<Float>(this.m_landed) * 1000.0)) + " ms each on average" : "")
-      + "; body now " + FloatToStringPrec(AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw)), 1) + " deg from the wanted heading");
-    this.m_sent = 0;
-    this.m_landed = 0;
-    this.m_delaySum = 0.0;
   }
   // What a barrel that is off the reticle points at: the nearest hit of a ray along it
   // (world geometry, then characters and vehicles), or a point 150 m out when it points at
@@ -683,7 +566,7 @@ public class CMUMinotaur extends CMCUnit {
   // ---------------------------------------------------------------------------
   // The secondary: a missile strike at the reticle point (G)
   // A launch sound and a kick, then after the flight time an explosion attack at the
-  // point with V as the instigator (the Dead Shot attack sequence), and the blast effect.
+  // point with V as the instigator, and the blast effect.
   // One delayed callback per shot; MISSILE_COOLDOWN between shots.
   // ---------------------------------------------------------------------------
   public func Secondary(s: ref<CMCSession>) -> Void {
@@ -698,22 +581,8 @@ public class CMUMinotaur extends CMCUnit {
     }
     this.m_missileReady = now + this.MISSILE_COOLDOWN;
     let at = s.aim;
-    // the mech's own launchers when they are live weapon objects: left and right in turn,
-    // a real projectile toward the reticle point, its hits credited to V like the MK.31s
-    let launcher = this.NextLauncher();
-    if IsDefined(launcher) {
-      let trigger = gamedataTriggerMode.SemiAuto;
-      let rec = launcher.GetWeaponRecord();
-      if IsDefined(rec) && IsDefined(rec.PrimaryTriggerMode()) {
-        trigger = rec.PrimaryTriggerMode().Type();
-      }
-      AIWeapon.Fire(mech, launcher, EngineTime.ToFloat(GameInstance.GetSimTime(this.m_game)), 1.0, trigger, at);
-      GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_wpn_missile_fire_single");
-      s.rig.Recoil(0.9);
-      CMCSession.Log("missile: REAL LAUNCHER " + TDBID.ToStringDEBUG(ItemID.GetTDBID(launcher.GetItemID())) + " fired at " + CMCHits.V(at));
-      return;
-    }
-    CMCSession.Log("missile: no live launcher object, using the stand-in strike");
+    // (the Minotaur's own launchers are in its inventory but never out as weapon objects,
+    // so there is nothing to fire them with: the strike is ours)
     let flight = ClampF(Vector4.Distance(mech.GetWorldPosition(), at) / this.MISSILE_SPEED, 0.25, 2.5);
     GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_wpn_missile_fire_single");
     s.rig.Recoil(0.9);
@@ -722,35 +591,6 @@ public class CMUMinotaur extends CMCUnit {
     cb.at = at;
     GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, flight, false);
     CMCSession.Log("missile: launched at " + CMCHits.V(at) + ", " + FloatToStringPrec(flight, 2) + " s flight");
-  }
-
-  // The launchers are in the mech's inventory (Items.Minotaur_Launcher_Right / _Left); they
-  // can only fire if the game has them out as weapon objects in a slot. Looked up once on
-  // entering.
-  private func FindLaunchers(mech: ref<NPCPuppet>) -> Void {
-    let ts = GameInstance.GetTransactionSystem(this.m_game);
-    let items: array<wref<gameItemData>>;
-    ts.GetItemList(mech, items);
-    this.m_launchL = null;
-    this.m_launchR = null;
-    for item in items {
-      let id = item.GetID();
-      let tdb = ItemID.GetTDBID(id);
-      if tdb == t"Items.Minotaur_Launcher_Left" {
-        this.m_launchL = ts.GetItemInSlotByItemID(mech, id) as WeaponObject;
-      }
-      if tdb == t"Items.Minotaur_Launcher_Right" {
-        this.m_launchR = ts.GetItemInSlotByItemID(mech, id) as WeaponObject;
-      }
-    }
-    CMCSession.Log("launchers: left " + (IsDefined(this.m_launchL) ? "live" : "not in a slot") + ", right " + (IsDefined(this.m_launchR) ? "live" : "not in a slot"));
-  }
-
-  private func NextLauncher() -> ref<WeaponObject> {
-    this.m_launchLeft = !this.m_launchLeft;
-    let first: ref<WeaponObject> = this.m_launchLeft ? this.m_launchL : this.m_launchR;
-    let second: ref<WeaponObject> = this.m_launchLeft ? this.m_launchR : this.m_launchL;
-    return IsDefined(first) ? first : second;
   }
 
   public func Detonate(at: Vector4) -> Void {
@@ -957,7 +797,7 @@ public class CMUMinotaur extends CMCUnit {
   // The flags the damage pipeline hook reads (CMCHits): `piloted` marks the MK.31s and
   // the launchers as ours while the session runs, `credit` makes their hits V's.
   private func SetFlags(piloted: Bool, credit: Bool) -> Void {
-    let weapons: array<wref<WeaponObject>> = [this.m_guns.left.weapon, this.m_guns.right.weapon, this.m_launchL, this.m_launchR];
+    let weapons: array<wref<WeaponObject>> = [this.m_guns.left.weapon, this.m_guns.right.weapon];
     for w in weapons {
       if IsDefined(w) {
         w.m_cmPiloted = piloted;
@@ -990,7 +830,7 @@ public class CMUMinotaur extends CMCUnit {
     if !ScriptedPuppet.IsAlive(mech) {
       return "!MECH DESTROYED";
     }
-    if link.Distance() > this.SIGNAL_RANGE {
+    if link.Distance() > CMLinkSystem.SignalRange() {
       return "!SIGNAL LOST";
     }
     this.SendLookAts(mech);
@@ -1103,21 +943,12 @@ public class CMUMinotaur extends CMCUnit {
     // wait a second and a half first: from a small height the game settles it by itself,
     // and acting sooner (every half second) stopped even that; then one try every 3 s
     if this.m_airTime >= 1.5 && gap < 60.0 {
-      let ground = Cast<Vector4>(hit.position);
-      ground.W = 1.0;
-      // the AI's own teleport order: the teleport facility's moves don't land on this mech
-      // (the log showed it set down every half second and never moving)
-      let cmd = new AITeleportCommand();
-      cmd.position = new Vector4(ground.X, ground.Y, ground.Z + 0.3, 1.0);   // a touch above: set right on the hit point its legs sank in
-      cmd.rotation = CMPilotRig.YawOf(mech.GetWorldForward());
-      cmd.doNavTest = false;
-      this.Send(mech, cmd, false);
+      CMGround.SetDown(mech, Cast<Vector4>(hit.position));
       this.m_airLogs += 1;
       if this.m_airLogs <= 6 {
         CMCSession.Log("AIRBORNE: still hanging after " + FloatToStringPrec(this.m_airTime, 1) + " s, teleport order to the ground " + FloatToStringPrec(gap, 1) + " m below");
       }
       s.rig.Nudge(12.0, -1.2);   // the landing, felt
-      GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
       this.m_airTime = -1.5;   // the next try 3 s from now if it is still up
     }
     return true;
@@ -1245,7 +1076,6 @@ public class CMUMinotaur extends CMCUnit {
     st.hasL = this.m_guns.left.Ready();
     st.hasR = this.m_guns.right.Ready();
     let wait = this.m_missileReady - s.Now();
-    st.hints = st.hints + "   [G] MISSILE";
     st.missile = wait > 0.0 ? "MSL RELOAD " + IntToString(CeilF(wait)) + "S" : "MSL READY";
     if !st.hasL && !st.hasR {
       st.warning = "NO WEAPONS - MK.31 OFFLINE";
@@ -1273,15 +1103,6 @@ public class CMUMinotaurMissileCb extends DelayCallback {
   public func Call() -> Void {
     if IsDefined(this.unit) {
       this.unit.Detonate(this.at);
-    }
-  }
-}
-
-public class CMUMinotaurReportCb extends DelayCallback {
-  public let unit: wref<CMUMinotaur>;
-  public func Call() -> Void {
-    if IsDefined(this.unit) {
-      this.unit.Report();
     }
   }
 }

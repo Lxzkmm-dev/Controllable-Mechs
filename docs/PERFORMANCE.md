@@ -1,6 +1,6 @@
 # Controllable Mechs: performance
 
-This is an analysis of what the mod's code does and when, read from the source (version 0.2.0, 2026-09-30). It is not a benchmark: no frame times or FPS were measured. The numbers below are counts of work, not milliseconds.
+This is an analysis of what the mod's code does and when, read from the source (version 0.5.0 Beta, 2026-09-30). It is not a benchmark: no frame times or FPS were measured. The numbers below are counts of work, not milliseconds.
 
 ## Short version (for a mod page)
 
@@ -55,7 +55,7 @@ On leaving: the camera, marker entity, HUD, status effects, stat modifiers, inpu
 
 ## Footprint
 
-- 14 script files, about 5,500 lines; one TweakXL record (the missile's attack); one Input Loader file. About 230 KB in total.
+- 14 script files, about 5,600 lines; one TweakXL record (the missile's attack); one Input Loader file. About 230 KB in total.
 - No archives. The HUD references four of the game's own atlases by path.
 - The pilot HUD is roughly 280 ink widgets (60 of them faint scanlines, 60 bar cells), built once per link-in.
 - Two entities exist only while piloting: the camera and an invisible aim marker.

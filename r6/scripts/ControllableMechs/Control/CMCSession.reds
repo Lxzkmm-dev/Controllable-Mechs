@@ -83,13 +83,16 @@ public class CMCSession extends ScriptableSystem {
   private let m_lastExit: Float;
 
   // Settings. They live in the settings file (CMPilotSystem), not the save; these fields
-  // are the session's copy, filled by Sync() once per game session. They are still marked
-  // persistent so a value an older build left in a save can seed the file once.
-  private persistent let m_fireMode: Int32;   // CMFireMode
-  private persistent let m_chase: Bool;
-  private persistent let m_creditVOff: Bool;  // false = kills and aggro credit V (the default)
-  private persistent let m_hullX: Int32;      // hull multiplier while piloted, stored +1 (0 = the default, x4)
+  // are the session's copy, filled by Sync() once per game session.
+  private let m_fireMode: Int32;   // CMFireMode
+  private let m_chase: Bool;
+  private let m_creditVOff: Bool;  // false = kills and aggro credit V (the default)
+  private let m_hullX: Int32;      // hull multiplier while piloted, stored +1
   private let m_synced: Bool;
+  // the chase camera, read once per pilot session (CONFIG can't change while piloting)
+  private let m_chaseUp: Float;
+  private let m_chaseDist: Float;
+  private let m_chaseSide: Float;
 
   // the view's weight: moving a hulking piece of equipment (both views)
   private let LOOK_STIFFNESS: Float = 7.0;    // spring toward where the mouse points
@@ -161,11 +164,7 @@ public class CMCSession extends ScriptableSystem {
     }
     this.m_synced = true;
     let cfg = CMPilotSystem.Get(this.GetGameInstance());
-    if this.m_fireMode != 0 { cfg.Seed("fireMode", IntToString(this.m_fireMode)); }
-    if this.m_chase { cfg.Seed("chaseView", "1"); }
-    if this.m_creditVOff { cfg.Seed("creditV", "0"); }
-    if this.m_hullX > 0 { cfg.Seed("hullMult", IntToString(this.m_hullX - 1)); }
-    this.m_fireMode = Clamp(cfg.Int("fireMode", 0), 0, 2);
+    this.m_fireMode = Clamp(cfg.Int("fireMode", CMFireMode.Stagger()), 0, 2);
     this.m_chase = cfg.Flag("chaseView", false);
     this.m_creditVOff = !cfg.Flag("creditV", true);
     this.m_hullX = Clamp(cfg.Int("hullMult", 10), 1, 50) + 1;
@@ -285,6 +284,10 @@ public class CMCSession extends ScriptableSystem {
       return why;
     }
 
+    let cfg = CMPilotSystem.Get(this.GetGameInstance());
+    this.m_chaseUp = Cast<Float>(cfg.ChaseUpCm()) / 100.0;
+    this.m_chaseDist = Cast<Float>(cfg.ChaseDistCm()) / 100.0;
+    this.m_chaseSide = cfg.ChaseSide();
     this.rig.Init(unit.Ground(), this.CamUp(), this.CamFwd(), unit.Facing());
     this.Sync();
     this.rig.SetChase(this.m_chase);
@@ -514,7 +517,7 @@ public class CMCSession extends ScriptableSystem {
     this.rig.Update(dt, this.m_unit.Ground(), this.CamUp(), this.CamFwd(), this.zoom);
     if this.ChaseNow() {
       // over one shoulder, so the hull never covers the reticle (CONFIG > CHASE CAMERA)
-      this.rig.pos += CMPilotRig.Dir(this.rig.yaw - 90.0, 0.0) * CMPilotSystem.Get(this.GetGameInstance()).ChaseSide();
+      this.rig.pos += CMPilotRig.Dir(this.rig.yaw - 90.0, 0.0) * this.m_chaseSide;
     }
     this.ClipCamera(dt);
     this.ApplyCamera();
@@ -575,9 +578,6 @@ public class CMCSession extends ScriptableSystem {
     s.speed = this.rig.speed;
     s.fireMode = this.m_fireMode;
     s.warning = "";
-    s.hints = this.m_fireMode == CMFireMode.Split()
-      ? "[WASD] WALK   [LMB] LEFT GUN   [RMB] RIGHT GUN   [MMB] OPTICS   [B] FIRE MODE   [V] VIEW   [\\] DISCONNECT"
-      : "[WASD] WALK   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [V] VIEW   [\\] DISCONNECT";
     this.m_unit.Hud(this, s);
     this.m_hud.Refresh(s);
   }
@@ -618,8 +618,8 @@ public class CMCSession extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   // Camera and aim
   // ---------------------------------------------------------------------------
-  private func CamUp() -> Float = this.ChaseNow() ? Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).ChaseUpCm()) / 100.0 : this.m_unit.SensorUp()
-  private func CamFwd() -> Float = this.ChaseNow() ? -Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).ChaseDistCm()) / 100.0 : this.m_unit.SensorFwd()
+  private func CamUp() -> Float = this.ChaseNow() ? this.m_chaseUp : this.m_unit.SensorUp()
+  private func CamFwd() -> Float = this.ChaseNow() ? -this.m_chaseDist : this.m_unit.SensorFwd()
 
   // the optics always look from the sensor: the chase view steps in while they're held
   private func ChaseNow() -> Bool = this.m_chase && !this.zoom
@@ -1003,7 +1003,7 @@ public class CMCSession extends ScriptableSystem {
   private func Warn(msg: String) -> Void {
     let player = GetPlayer(this.GetGameInstance());
     if IsDefined(player) && StrLen(msg) > 0 {
-      player.SetWarningMessage(StrReplaceAll(StrReplaceAll(msg, "!", ""), "*", ""));
+      player.SetWarningMessage(CMLinkSystem.Plain(msg));
     }
   }
 }

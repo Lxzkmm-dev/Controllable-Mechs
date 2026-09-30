@@ -43,8 +43,7 @@ public class CMInput extends IScriptable {
       case n"CM_LinkLookAt":
         let msg = CMLinkSystem.Get(this.player.GetGame()).LinkLookAt();
         if StrLen(msg) > 0 {
-          // the "!" / "*" marks are for the terminal; the HUD gets plain text
-          this.player.SetWarningMessage(StrReplaceAll(StrReplaceAll(msg, "!", ""), "*", ""));
+          this.player.SetWarningMessage(CMLinkSystem.Plain(msg));
         }
         break;
     }
@@ -91,19 +90,19 @@ protected cb func OnDetach() -> Bool {
 
 @if(ModuleExists("ModSettingsModule"))
 public class CMKeybinds {
-  @runtimeProperty("ModSettings.mod", "Controllable Mechs")
+  @runtimeProperty("ModSettings.mod", "Mechs of Night City")
   @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
   @runtimeProperty("ModSettings.displayName", "Open Robot Link")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
   public let cmOpenLink: EInputKey = EInputKey.IK_RightBracket;
 
-  @runtimeProperty("ModSettings.mod", "Controllable Mechs")
+  @runtimeProperty("ModSettings.mod", "Mechs of Night City")
   @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
   @runtimeProperty("ModSettings.displayName", "Link the robot you look at")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
   public let cmLinkLookAt: EInputKey = EInputKey.IK_LeftBracket;
 
-  @runtimeProperty("ModSettings.mod", "Controllable Mechs")
+  @runtimeProperty("ModSettings.mod", "Mechs of Night City")
   @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
   @runtimeProperty("ModSettings.displayName", "Pilot the linked mech")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")

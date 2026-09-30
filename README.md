@@ -1,8 +1,8 @@
-# Controllable Mechs
+# Mechs of Night City
 
 A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game's robotic NPCs (mechs, androids, drones and spiderbots) through a Robot Link terminal built on TerminalKit, and pilot a Militech Minotaur directly: its sensor feed, its legs and both MK.31 HMGs. Quest NPCs are refused so a link can't break a story scene.
 
-**Version 0.2.0.** The pilot mode is the control framework (`ControllableMechs.Control`); it replaced the alpha's Pilot Mode. See CHANGELOG.md.
+**Version 0.5.0 Beta.** Formerly Controllable Mechs: the code, its modules and the folder keep that name, so saves and settings carry over. See CHANGELOG.md.
 
 ## Keys
 
@@ -40,6 +40,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
   - `Control/CMCUnit.reds`: what a pilotable unit must provide.
   - `Control/CMUMinotaur.reds`: the Minotaur: look-at aim, the fire gate, the chassis turn, walking, AI suppression, hull, audio and the missile.
   - `Control/CMCHits.reds`: the damage pipeline hook (V's credit, the hit marker, the diagnostics trace).
+  - `Control/CMCCalm.reds`: keeps the piloted mech's own AI out of the fight (threats, alerts, combat refused at the source) and turns V's enemies on the mech.
   - `Pilot/CMPilotSystem.reds`: the settings. They are kept in `r6/storages/ControllableMechs/settings.txt`, not in the save, so loading an older save never changes them.
   - `Pilot/CMPilotRig.reds`: the weighted camera math (no game calls).
   - `Pilot/CMPilotGuns.reds`: the two HMGs: discovery, fire modes, cadence and heat.

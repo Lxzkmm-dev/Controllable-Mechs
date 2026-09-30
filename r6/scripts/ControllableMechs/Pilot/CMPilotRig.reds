@@ -27,7 +27,6 @@ public class CMPilotRig {
   public let pos: Vector4;
   public let fov: Float;
   public let speed: Float;          // mech ground speed, m/s (smoothed)
-  public let jumped: Float;         // metres the mech moved in one frame, when it's a jump (for the log)
 
   private let m_yawVel: Float;
   private let m_pitchVel: Float;
@@ -59,7 +58,7 @@ public class CMPilotRig {
     this.m_pitchMax = 30.0;
     this.m_turnK = 16.0;        // stiffness of the torso turn: slower to get going
     this.m_turnDamp = 5.2;      // < 2*sqrt(K) = 8: underdamped, a slight overshoot
-    this.m_maxYawRate = 40.0;   // deg/s: the torso can't whip around (SetTraverse overrides)
+    this.m_maxYawRate = 40.0;   // deg/s: the torso can't whip around (SetWeight overrides)
     this.m_maxPitchRate = 28.0;
     this.m_stride = 2.4;        // metres per footfall
     this.m_bobAmp = 0.08;
@@ -74,7 +73,6 @@ public class CMPilotRig {
     this.pos = CMPilotRig.Ring(ground, facingYaw, up, fwd);
     this.fov = this.m_fovBase;
     this.speed = 0.0;
-    this.jumped = 0.0;
     this.m_yawVel = 0.0;
     this.m_pitchVel = 0.0;
     this.m_rollVel = 0.0;
@@ -99,12 +97,6 @@ public class CMPilotRig {
     this.m_chase = on;
     this.m_turnDamp = on ? 2.0 * SqrtF(this.m_turnK) : 5.2;
     this.m_orbitYaw = this.yaw;
-  }
-
-  // the torso's traverse rate cap, deg/s (SETTINGS slider); pitch follows at 70%
-  public func SetTraverse(degPerSec: Float) -> Void {
-    this.m_maxYawRate = ClampF(degPerSec, 10.0, 180.0);
-    this.m_maxPitchRate = this.m_maxYawRate * 0.7;
   }
 
   public func YawRate() -> Float = this.m_yawVel
@@ -191,10 +183,8 @@ public class CMPilotRig {
     d.Z = 0.0;
     let moved = Vector4.Length(d);
     this.m_lastGround = ground;
-    this.jumped = 0.0;
     let v = dt > 0.0 ? moved / dt : 0.0;
-    if moved > 3.0 {
-      this.jumped = moved;   // the mech was moved by the game, not by walking
+    if moved > 3.0 {   // moved by the game, not walked: keep the last speed
       v = this.speed;
     }
     this.speed += (v - this.speed) * MinF(1.0, dt * 4.0);

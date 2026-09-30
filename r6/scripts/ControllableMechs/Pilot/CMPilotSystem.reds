@@ -11,10 +11,7 @@
 // loaded, which is how the pilot mode once flipped on its own. The file is read
 // once per game session and written when a setting changes.
 //
-// Older builds kept the settings in the save (the `persistent` fields below,
-// which keep their names so they still load). Any value found there is copied
-// into the file once, if the file doesn't have that setting yet. Lengths are
-// kept in centimetres; the terminal shows them in feet and inches.
+// Lengths are kept in centimetres; the terminal shows them in feet and inches.
 // =============================================================================
 module ControllableMechs
 
@@ -22,19 +19,6 @@ import TerminalKit.*
 import RedFunctions.Storage.*
 
 public class CMPilotSystem extends ScriptableSystem {
-  // ---- legacy: read from old saves only, to seed the file ----
-  private persistent let m_stayWhenHit: Bool;
-  private persistent let m_themeIdx: Int32;      // was: 1 + index into TKTheme.Ids()
-  private persistent let m_camUpCm: Int32;       // all stored +1, 0 = never set
-  private persistent let m_camFwdCm: Int32;
-  private persistent let m_sensPct: Int32;
-  private persistent let m_chaseDistCm: Int32;
-  private persistent let m_chaseUpCm: Int32;
-  private persistent let m_chaseSideCm: Int32;
-  private persistent let m_shoulderLeft: Bool;
-  private persistent let m_showDebug: Bool;
-  private persistent let m_recoilPct: Int32;
-
   // ---- the settings file, in memory ----
   private let m_keys: array<String>;
   private let m_vals: array<String>;
@@ -71,16 +55,6 @@ public class CMPilotSystem extends ScriptableSystem {
         }
       }
     }
-    // what an older build left in this save, for settings the file doesn't have yet
-    if this.m_stayWhenHit { this.Seed("stayWhenHit", "1"); }
-    if this.m_camUpCm > 0 { this.Seed("camUpCm", IntToString(this.m_camUpCm - 1)); }
-    if this.m_camFwdCm > 0 { this.Seed("camFwdCm", IntToString(this.m_camFwdCm - 1)); }
-    if this.m_sensPct > 0 { this.Seed("sensPct", IntToString(this.m_sensPct - 1)); }
-    if this.m_chaseDistCm > 0 { this.Seed("chaseDistCm", IntToString(this.m_chaseDistCm - 1)); }
-    if this.m_chaseUpCm > 0 { this.Seed("chaseUpCm", IntToString(this.m_chaseUpCm - 1)); }
-    if this.m_chaseSideCm > 0 { this.Seed("chaseSideCm", IntToString(this.m_chaseSideCm - 1)); }
-    if this.m_shoulderLeft { this.Seed("shoulderLeft", "1"); }
-    if this.m_recoilPct > 0 { this.Seed("recoilPct", IntToString(this.m_recoilPct - 1)); }
     this.Cache();
   }
 
@@ -133,17 +107,6 @@ public class CMPilotSystem extends ScriptableSystem {
 
   public func PutFlag(key: String, on: Bool) -> Void {
     this.Put(key, on ? "1" : "0");
-  }
-
-  // set a setting only if the file doesn't have it (a value carried over from a save)
-  public func Seed(key: String, value: String) -> Void {
-    this.Load();
-    if this.Find(key) < 0 {
-      ArrayPush(this.m_keys, key);
-      ArrayPush(this.m_vals, value);
-      this.Cache();
-      this.Save();
-    }
   }
 
   private func Save() -> Void {

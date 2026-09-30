@@ -119,13 +119,6 @@ public class CMCHits extends ScriptableSystem {
   }
 
   // ---- what something is, for the log ----
-  public static func Health(obj: ref<GameObject>) -> Float {
-    if !IsDefined(obj) {
-      return -1.0;
-    }
-    return GameInstance.GetStatPoolsSystem(obj.GetGame()).GetStatPoolValue(Cast<StatsObjectID>(obj.GetEntityID()), gamedataStatPoolType.Health, false);
-  }
-
   public static func Describe(obj: ref<GameObject>) -> String {
     if !IsDefined(obj) {
       return "nothing";
