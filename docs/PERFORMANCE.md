@@ -39,7 +39,7 @@ Every frame:
 - Reticle: two raycasts (world geometry, then characters and vehicles).
 - Aim: one transform set on the look-at marker; two barrel-to-reticle angle calculations.
 - Chassis: at most one rotation call, and only while the body is turning or has been moved off its heading.
-- Guns: cadence and heat arithmetic; per round fired, one fire call and up to three effects.
+- Guns: cadence and heat arithmetic; per round fired, one fire call and up to three effects. A gun that fires before its barrel has reached the reticle adds two raycasts for that round.
 - HUD: the compass tape, gun reticles and heat cells are touched only when their value changes by a visible amount.
 
 Ten times a second:

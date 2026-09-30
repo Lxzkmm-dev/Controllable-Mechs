@@ -39,6 +39,8 @@ public class CMGun {
   public let lastShot: Float;      // sim time
   public let flash: Float;         // seconds of muzzle-flash on the HUD marker
   public let offAim: Bool;         // the barrel is too far off the reticle to fire (the unit's fire gate)
+  public let ownTarget: Bool;      // this round goes to `target` (what the barrel points at), not the reticle point
+  public let target: Vector4;
 
   public func Ready() -> Bool = IsDefined(this.weapon)
 }
@@ -227,14 +229,17 @@ public class CMPilotGuns {
   }
 
   // One round at the reticle point, with a spread cone that grows with heat. The target
-  // must be the reticle point itself: a point projected along the barrel never did damage.
+  // must be a real point something is at (the reticle's hit point, or the hit point of a
+  // ray along the barrel): a point merely projected along the barrel never did damage.
   private func TryFire(mech: ref<NPCPuppet>, g: ref<CMGun>, now: Float, cycle: Float, aim: Vector4, spreadDeg: Float, camPos: Vector4) -> Bool {
     if !this.CanFire(g, now) {
       return false;
     }
-    let dist = Vector4.Distance(camPos, aim);
+    // a gun still swinging onto the reticle fires at what its own barrel points at
+    let at = g.ownTarget ? g.target : aim;
+    let dist = Vector4.Distance(g.ownTarget ? g.weapon.GetWorldPosition() : camPos, at);
     let r = dist * Deg2Rad(spreadDeg * (1.0 + g.heat * 1.5));
-    let target = new Vector4(aim.X + RandRangeF(-r, r), aim.Y + RandRangeF(-r, r), aim.Z + RandRangeF(-r, r) * 0.6, 1.0);
+    let target = new Vector4(at.X + RandRangeF(-r, r), at.Y + RandRangeF(-r, r), at.Z + RandRangeF(-r, r) * 0.6, 1.0);
     AIWeapon.Fire(mech, g.weapon, now, 0.0, gamedataTriggerMode.FullAuto, target);
     g.nextShot = now + cycle;
     g.lastShot = now;

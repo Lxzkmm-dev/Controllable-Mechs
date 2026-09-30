@@ -381,12 +381,14 @@ public class CMUMinotaur extends CMCUnit {
     // gun's reticle shows it (tight and bright when locked on)
     let offL = CMCSession.AimError(this.m_guns.left.weapon, s.aim) > this.GATE_DEG;
     let offR = CMCSession.AimError(this.m_guns.right.weapon, s.aim) > this.GATE_DEG;
-    // By default the guns fire while they are still swinging onto the reticle: the rounds
-    // go to the reticle point either way. With CONFIG > HOLD FIRE UNTIL ON TARGET a gun
-    // waits until its barrel is within GATE_DEG of it. The gun reticles show the barrels'
-    // state in both cases.
+    // By default the guns fire while they are still swinging onto the reticle, and a gun
+    // that is not on it yet fires where its own barrel points (its gun reticle on the
+    // HUD), so flash, tracer and hit agree. Once within GATE_DEG it fires at the reticle
+    // point. With CONFIG > HOLD FIRE UNTIL ON TARGET a gun waits instead.
     this.m_guns.left.offAim = this.m_gate && offL;
     this.m_guns.right.offAim = this.m_gate && offR;
+    this.OwnTarget(this.m_guns.left, !this.m_gate && offL && trigger, now, dt);
+    this.OwnTarget(this.m_guns.right, !this.m_gate && offR && trigger, now, dt);
     if this.m_gate && trigger && (offL || offR) {
       this.m_held += 1;
     }
@@ -398,10 +400,10 @@ public class CMUMinotaur extends CMCUnit {
       s.rig.Recoil(this.KICK * Cast<Float>(shots));
       // which barrel just fired: its flash timer was reset this frame
       if this.m_guns.left.flash > flashL {
-        this.RoundFx(this.m_guns.left.weapon, s.aim);
+        this.RoundFx(this.m_guns.left.weapon, this.m_guns.left.ownTarget ? this.m_guns.left.target : s.aim);
       }
       if this.m_guns.right.flash > flashR && this.m_guns.right.weapon != this.m_guns.left.weapon {
-        this.RoundFx(this.m_guns.right.weapon, s.aim);
+        this.RoundFx(this.m_guns.right.weapon, this.m_guns.right.ownTarget ? this.m_guns.right.target : s.aim);
       }
     }
     this.AimLog(s, trigger, now);
@@ -556,6 +558,37 @@ public class CMUMinotaur extends CMCUnit {
       CMCSession.Log("chassis: turn order " + IntToString(this.m_turnOrders) + ", " + FloatToStringPrec(off, 1) + " deg to go");
     }
     GameObject.PlaySoundEvent(mech, AbsF(off) > 120.0 ? n"enm_mech_minotaur_loco_idle_to_idle_180_l" : n"enm_mech_minotaur_loco_idle_to_idle_90");
+  }
+
+  // What a barrel that is off the reticle points at: the nearest hit of a ray along it
+  // (world geometry, then characters and vehicles), or a point 150 m out when it points at
+  // nothing. Two raycasts, and only in the frame that gun is about to fire.
+  private func OwnTarget(g: ref<CMGun>, off: Bool, now: Float, dt: Float) -> Void {
+    g.ownTarget = false;
+    if !off || !g.Ready() || now < g.nextShot - dt {
+      return;
+    }
+    let fwd = g.weapon.GetWorldForward();
+    let from = g.weapon.GetWorldPosition() + fwd * 2.0;
+    let to = from + fwd * 300.0;
+    let sq = GameInstance.GetSpatialQueriesSystem(this.m_game);
+    let at = from + fwd * 150.0;
+    let best = 9999.0;
+    let hit: TraceResult;
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hit, true) {
+      at = Cast<Vector4>(hit.position);
+      best = Vector4.Distance(from, at);
+    }
+    let dyn: TraceResult;
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Dynamic", dyn, true) {
+      let p = Cast<Vector4>(dyn.position);
+      if Vector4.Distance(from, p) < best {
+        at = p;
+      }
+    }
+    at.W = 1.0;
+    g.target = at;
+    g.ownTarget = true;
   }
 
   // A heavier round, visually: the Militech HMG's own big muzzle flash and a power-HMG
