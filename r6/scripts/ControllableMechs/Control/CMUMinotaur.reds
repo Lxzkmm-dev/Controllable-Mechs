@@ -698,6 +698,11 @@ public class CMUMinotaur extends CMCUnit {
     EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attack, ToVariant(attack));
     EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attackStatModList, ToVariant(statMods));
     EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.flags, ToVariant(flags));
+    // the blast is V's attack (V's kill, XP and heat), but those it hits turn on the mech
+    let mech = this.Mech();
+    if IsDefined(mech) {
+      CMCHits.Blame(mech, 0.6);
+    }
     attack.StartAttack();
     CMCSession.Log("missile: detonated at " + CMCHits.V(at) + " with " + used + ", radius " + FloatToStringPrec(this.MISSILE_RADIUS, 1) + " m, damage " + FloatToStringPrec(this.MISSILE_DAMAGE, 0));
   }

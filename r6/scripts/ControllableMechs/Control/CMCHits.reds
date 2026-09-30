@@ -79,6 +79,28 @@ public class CMCHits extends ScriptableSystem {
       + (StrLen(cancelled) > 0 ? ", CANCELLED:" + cancelled : ""));
   }
 
+  // The unit answerable for V's weaponless hits for a short while: the missile's blast is
+  // an attack of V's with no weapon, so the unit that launched it says so here, and those
+  // it hits turn on the unit (CMCCalm).
+  private let m_blamed: wref<GameObject>;
+  private let m_blameUntil: Float;
+
+  public static func Blame(unit: wref<GameObject>, seconds: Float) -> Void {
+    let sys = CMCHits.Get(unit.GetGame());
+    if IsDefined(sys) {
+      sys.m_blamed = unit;
+      sys.m_blameUntil = EngineTime.ToFloat(GameInstance.GetEngineTime(unit.GetGame())) + seconds;
+    }
+  }
+
+  public static func Blamed(game: GameInstance) -> wref<GameObject> {
+    let sys = CMCHits.Get(game);
+    if IsDefined(sys) && IsDefined(sys.m_blamed) && EngineTime.ToFloat(GameInstance.GetEngineTime(game)) < sys.m_blameUntil {
+      return sys.m_blamed;
+    }
+    return null;
+  }
+
   // a diagnostics line under the same limit (at most 25 lines per 5 s)
   public static func Trace(game: GameInstance, text: String) -> Void {
     let sys = CMCHits.Get(game);

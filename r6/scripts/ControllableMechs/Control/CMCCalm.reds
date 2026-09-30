@@ -28,6 +28,20 @@ public final static func OnHit(ownerPuppet: wref<ScriptedPuppet>, evt: ref<gameH
     CMCCalm.Note(ownerPuppet, evt.attackData.GetInstigator(), "a hit");
     return;
   }
+  // Someone hit by the piloted unit: the hit is credited to V (the kill, XP and heat are
+  // V's), but the one to turn on is the unit that fired. The game's own function runs with
+  // the unit standing in as the instigator, then V is put back.
+  if IsDefined(ownerPuppet) && IsDefined(evt) && IsDefined(evt.attackData) {
+    let credited = evt.attackData.GetInstigator();
+    let unit = CMCCalm.FiredBy(evt, credited);
+    if IsDefined(unit) && IsDefined(credited) && unit != credited {
+      evt.attackData.SetInstigator(unit);
+      wrappedMethod(ownerPuppet, evt);
+      evt.attackData.SetInstigator(credited);
+      CMCCalm.Drew(ownerPuppet, unit);
+      return;
+    }
+  }
   wrappedMethod(ownerPuppet, evt);
 }
 
@@ -68,6 +82,32 @@ protected cb func OnEnemyPushedToSquad(evt: ref<EnemyPushedToSquad>) -> Bool {
 }
 
 public abstract class CMCCalm {
+  // The piloted unit behind a hit, if there is one: the owner of a flagged weapon, or,
+  // for a hit of V's with no weapon (the missile's blast), the unit that launched a
+  // missile in the last moments (CMCHits.Blame). Null for every other hit in the game,
+  // after one field check (two for V's weaponless hits).
+  public static func FiredBy(evt: ref<gameHitEvent>, credited: wref<GameObject>) -> wref<GameObject> {
+    let w = evt.attackData.GetWeapon();
+    if IsDefined(w) {
+      if w.m_cmPiloted {
+        return w.GetOwner();
+      }
+      return null;
+    }
+    if IsDefined(credited) && credited.IsPlayer() {
+      return CMCHits.Blamed(credited.GetGame());
+    }
+    return null;
+  }
+
+  // with diagnostics on: who was made to turn on the unit
+  public static func Drew(victim: wref<ScriptedPuppet>, unit: wref<GameObject>) -> Void {
+    if !CMPilotSystem.Get(victim.GetGame()).ShowDebug() {
+      return;
+    }
+    CMCHits.Trace(victim.GetGame(), "aggro: " + CMCHits.Describe(victim) + " was hit and handed the mech as its attacker, " + FloatToStringPrec(Vector4.Distance(victim.GetWorldPosition(), unit.GetWorldPosition()), 1) + " m away; it is now " + (Equals(GameObject.GetAttitudeBetween(victim, unit), EAIAttitude.AIA_Hostile) ? "hostile" : "NOT hostile") + " to the mech");
+  }
+
   // with diagnostics on: what was kept away from the piloted unit, and how close it was
   public static func Note(owner: wref<ScriptedPuppet>, from: wref<GameObject>, what: String) -> Void {
     if !IsDefined(owner) || !CMPilotSystem.Get(owner.GetGame()).ShowDebug() {
