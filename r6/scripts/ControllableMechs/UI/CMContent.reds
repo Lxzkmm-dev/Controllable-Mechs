@@ -79,47 +79,47 @@ public class CMContent extends TKContent {
         p.SetMessage("TEST MECH REMOVED");
         break;
       case "firemode":
-        pilot.SetFireMode(StringToInt(arg, 0));
+        pilot.SetFireMode(CMContent.Val(arg, 0));
         break;
       case "dropwhenhit":
-        pilot.SetStayWhenHit(!Equals(arg, "1"));
+        pilot.SetStayWhenHit(!Equals(CMContent.Str(arg), "1"));
         break;
       case "camup":
-        pilot.SetCamUpCm(StringToInt(arg, pilot.CamUpCm()));
+        pilot.SetCamUpCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(pilot.CamUpCm()))));
         break;
       case "camfwd":
-        pilot.SetCamFwdCm(StringToInt(arg, pilot.CamFwdCm()));
+        pilot.SetCamFwdCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(pilot.CamFwdCm()))));
         break;
       case "sens":
-        pilot.SetSensPct(StringToInt(arg, pilot.SensPct()));
+        pilot.SetSensPct(CMContent.Val(arg, pilot.SensPct()));
         break;
       case "armtrack":
-        pilot.SetArmTrack(Equals(arg, "1"));
+        pilot.SetArmTrack(Equals(CMContent.Str(arg), "1"));
         break;
       case "damage":
-        pilot.SetDamagePct(StringToInt(arg, pilot.DamagePct()));
+        pilot.SetDamagePct(CMContent.Val(arg, pilot.DamagePct()));
         break;
       case "cammode":
-        pilot.SetCamMode(StringToInt(arg, 0));
+        pilot.SetCamMode(CMContent.Val(arg, 0));
         break;
       case "chasedist":
-        pilot.SetChaseDistCm(StringToInt(arg, pilot.ChaseDistCm()));
+        pilot.SetChaseDistCm(CMContent.FtToCm(CMContent.Val(arg, CMContent.CmToFt(pilot.ChaseDistCm()))));
         break;
       case "chaseup":
-        pilot.SetChaseUpCm(StringToInt(arg, pilot.ChaseUpCm()));
+        pilot.SetChaseUpCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(pilot.ChaseUpCm()))));
         break;
       case "aimmode":
-        pilot.SetAimMode(StringToInt(arg, 0));
+        pilot.SetAimMode(CMContent.Val(arg, 0));
         break;
       case "traverse":
-        pilot.SetTraverse(StringToInt(arg, pilot.Traverse()));
+        pilot.SetTraverse(CMContent.Val(arg, pilot.Traverse()));
         break;
       case "camreset":
         pilot.ResetCamera();
         p.SetMessage("*CAMERA SETTINGS RESET");
         break;
       case "debug":
-        pilot.SetShowDebug(Equals(arg, "1"));
+        pilot.SetShowDebug(Equals(CMContent.Str(arg), "1"));
         break;
       case "theme":
         pilot.SetTheme(arg);
@@ -134,7 +134,7 @@ public class CMContent extends TKContent {
     p.SetTitle("ROBOT LINK", "REMOTE OPERATION // NEURAL UPLINK");
     p.SetSection("link");
     if !link.IsLinked() {
-      p.Dossier("NO UNIT LINKED", "Look at a mech, android, drone or spiderbot within 60 m and press [, or link it from here.", "OFFLINE", "red");
+      p.Dossier("NO UNIT LINKED", "Look at a mech, android, drone or spiderbot within 200 ft and press [, or link it from here.", "OFFLINE", "red");
       p.Gap();
       p.Button("LINK LOOKED-AT ROBOT", "link", "", true);
       this.Test(p, link);
@@ -143,7 +143,7 @@ public class CMContent extends TKContent {
     p.Dossier(link.UnitName(), "Linked " + StrLower(link.UnitKind()), "ONLINE", "green");
     let hp = link.HealthFraction();
     p.Stat("INTEGRITY", IntToString(RoundF(hp * 100.0)) + "%", hp < 0.3 ? "!CRITICAL" : "*NOMINAL", hp);
-    p.Stat("SIGNAL", IntToString(RoundF(link.Distance())) + " m", "", link.SignalFraction());
+    p.Stat("SIGNAL", IntToString(RoundF(link.Distance() * 3.28084)) + " ft", "", link.SignalFraction());
     p.Stat("ORDER", CMContent.OrderName(link.Order()), "", -1.0);
     if Equals(link.UnitKind(), "MECH") {
       p.Heading("DIRECT CONTROL");
@@ -151,7 +151,7 @@ public class CMContent extends TKContent {
     }
     p.Heading("ORDERS");
     p.Buttons("Command the linked unit", "", "", "FOLLOW|HOLD|MOVE TO TARGET", "follow|hold|move", "||");
-    p.SetTip("MOVE TO TARGET sends the unit to what you look at when you press it, or 15 m ahead of you.");
+    p.SetTip("MOVE TO TARGET sends the unit to what you look at when you press it, or 50 ft ahead of you.");
     p.Gap();
     p.Button("CLOSE LINK", "unlink", "", true);
     this.Test(p, link);
@@ -163,7 +163,7 @@ public class CMContent extends TKContent {
     if link.HasTestMech() {
       p.Item("TEST MINOTAUR", "Spawned for testing; not kept in the save.", "", "REMOVE", "despawntest", "", true);
     } else {
-      p.Item("MILITECH MINOTAUR", "Spawns one 14 m in front of you and links it.", "", "SPAWN", "spawntest", "", true);
+      p.Item("MILITECH MINOTAUR", "Spawns one 46 ft in front of you and links it.", "", "SPAWN", "spawntest", "", true);
     }
   }
 
@@ -184,20 +184,41 @@ public class CMContent extends TKContent {
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
     p.Heading("CAMERA VIEW");
     p.Dropdown("VIEW", "V switches it while piloting", IntToString(pilot.CamMode()), "SENSOR (FIRST PERSON)|CHASE (THIRD PERSON)", "0|1", "cammode", "");
-    p.Slider("CHASE DISTANCE", "Chase view: behind the mech's centre", "", "400|1600|25|" + IntToString(pilot.ChaseDistCm()) + "| cm", "chasedist", "");
-    p.Slider("CHASE HEIGHT", "Chase view: above the mech's feet", "", "200|900|10|" + IntToString(pilot.ChaseUpCm()) + "| cm", "chaseup", "");
+    p.Slider("CHASE DISTANCE", "Chase view: behind the mech's centre", "", "13|52|1|" + IntToString(CMContent.CmToFt(pilot.ChaseDistCm())) + "| ft", "chasedist", "");
+    p.Slider("CHASE HEIGHT", "Chase view: above the mech's feet", "", "79|354|2|" + IntToString(CMContent.CmToIn(pilot.ChaseUpCm())) + "| in", "chaseup", "");
     p.SetTip("Both views pull in when a wall, pole or container is between the mech and the camera.");
     p.Heading("SENSOR CAMERA");
-    p.Slider("HEIGHT", "Above the mech's feet", "", "100|450|5|" + IntToString(pilot.CamUpCm()) + "| cm", "camup", "");
+    p.Slider("HEIGHT", "Above the mech's feet", "", "40|177|1|" + IntToString(CMContent.CmToIn(pilot.CamUpCm())) + "| in", "camup", "");
     p.SetTip("Applies live: change it, then press \\ to check the view.");
-    p.Slider("FORWARD", "Ahead of the mech's centre", "", "0|500|5|" + IntToString(pilot.CamFwdCm()) + "| cm", "camfwd", "");
+    p.Slider("FORWARD", "Ahead of the mech's centre", "", "0|196|1|" + IntToString(CMContent.CmToIn(pilot.CamFwdCm())) + "| in", "camfwd", "");
     p.Slider("TRAVERSE SPEED", "How fast the torso can turn", "", "15|120|5|" + IntToString(pilot.Traverse()) + "| deg/s", "traverse", "");
     p.Slider("MOUSE SENSITIVITY", "On top of the game's own mouse setting", "", "25|300|5|" + IntToString(pilot.SensPct()) + "|%", "sens", "");
-    p.Item("DEFAULTS", "Height 230 cm, forward 260 cm, traverse 40 deg/s, sensitivity 100%", "", "RESET", "camreset", "", true);
+    p.Item("DEFAULTS", "Height 7 ft 7 in, forward 8 ft 6 in, traverse 40 deg/s, sensitivity 100%", "", "RESET", "camreset", "", true);
     p.Check("DEBUG READOUT", "A diagnostic line on the pilot HUD (frames, inputs, locks)", pilot.ShowDebug(), "debug", "");
     p.Heading("PALETTE");
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", pilot.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
   }
+
+  // A control's value from Act's arg. TerminalKit's slider always hands on "arg:value", so
+  // with an empty row arg it arrives as ":230" (TKView.SlideCommit; its README says
+  // just the value). StringToInt(":230", current) fell back to the current value, so no
+  // slider ever changed anything. Take what follows the last ":", whichever form arrives.
+  // (docs/terminalkit-dev-request-slider.md asks for the fix in TerminalKit.)
+  public static func Str(arg: String) -> String {
+    let s = arg;
+    while StrContains(s, ":") {
+      s = StrAfterFirst(s, ":");
+    }
+    return s;
+  }
+
+  public static func Val(arg: String, def: Int32) -> Int32 = StringToInt(CMContent.Str(arg), def)
+
+  // settings show in imperial; the pilot system keeps centimetres
+  public static func CmToIn(cm: Int32) -> Int32 = RoundF(Cast<Float>(cm) / 2.54)
+  public static func InToCm(inches: Int32) -> Int32 = RoundF(Cast<Float>(inches) * 2.54)
+  public static func CmToFt(cm: Int32) -> Int32 = RoundF(Cast<Float>(cm) / 30.48)
+  public static func FtToCm(ft: Int32) -> Int32 = RoundF(Cast<Float>(ft) * 30.48)
 
   public static func ThemeLabels() -> String {
     let ids = TKTheme.Ids();
