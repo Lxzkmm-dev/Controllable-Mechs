@@ -1,7 +1,7 @@
 // =============================================================================
 // CONTROLLABLE MECHS - ROBOT LINK TERMINAL (on TerminalKit's ready-made frame)
 // TKPopup gives the lens, brand bar, sidebar tabs, scrolling page, tooltips,
-// right-click back and Esc close; CMContent fills the pages. Opened with K
+// right-click back and Esc close; CMContent fills the pages. Opened with ]
 // (CM_OpenLink, Input Loader) through CMTerminal.Toggle. Works in combat; not over
 // a menu. TerminalKit comes from the TerminalKIT mod (a requirement).
 // =============================================================================
@@ -15,7 +15,7 @@ public class CMTerminal extends TKPopup {
     c.game = this.GetGame();
     return c;
   }
-  public func Tabs() -> array<String> = ["UNIT|link", "CONFIG|settings", "SPIKES|spikes", "TOOLS|tk_tools"]
+  public func Tabs() -> array<String> = ["UNIT|link", "CONFIG|settings", "TOOLS|tk_tools"]
   public func Brand() -> String = "MILITECH"
   public func Name() -> String = "ROBOT LINK"
   public func Status() -> String = "MT-FCS FIELD TERMINAL // SECURE CH 07 // v" + CMVersion.Text() + " // ] CLOSE"
@@ -37,6 +37,10 @@ public class CMTerminal extends TKPopup {
     s.headerPlates = true;
     s.segmentedBars = 10;
     s.selectSound = n"ui_menu_onpress";
+    s.denySound = n"ui_hacking_press_fail";
+    // Industry: the game's condensed industrial face; it has the one style, Demi
+    s.fontFamily = "base\\gameplay\\gui\\fonts\\industry\\industry.inkfontfamily";
+    s.fontStyle = n"Demi";
     return s;
   }
 
@@ -45,7 +49,6 @@ public class CMTerminal extends TKPopup {
   // terminal "open" and made the next key press close nothing instead of opening).
   protected func Closing() -> Void {
     CMTerminalState.Forget(this);
-    TKLog.Add("ControllableMechs", "terminal: closing");
   }
 
   protected func Closed() -> Void {
@@ -60,7 +63,6 @@ public class CMTerminal extends TKPopup {
     if CMTerminal.IsUp(state) {
       if !state.open.IsTyping() {
         state.open.Close();
-        TKLog.Add("ControllableMechs", "terminal: closed by key");
       }
       return;
     }
@@ -69,14 +71,12 @@ public class CMTerminal extends TKPopup {
     state.open = null;
     // available in combat too: only menus, pause and photo mode block it (TKPopup.CanOpen)
     if !TKPopup.CanOpen(player) {
-      TKLog.Add("ControllableMechs", "terminal: not opened (a menu, pause or photo mode is up)");
       return;
     }
     TKTheme.Register(new CMMilitaryPalette());   // the same id replaces, so this is safe to repeat
     let terminal = new CMTerminal();
     state.open = terminal;
     TKPopup.Open(player, terminal);
-    TKLog.Add("ControllableMechs", "terminal: opened");
   }
 
   // really on screen: remembered, initialised, and its root widget exists and is visible
@@ -93,7 +93,6 @@ public class CMTerminal extends TKPopup {
     let state = CMTerminalState.Get(game);
     if CMTerminal.IsUp(state) {
       state.open.Close();
-      TKLog.Add("ControllableMechs", "terminal: closed by a button (pilot / spike)");
     }
     if IsDefined(state) {
       state.open = null;

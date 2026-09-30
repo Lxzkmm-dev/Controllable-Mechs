@@ -2,8 +2,9 @@
 // CONTROLLABLE MECHS - PILOT GUNS (the two MK.31 HMGs)
 //
 // Finds the mech's left and right weapons and fires them through the game's own
-// NPC firing call (AIWeapon.Fire) at a world point, so the rounds leave the real
-// muzzles and converge on what the reticle is on.
+// NPC firing call (AIWeapon.Fire) at the point the reticle is on, with the mech
+// as owner: the one call that deals damage (the damage pipeline hook in
+// CMCHits credits the hits to V).
 //
 // Fire modes (CMFireMode):
 //   Stagger  - LMB fires both, barrels alternate at double cadence (default)
@@ -11,8 +12,8 @@
 //   Split    - LMB fires the left gun, RMB the right
 //
 // Heat per gun: each shot adds heat, it bleeds off when the trigger is released,
-// at 100% the gun locks until it has cooled to 35%. The pilot tick calls
-// Update() every frame while piloting and never otherwise.
+// at 100% the gun locks until it has cooled to 35%. The unit calls Update()
+// every frame while piloting and never otherwise.
 // =============================================================================
 module ControllableMechs
 
@@ -30,12 +31,6 @@ public abstract class CMFireMode {
   public static func Next(mode: Int32) -> Int32 = (mode + 1) % 3
 }
 
-public abstract class CMAimMode {
-  public static func Gimballed() -> Int32 = 0
-  public static func Reticle() -> Int32 = 1
-  public static func Barrels() -> Int32 = 2
-}
-
 public class CMGun {
   public let weapon: wref<WeaponObject>;
   public let heat: Float;          // 0..1
@@ -43,21 +38,9 @@ public class CMGun {
   public let nextShot: Float;      // sim time
   public let lastShot: Float;      // sim time
   public let flash: Float;         // seconds of muzzle-flash on the HUD marker
-  public let offAim: Bool;         // spike S7: the barrel is too far off the reticle to fire
+  public let offAim: Bool;         // the barrel is too far off the reticle to fire (the unit's fire gate)
 
   public func Ready() -> Bool = IsDefined(this.weapon)
-}
-
-// spike S7: which fire call the MK.31s use
-public abstract class CMFireCall {
-  public static func Mech() -> Int32 = 0     // owner mech, target point (the alpha's call)
-  public static func V() -> Int32 = 1        // owner V, charge 1, no target point (a V-controlled vanilla turret's call)
-  public static func VPoint() -> Int32 = 2   // owner V, charge 1, with the target point
-  public static func Name(call: Int32) -> String {
-    if call == CMFireCall.V() { return "V, NO POINT"; }
-    if call == CMFireCall.VPoint() { return "V + POINT"; }
-    return "MECH";
-  }
 }
 
 public class CMPilotGuns {
@@ -65,15 +48,10 @@ public class CMPilotGuns {
   public let right: ref<CMGun>;
   private let m_cycle: Float;       // seconds between shots of one gun
   private let m_turnLeft: Bool;     // stagger: which barrel is next
-  private let m_names: String;      // what was found, for the HUD / diagnostics
-  public let call: Int32;           // spike S7: CMFireCall (0 = the mech's call, the default)
-  public let rate: Float = 1.0;     // M1 spin-up: fraction of the full rate of fire (1 = full, the alpha)
-  private let m_aimMode: Int32;    // CMAimMode: gimballed (default), to the reticle, along the barrels
+  private let m_names: String;      // what was found, for the log
+  public let rate: Float = 1.0;     // spin-up: fraction of the full rate of fire (1 = full)
 
   private let HEAT_PER_SHOT: Float = 0.022;
-  private let GIMBAL_YAW: Float = 12.0;    // how far a gun can swing off its barrel, degrees
-  private let GIMBAL_UP: Float = 25.0;
-  private let GIMBAL_DOWN: Float = 40.0;
   private let COOL_RATE: Float = 0.30;   // per second
   private let COOL_DELAY: Float = 0.35;  // seconds after the last shot
   private let UNLOCK_AT: Float = 0.35;
@@ -110,49 +88,7 @@ public class CMPilotGuns {
 
   public func Describe() -> String = this.m_names
 
-  // ---- damage boost while piloting (SETTINGS > MK.31 DAMAGE) ----
-  // A multiplier on each gun's BaseDamage stat, added on entering and removed on exit.
-  // Whether NPC weapons take their damage from that stat is unverified: the log line shows
-  // the stat before and after so it can be checked.
-  private let m_boostL: ref<gameStatModifierData>;
-  private let m_boostR: ref<gameStatModifierData>;
-
-  public func Boost(game: GameInstance, mult: Float) -> String {
-    this.Unboost(game);
-    if mult <= 1.001 {
-      return "damage x1";
-    }
-    let stats = GameInstance.GetStatsSystem(game);
-    let note = "";
-    if this.left.Ready() {
-      let id = Cast<StatsObjectID>(this.left.weapon.GetEntityID());
-      let before = stats.GetStatValue(id, gamedataStatType.BaseDamage);
-      this.m_boostL = RPGManager.CreateStatModifier(gamedataStatType.BaseDamage, gameStatModifierType.Multiplier, mult);
-      stats.AddModifier(id, this.m_boostL);
-      note += "L BaseDamage " + FloatToStringPrec(before, 1) + " -> " + FloatToStringPrec(stats.GetStatValue(id, gamedataStatType.BaseDamage), 1);
-    }
-    if this.right.Ready() && this.right.weapon != this.left.weapon {
-      let id = Cast<StatsObjectID>(this.right.weapon.GetEntityID());
-      let before = stats.GetStatValue(id, gamedataStatType.BaseDamage);
-      this.m_boostR = RPGManager.CreateStatModifier(gamedataStatType.BaseDamage, gameStatModifierType.Multiplier, mult);
-      stats.AddModifier(id, this.m_boostR);
-      note += "  R BaseDamage " + FloatToStringPrec(before, 1) + " -> " + FloatToStringPrec(stats.GetStatValue(id, gamedataStatType.BaseDamage), 1);
-    }
-    return note;
-  }
-
-  public func Unboost(game: GameInstance) -> Void {
-    let stats = GameInstance.GetStatsSystem(game);
-    if IsDefined(this.m_boostL) && this.left.Ready() {
-      stats.RemoveModifier(Cast<StatsObjectID>(this.left.weapon.GetEntityID()), this.m_boostL);
-    }
-    if IsDefined(this.m_boostR) && this.right.Ready() {
-      stats.RemoveModifier(Cast<StatsObjectID>(this.right.weapon.GetEntityID()), this.m_boostR);
-    }
-    this.m_boostL = null;
-    this.m_boostR = null;
-  }
-  // ---- round speed (M1): the MK.31s are smart guns, whose rounds are slow homing
+  // ---- round speed: the MK.31s are smart guns, whose rounds are slow homing
   // projectiles; their speed is a stat on the weapon. A multiplier while piloting,
   // removed on exit. Returns the velocity before and after, for the log.
   private let m_speedMods: array<ref<gameStatModifierData>>;
@@ -193,8 +129,7 @@ public class CMPilotGuns {
     ArrayClear(this.m_speedIDs);
   }
 
-  public func HasAny() -> Bool = this.left.Ready() || this.right.Ready()
-  // seconds between shots of one gun, stretched while the M1 barrels spin up
+  // seconds between shots of one gun, stretched while the barrels spin up
   public func Cycle() -> Float = this.m_cycle / MaxF(0.2, this.rate)
 
   public static func ItemName(w: wref<WeaponObject>) -> String {
@@ -239,39 +174,7 @@ public class CMPilotGuns {
     return 0;
   }
 
-  public func SetAimMode(mode: Int32) -> Void { this.m_aimMode = mode; }
-
-  // Where gun g's round goes when the reticle is on im, dist metres out (also where
-  // its HUD pip sits):
-  //   gimballed: at the reticle point, within the gun's travel around its barrel (the
-  //              MK.31s can't aim far off their mounts, so beyond that the round stops at
-  //              the edge of the cone and the pip shows it)
-  //   reticle:   straight at the reticle point
-  //   barrels:   straight along the barrel
-  public func PointFor(g: ref<CMGun>, aim: Vector4, dist: Float) -> Vector4 {
-    if this.m_aimMode == CMAimMode.Reticle() {
-      return aim;
-    }
-    if this.m_aimMode == CMAimMode.Barrels() || !g.Ready() {
-      return this.BarrelPoint(g, dist);
-    }
-    let o = g.weapon.GetWorldPosition();
-    let f = g.weapon.GetWorldForward();
-    let want = aim - o;
-    let flat = SqrtF(want.X * want.X + want.Y * want.Y);
-    let reach = Vector4.Length(want);
-    if reach < 1.0 {
-      return aim;
-    }
-    let barrelYaw = CMPilotRig.YawOf(f);
-    let barrelPitch = Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0)));
-    let dy = ClampF(CMPilotRig.Wrap(CMPilotRig.YawOf(want) - barrelYaw), -this.GIMBAL_YAW, this.GIMBAL_YAW);
-    let dp = ClampF(Rad2Deg(AtanF(want.Z, flat)) - barrelPitch, -this.GIMBAL_DOWN, this.GIMBAL_UP);
-    let d = CMPilotRig.Dir(barrelYaw + dy, barrelPitch + dp);
-    return new Vector4(o.X + d.X * reach, o.Y + d.Y * reach, o.Z + d.Z * reach, 1.0);
-  }
-
-  // where gun `g`'s barrel points, `dist` metres out
+  // where gun `g`'s barrel points, `dist` metres out (its reticle on the HUD)
   public func BarrelPoint(g: ref<CMGun>, dist: Float) -> Vector4 {
     if !g.Ready() {
       return new Vector4(0.0, 0.0, 0.0, 1.0);
@@ -282,43 +185,20 @@ public class CMPilotGuns {
     return new Vector4(o.X + f.X * d, o.Y + f.Y * d, o.Z + f.Z * d, 1.0);
   }
 
-  // for the log: how far gun `g`'s barrel is off the view, in degrees
-  public func BarrelOffset(g: ref<CMGun>, viewYaw: Float, viewPitch: Float) -> String {
-    if !g.Ready() {
-      return "none";
-    }
-    let f = g.weapon.GetWorldForward();
-    let yaw = CMPilotRig.YawOf(f);
-    let pitch = Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0)));
-    return "yaw " + FloatToStringPrec(CMPilotRig.Wrap(yaw - viewYaw), 1) + " pitch " + FloatToStringPrec(pitch - viewPitch, 1);
-  }
-
   private func CanFire(g: ref<CMGun>, now: Float) -> Bool {
     return g.Ready() && !g.locked && !g.offAim && now >= g.nextShot;
   }
 
+  // One round at the reticle point, with a spread cone that grows with heat. The target
+  // must be the reticle point itself: a point projected along the barrel never did damage.
   private func TryFire(mech: ref<NPCPuppet>, g: ref<CMGun>, now: Float, cycle: Float, aim: Vector4, spreadDeg: Float, camPos: Vector4) -> Bool {
     if !this.CanFire(g, now) {
       return false;
     }
-    // spread grows with heat: a cone around the point
     let dist = Vector4.Distance(camPos, aim);
-    let point = this.PointFor(g, aim, dist);
-    let cone = Deg2Rad(spreadDeg * (1.0 + g.heat * 1.5));
-    let r = dist * cone;
-    let target = new Vector4(point.X + RandRangeF(-r, r), point.Y + RandRangeF(-r, r), point.Z + RandRangeF(-r, r) * 0.6, 1.0);
-    g.weapon.m_cmWatched = true;   // its hits go to the hit trace (CMHitLog)
-    if this.call == CMFireCall.V() {
-      // spike S7: the call a V-controlled vanilla turret makes (V owns the round, charge 1,
-      // no target point: it leaves along the barrel)
-      AIWeapon.Fire(GetPlayer(mech.GetGame()), g.weapon, now, 1.0, gamedataTriggerMode.FullAuto);
-    } else {
-      if this.call == CMFireCall.VPoint() {
-        AIWeapon.Fire(GetPlayer(mech.GetGame()), g.weapon, now, 1.0, gamedataTriggerMode.FullAuto, target);
-      } else {
-        AIWeapon.Fire(mech, g.weapon, now, 0.0, gamedataTriggerMode.FullAuto, target);
-      }
-    }
+    let r = dist * Deg2Rad(spreadDeg * (1.0 + g.heat * 1.5));
+    let target = new Vector4(aim.X + RandRangeF(-r, r), aim.Y + RandRangeF(-r, r), aim.Z + RandRangeF(-r, r) * 0.6, 1.0);
+    AIWeapon.Fire(mech, g.weapon, now, 0.0, gamedataTriggerMode.FullAuto, target);
     g.nextShot = now + cycle;
     g.lastShot = now;
     g.flash = 0.06;

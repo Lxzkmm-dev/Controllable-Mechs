@@ -19,6 +19,8 @@
 // =============================================================================
 module ControllableMechs
 
+import ControllableMechs.Control.*
+
 public abstract class CMOrder {
   public static func None() -> Int32 = 0
   public static func Follow() -> Int32 = 1
@@ -146,9 +148,9 @@ public class CMLinkSystem extends ScriptableSystem {
   }
 
   public func Unlink() -> Void {
-    let pilot = CMPilotSystem.Get(this.GetGameInstance());
-    if IsDefined(pilot) && pilot.IsPiloting() {
-      pilot.Exit("NEURAL LINK CLOSED", false);
+    let session = CMCSession.Get(this.GetGameInstance());
+    if IsDefined(session) && session.IsActive() {
+      session.End("NEURAL LINK CLOSED", false);
     }
     let unit = this.Unit();
     if IsDefined(unit) {

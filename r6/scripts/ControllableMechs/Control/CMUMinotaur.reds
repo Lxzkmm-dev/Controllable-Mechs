@@ -1,5 +1,5 @@
 // =============================================================================
-// CONTROLLABLE MECHS - CONTROL FRAMEWORK: THE MINOTAUR (M1)
+// CONTROLLABLE MECHS - CONTROL FRAMEWORK: THE MINOTAUR
 //
 // The body is the linked Militech Minotaur itself; no skin (design doc, section
 // 11, route B). Its own MK.31s aim through its own animation:
@@ -8,7 +8,8 @@
 //     (spikes S6 / S7: the barrels settle within a few degrees of the reticle)
 //   - each gun fires only while its barrel is within GATE_DEG of the reticle, and
 //     the rounds leave along the barrel, so flash, tracer and hit line up
-//   - the fire call (who owns the rounds) is the session's setting (CMFireCall)
+//   - the rounds are fired at the reticle point with the mech as owner (the one call
+//     that deals damage); the damage pipeline hook (CMCHits) credits the hits to V
 //   - the legs: AI walk orders from WASD relative to the view, targets clipped
 //     short of walls (the alpha's proven driving)
 // =============================================================================
@@ -123,8 +124,6 @@ public class CMUMinotaur extends CMCUnit {
     this.m_guns.Init(mech);
     // rounds go to the reticle point (the alpha's damaging path); the look-ats aim the
     // barrels there and the gate holds each gun until it's on it, so the flash lines up
-    this.m_guns.SetAimMode(CMAimMode.Reticle());
-    this.m_guns.call = s.FireCall();
     this.m_moving = false;
     this.m_triggerWas = false;
     this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
@@ -220,7 +219,7 @@ public class CMUMinotaur extends CMCUnit {
     this.m_markerID = empty;
     // the mech's own hits are its own again (and the alpha's never credit V)
     if IsDefined(this.m_guns) {
-      this.SetCredit(false);
+      this.SetFlags(false, false);
       this.m_guns.SlowDown(this.m_game);
     }
     let link = CMLinkSystem.Get(this.m_game);
@@ -248,7 +247,7 @@ public class CMUMinotaur extends CMCUnit {
     let mech = this.Mech();
     this.MoveMarker(s.aim);
     this.TurnChassis(s, mech, dt);
-    this.SetCredit(s.CreditV());
+    this.SetFlags(true, s.CreditV());
     let split = s.FireMode() == CMFireMode.Split();
     let trigger = s.Key(CMCKey.Lmb()) || (split && s.Key(CMCKey.Rmb()));
     // the barrels spin up while the trigger is held and wind down after: no rounds until
@@ -310,10 +309,8 @@ public class CMUMinotaur extends CMCUnit {
       this.m_shots = 0;
       // what the pilot's reticle is on (V's own look-at target is the mech itself)
       this.m_target = s.aimEntity as GameObject;
-      this.m_targetHP = CMSpike2System.Health(this.m_target);
-      CMCSession.Log("fire (" + CMFireCall.Name(this.m_guns.call) + "): target " + CMSpike2System.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1));
-      let mech = this.Mech();
-      CMCSession.Log(CMHitLog.Muzzle("R", this.m_guns.right.weapon, mech, s.rig.pos, s.aim) + "; " + CMHitLog.Muzzle("L", this.m_guns.left.weapon, mech, s.rig.pos, s.aim));
+      this.m_targetHP = CMCHits.Health(this.m_target);
+      CMCSession.Log("fire: target " + CMCHits.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1));
     }
     if !trigger && this.m_triggerWas && IsDefined(this.m_target) {
       let cb = new CMUMinotaurReportCb();
@@ -330,8 +327,8 @@ public class CMUMinotaur extends CMCUnit {
   }
 
   public func Report() -> Void {
-    let hp = CMSpike2System.Health(this.m_target);
-    CMCSession.Log("result: target " + CMSpike2System.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1) + " -> " + FloatToStringPrec(hp, 1));
+    let hp = CMCHits.Health(this.m_target);
+    CMCSession.Log("result: target " + CMCHits.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1) + " -> " + FloatToStringPrec(hp, 1));
   }
 
   // standing still: the body swings round toward the view with weight (a rate cap, spin-up
@@ -431,8 +428,6 @@ public class CMUMinotaur extends CMCUnit {
     // a real projectile toward the reticle point, its hits credited to V like the MK.31s
     let launcher = this.NextLauncher();
     if IsDefined(launcher) {
-      launcher.m_cmWatched = true;
-      launcher.m_cmCreditV = s.CreditV();
       let trigger = gamedataTriggerMode.SemiAuto;
       let rec = launcher.GetWeaponRecord();
       if IsDefined(rec) && IsDefined(rec.PrimaryTriggerMode()) {
@@ -441,7 +436,7 @@ public class CMUMinotaur extends CMCUnit {
       AIWeapon.Fire(mech, launcher, EngineTime.ToFloat(GameInstance.GetSimTime(this.m_game)), 1.0, trigger, at);
       GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_wpn_missile_fire_single");
       s.rig.Recoil(1.6);
-      CMCSession.Log("missile: REAL LAUNCHER " + TDBID.ToStringDEBUG(ItemID.GetTDBID(launcher.GetItemID())) + " fired at " + CMHitLog.V(at) + " (its hits show in the hit trace)");
+      CMCSession.Log("missile: REAL LAUNCHER " + TDBID.ToStringDEBUG(ItemID.GetTDBID(launcher.GetItemID())) + " fired at " + CMCHits.V(at));
       return;
     }
     CMCSession.Log("missile: no live launcher object, using the stand-in strike");
@@ -452,7 +447,7 @@ public class CMUMinotaur extends CMCUnit {
     cb.unit = this;
     cb.at = at;
     GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, flight, false);
-    CMCSession.Log("missile: launched at " + CMHitLog.V(at) + ", " + FloatToStringPrec(flight, 2) + " s flight");
+    CMCSession.Log("missile: launched at " + CMCHits.V(at) + ", " + FloatToStringPrec(flight, 2) + " s flight");
   }
 
   // The launchers are in the mech's inventory (Items.Minotaur_Launcher_Right / _Left); they
@@ -522,7 +517,7 @@ public class CMUMinotaur extends CMCUnit {
     EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attackStatModList, ToVariant(statMods));
     EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.flags, ToVariant(flags));
     attack.StartAttack();
-    CMCSession.Log("missile: detonated at " + CMHitLog.V(at) + " with " + used + ", radius " + FloatToStringPrec(this.MISSILE_RADIUS, 1) + " m, damage " + FloatToStringPrec(this.MISSILE_DAMAGE, 0));
+    CMCSession.Log("missile: detonated at " + CMCHits.V(at) + " with " + used + ", radius " + FloatToStringPrec(this.MISSILE_RADIUS, 1) + " m, damage " + FloatToStringPrec(this.MISSILE_DAMAGE, 0));
   }
 
   // what the mech really carries, once per session (is there a launcher to use later?)
@@ -667,21 +662,14 @@ public class CMUMinotaur extends CMCUnit {
     }
   }
 
-  // the MK.31s' hits credit V while this is on (CMHitLog's pipeline hook reads it)
-  private func SetCredit(on: Bool) -> Void {
-    if IsDefined(this.m_guns.left.weapon) {
-      this.m_guns.left.weapon.m_cmCreditV = on;
-    }
-    if IsDefined(this.m_guns.right.weapon) {
-      this.m_guns.right.weapon.m_cmCreditV = on;
-    }
-    // a launcher's flag is set as it fires; only ever cleared here
-    if !on {
-      if IsDefined(this.m_launchL) {
-        this.m_launchL.m_cmCreditV = false;
-      }
-      if IsDefined(this.m_launchR) {
-        this.m_launchR.m_cmCreditV = false;
+  // The flags the damage pipeline hook reads (CMCHits): `piloted` marks the MK.31s and
+  // the launchers as ours while the session runs, `credit` makes their hits V's.
+  private func SetFlags(piloted: Bool, credit: Bool) -> Void {
+    let weapons: array<wref<WeaponObject>> = [this.m_guns.left.weapon, this.m_guns.right.weapon, this.m_launchL, this.m_launchR];
+    for w in weapons {
+      if IsDefined(w) {
+        w.m_cmPiloted = piloted;
+        w.m_cmCreditV = piloted && credit;
       }
     }
   }
@@ -874,7 +862,7 @@ public class CMUMinotaur extends CMCUnit {
     let link = CMLinkSystem.Get(this.m_game);
     let name = link.UnitName();
     if StrLen(name) > 0 {
-      st.title = StrUpper(name) + (s.IsChase() ? "  //  CHASE CAM" : "  //  NEURAL LINK") + "  //  FRAMEWORK M1";
+      st.title = StrUpper(name);
     }
     st.integrity = this.m_hull;
     st.signal = link.SignalFraction();

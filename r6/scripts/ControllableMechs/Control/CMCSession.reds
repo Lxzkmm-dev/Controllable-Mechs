@@ -1,5 +1,5 @@
 // =============================================================================
-// CONTROLLABLE MECHS - CONTROL FRAMEWORK: THE SESSION (M1)
+// CONTROLLABLE MECHS - CONTROL FRAMEWORK: THE SESSION
 //
 // One controller for any unit (docs/TECHNICAL_DESIGN.md, sections 2-4):
 //   Begin: the unit starts, V is locked (restrictions, save lock), the game's own
@@ -14,8 +14,7 @@
 // returning at once when idle) plus the game's own actions through V's OnAction
 // (CMInput.reds), which are swallowed while controlling.
 // Cost: nothing runs per frame unless a unit is controlled.
-// Until M1 passes this runs beside the alpha's Pilot Mode: the Pilot key starts it
-// only while the M1 PREVIEW switch (SPIKES tab) is on.
+// This is the mod's pilot mode (it replaced the alpha's Pilot Mode, milestone M5).
 // =============================================================================
 module ControllableMechs.Control
 
@@ -83,35 +82,32 @@ public class CMCSession extends ScriptableSystem {
   private let m_lastExit: Float;
 
   // settings, kept in the save
-  private persistent let m_armed: Bool;       // (unused since M1 became the default; kept so old saves load cleanly)
-  private persistent let m_useAlpha: Bool;    // true = the Pilot key starts the alpha's Pilot Mode instead of the framework
-  private persistent let m_fireCall: Int32;   // CMFireCall
   private persistent let m_fireMode: Int32;   // CMFireMode
   private persistent let m_chase: Bool;
   private persistent let m_creditVOff: Bool;  // false = kills and aggro credit V (the default)
   private persistent let m_hullX: Int32;      // hull multiplier while piloted, stored +1 (0 = the default, x4)
 
-  private let CHASE_SIDE: Float = 1.8;   // chase view: metres right of the unit's centre line
-  private let CHASE_LIFT: Float = 0.5;   // chase view: metres above the chase height
-
   // the view's weight: moving a hulking piece of equipment (both views)
-  private let LOOK_STIFFNESS: Float = 7.0;    // spring toward where the mouse points (alpha: 16)
+  private let LOOK_STIFFNESS: Float = 7.0;    // spring toward where the mouse points
   private let LOOK_DAMPING: Float = 5.0;      // just under critical (2*sqrt(7) = 5.3): a slow settle
-  private let LOOK_YAW_RATE: Float = 24.0;    // deg/s top traverse (alpha: 40)
+  private let LOOK_YAW_RATE: Float = 24.0;    // deg/s top traverse
   private let LOOK_PITCH_RATE: Float = 16.0;  // deg/s top elevation
   private let LOOK_LEAD: Float = 25.0;        // how far the aim may run ahead of the view, degrees
   private let OPTICS_FOV: Float = 27.0;       // field of view through the optics (the view is 68)
   private let OPTICS_RATE: Float = 0.5;       // traverse rates and lead while zoomed, x
-  private let STOMP: Float = 1.8;             // footfall thump, dip, roll and bob, x the alpha's
+  private let STOMP: Float = 1.8;             // footfall thump, dip, roll and bob, x the rig's base
 
   public static func Get(game: GameInstance) -> ref<CMCSession> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.Control.CMCSession") as CMCSession;
   }
 
+  // TOOLS > LOG in the terminal always; the game log on disk only with diagnostics on
   public static func Log(text: String) -> Void {
-    TKLog.Add("CM-M1", text);
-    let line = "CM-M1 " + text;
-    ModLog(n"ControllableMechs", line);
+    TKLog.Add("ControllableMechs", text);
+    if CMPilotSystem.Get(GetGameInstance()).ShowDebug() {
+      let line = "CM " + text;
+      ModLog(n"ControllableMechs", line);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -140,19 +136,30 @@ public class CMCSession extends ScriptableSystem {
   }
 
   public func IsActive() -> Bool = this.m_state != 0
-  // The framework is the default. It used to be a switch kept in the save, so loading an
-  // older save silently put the Pilot key back on the alpha (no missile, old HUD state).
-  public func Armed() -> Bool = !this.m_useAlpha
-  public func SetArmed(on: Bool) -> Void {
-    this.m_useAlpha = !on;
-    CMCSession.Log("pilot mode: " + (on ? "framework (M1)" : "the alpha's Pilot Mode"));
-  }
-  public func FireCall() -> Int32 = this.m_fireCall
-  public func SetFireCall(call: Int32) -> Void {
-    this.m_fireCall = Clamp(call, 0, 2);
-    CMCSession.Log("fire call " + CMFireCall.Name(this.m_fireCall));
-  }
   public func FireMode() -> Int32 = this.m_fireMode
+  public func SetFireMode(mode: Int32) -> Void {
+    this.m_fireMode = Clamp(mode, 0, 2);
+  }
+  // from the terminal (V does the same while piloting)
+  public func SetChaseView(on: Bool) -> Void {
+    this.SetChase(on);
+  }
+
+  // before the terminal closes to start piloting: "" = ready, else why not
+  public func CanPilot() -> String {
+    let link = CMLinkSystem.Get(this.GetGameInstance());
+    let mech = link.Unit();
+    if !link.IsLinked() || !IsDefined(mech) {
+      return "!NO UNIT LINKED";
+    }
+    if NotEquals(mech.GetNPCType(), gamedataNPCType.Mech) {
+      return "!PILOTING NEEDS A MECH";
+    }
+    if !ScriptedPuppet.IsAlive(mech) {
+      return "!MECH IS DESTROYED";
+    }
+    return "";
+  }
   // how much tougher the mech is while piloted: x its health, 4 by default (stored +1)
   public func HullMult() -> Float = this.m_hullX > 0 ? Cast<Float>(this.m_hullX - 1) : 4.0
   public func SetHullMult(x: Int32) -> Void {
@@ -205,9 +212,6 @@ public class CMCSession extends ScriptableSystem {
     let player = GetPlayer(game);
     if !IsDefined(player) {
       return "!NO OPERATOR";
-    }
-    if CMPilotSystem.Get(game).IsPiloting() {
-      return "!THE ALPHA PILOT MODE IS ACTIVE";
     }
     let veh: wref<VehicleObject>;
     VehicleComponent.GetVehicle(game, player.GetEntityID(), veh);
@@ -267,7 +271,7 @@ public class CMCSession extends ScriptableSystem {
     timeout.system = this;
     timeout.generation = this.m_gen;
     GameInstance.GetDelaySystem(game).DelayCallback(timeout, 3.0, false);
-    CMCSession.Log("begin: " + unit.Name() + ", fire call " + CMFireCall.Name(this.m_fireCall) + ", " + (this.m_chase ? "chase" : "sight") + " view");
+    CMCSession.Log("begin: " + unit.Name() + ", " + (this.m_chase ? "chase" : "sight") + " view");
     return "";
   }
 
@@ -452,8 +456,8 @@ public class CMCSession extends ScriptableSystem {
     }
     this.rig.Update(dt, this.m_unit.Ground(), this.CamUp(), this.CamFwd(), this.zoom);
     if this.ChaseNow() {
-      // over the right shoulder, a little higher, so the hull never covers the reticle
-      this.rig.pos += CMPilotRig.Dir(this.rig.yaw - 90.0, 0.0) * this.CHASE_SIDE + new Vector4(0.0, 0.0, this.CHASE_LIFT, 0.0);
+      // over one shoulder, so the hull never covers the reticle (CONFIG > CHASE CAMERA)
+      this.rig.pos += CMPilotRig.Dir(this.rig.yaw - 90.0, 0.0) * CMPilotSystem.Get(this.GetGameInstance()).ChaseSide();
     }
     this.ClipCamera(dt);
     this.ApplyCamera();
@@ -506,7 +510,7 @@ public class CMCSession extends ScriptableSystem {
       return;
     }
     let s = this.m_hudState;
-    s.title = this.m_unit.Name() + (this.m_chase ? "  //  CHASE CAM" : "  //  NEURAL LINK") + "  //  FRAMEWORK M1";
+    s.title = this.m_unit.Name();
     let h = RoundF(CMPilotRig.Wrap(-this.rig.yaw));
     s.heading = h < 0 ? h + 360 : h;
     s.range = this.aimDist;

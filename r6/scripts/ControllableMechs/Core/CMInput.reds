@@ -28,18 +28,12 @@ public class CMInput extends IScriptable {
     }
     this.m_lastName = name;
     this.m_lastTime = now;
-    let pilot = CMPilotSystem.Get(this.player.GetGame());
     let session = CMCSession.Get(this.player.GetGame());
     if Equals(name, n"CM_Pilot") {
-      // the framework (M1) while its preview is on, else the alpha's Pilot Mode
-      if session.IsActive() || (session.Armed() && !pilot.IsPiloting()) {
-        session.Toggle();
-      } else {
-        pilot.Toggle();
-      }
+      session.Toggle();
       return false;
     }
-    if pilot.IsPiloting() || session.IsActive() {
+    if session.IsActive() {
       return false;   // the terminal and look-at linking wait until V is back
     }
     switch name {
@@ -72,18 +66,12 @@ protected cb func OnGameAttached() -> Bool {
   return result;
 }
 
-// While piloting, the game's own actions (move, sprint, attack, aim, camera mouse) go to
-// the mech instead of V. Set only while piloting, so otherwise this costs one check.
-@addField(PlayerPuppet)
-public let m_cmPilot: wref<CMPilotSystem>;
+// While piloting, the game's own actions (move, attack, aim, camera mouse) go to the pilot
+// session instead of V (PlayerPuppet.m_cmcSession, set only while piloting, so otherwise
+// this costs one check).
 
 @wrapMethod(PlayerPuppet)
 protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsumer) -> Bool {
-  if IsDefined(this.m_cmPilot) {
-    if this.m_cmPilot.OnGameAction(ListenerAction.GetName(action), ListenerAction.GetType(action), ListenerAction.GetValue(action)) {
-      return true;
-    }
-  }
   if IsDefined(this.m_cmcSession) {
     if this.m_cmcSession.OnGameAction(ListenerAction.GetName(action), ListenerAction.GetType(action), ListenerAction.GetValue(action)) {
       return true;

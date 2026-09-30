@@ -2,67 +2,59 @@
 
 A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game's robotic NPCs (mechs, androids, drones and spiderbots) through a Robot Link terminal built on TerminalKit, and pilot a Militech Minotaur directly: its sensor feed, its legs and both MK.31 HMGs. Quest NPCs are refused so a link can't break a story scene.
 
-**Version 0.1.0 Alpha.** Linking and Pilot Mode work in game; see CHANGELOG.md for what's in it and the known issues.
+**Version 0.2.0.** The pilot mode is the control framework (`ControllableMechs.Control`); it replaced the alpha's Pilot Mode. See CHANGELOG.md.
 
 ## Keys
 
 - **]**: open the Robot Link terminal.
 - **[**: link the robot you are looking at (within 60 m).
-- **\\**: pilot the linked mech, and disconnect again. \\ always disconnects while piloting, even if it has been rebound.
+- **\\**: pilot the linked mech, and disconnect again.
 - All three can be rebound in Mod Settings. The defaults avoid K, J and L, which are vanilla crafting, the journal and Night City Empires' Fixer Link.
-- While piloting:
-  - **WASD**: walk, relative to where the torso looks. **Shift**: run.
-  - **Mouse**: turn the torso.
-  - **V**: switch between the sensor view and the third-person chase view.
-  - **LMB**: fire.
-  - **RMB**: optics (x2).
-  - **B**: cycle the fire mode.
+- While piloting (shown as key tags on the HUD):
+  - **WASD**: walk, relative to where you look. A and D alone turn the chassis.
+  - **Mouse**: aim. The guns and the chassis follow with weight.
+  - **LMB**: fire the MK.31s. **RMB**: optics (MMB in the split fire mode, where RMB is the right gun).
+  - **G**: missile strike on the reticle.
+  - **B**: cycle the fire mode. **V**: switch between the sensor view and the chase view.
 
-## Pilot Mode
+## Piloting
 
-- **View:** the game's own free camera entity (`base\entities\cameras\simple_free_camera.ent`) sits on the mech's sensor mount and takes over the view.
-- **Weight:** the camera rides a ring around the mech's centre, placed by where you look (not by the chassis, which turns in heavier AI steps and catches up). The weight is in how it turns and shakes:
-  - the torso turn speeds up, is capped at a traverse rate, overshoots a little and settles;
-  - every footfall jolts and rolls the view;
-  - each shot kicks it.
-  - Height, forward offset and mouse sensitivity are sliders in SETTINGS and apply live.
-  - **Views:** the sensor view (first person) and a chase view (third person), behind and above the mech with its own distance and height sliders. V switches between them.
-  - **No clipping:** in both views, the camera pulls in when a wall, pole or container is between the mech and the camera. It uses one static raycast per frame, only while piloting.
-- **Guns:** both MK.31s fire through the game's NPC firing call (`AIWeapon.Fire`), so rounds leave the real muzzles. By default they're gimballed: rounds go to what the reticle is on (world geometry, characters, vehicles) within each gun's travel around its mount, and two HUD pips show where they'll land.
-  - Fire modes (terminal Settings, or B):
-    - **staggered** (default): LMB fires both, barrels alternating;
-    - **linked salvo**: LMB fires both at once;
-    - **split**: LMB left gun, RMB right gun, MMB optics.
-  - Each gun heats as it fires and locks at 100% until it cools to 35%.
-- **HUD:** the vanilla HUD fades out and a Militech overlay replaces it:
-  - reticle with barrel markers and range;
-  - heading;
-  - integrity and signal bars, speed;
-  - the fire mode;
-  - per-gun heat and state;
-  - key hints.
+- **View:** the game's own free camera entity sits on the mech's sensor mount, or behind it in the chase view, and takes over the view. It turns heavily: a soft spring, capped turn rates, and a limit on how far the view can lead the guns. Footfalls jolt it and each round kicks it. Both views pull in when a wall is between the camera and the mech.
+- **Aim:** the mech's own arms aim. Four look-at requests (the rig's LeftWeapon, RightWeapon, Weapon and Chassis parts) follow a marker on the reticle point, and the chassis turns toward it at a capped, accelerating rate. A gun fires only when its barrel is within 4 degrees of the reticle; the HUD shows each gun's state.
+- **Guns:** both MK.31s fire through the game's NPC firing call (`AIWeapon.Fire`) at the reticle point, with the mech as owner, which is the one call that deals damage. A hook on the damage pipeline makes V the instigator, so kills, XP and NCPD heat are V's (CONFIG > KILLS CREDITED TO V). Round speed is four times the NPC default while piloting. The barrels spin up, and each gun heats and locks at 100% until it cools to 35%.
+  - Fire modes: **staggered** (default), **linked salvo**, **split** (LMB left gun, RMB right gun).
+- **The mech's own AI is held off** while piloting: senses and target tracking off, a relaxed state, and a hold order while it stands.
+- **Hull:** the mech's health is multiplied while piloted (CONFIG > HULL, 4 by default), and a beep sounds when integrity is low.
+- **HUD:** the vanilla HUD fades out and a Militech overlay replaces it: reticle with per-gun markers and range, compass tape and heading, a weapons plate (heat, fire mode, missile), a chassis plate (integrity, signal, speed), and a warning plate.
 - **V:** V stays where they are, locked in place by the game's gameplay restrictions. A save lock is held while piloting.
-- **Disconnects:** you are disconnected when you press \\, the mech is destroyed, the signal drops (250 m), the link closes, or the session ends. Damage to V also disconnects you, like camera hacking; this can be turned off in Settings.
-- **Test spawn:** the terminal's TEST section spawns a Militech Minotaur (`Character.q003_militech_mech`) 14 m in front of V and links it. It is not saved.
+- **Disconnects:** you are disconnected when you press \\, the mech is destroyed, the signal drops (250 m), the link closes, or the session ends. Damage to V also disconnects you, like camera hacking; this can be turned off in CONFIG.
+- **CONFIG** (lengths in feet and inches; the rangefinder stays in metres): fire mode, kill credit, hull, disconnect-when-hit, mouse sensitivity, the view, the chase camera (distance, height, side offset, shoulder), the sensor mount, the palette, and diagnostics.
+- **Diagnostics** (CONFIG > DIAGNOSTICS, off by default): traces hits and session events to the game log, tag `ControllableMechs`.
+- **Test spawn:** the terminal's MOTOR POOL section spawns a Militech Minotaur (`Character.q003_militech_mech`) in front of V and links it. It is not saved.
 
 ## Layout
 
 - `r6/scripts/ControllableMechs`
   - `Mech/CMLinkSystem.reds`: the link. It holds the one linked robot by EntityID, sends its orders (follow, hold, move to a point), reads its telemetry and spawns the test Minotaur.
-  - `Pilot/CMPilotSystem.reds`: Pilot Mode. It handles enter and exit, the per-frame loop, raw input, walk orders, exit checks and V's restrictions.
+  - `Control/CMCSession.reds`: the pilot session. Enter and exit, the per-frame loop, input, the camera, the reticle trace, exit checks and V's restrictions.
+  - `Control/CMCUnit.reds`: what a pilotable unit must provide.
+  - `Control/CMUMinotaur.reds`: the Minotaur: look-at aim, the fire gate, the chassis turn, walking, AI suppression, hull, audio and the missile.
+  - `Control/CMCHits.reds`: the damage pipeline hook (V's credit, the hit marker, the diagnostics trace).
+  - `Pilot/CMPilotSystem.reds`: the saved settings (the name is kept from the alpha so saves carry over).
   - `Pilot/CMPilotRig.reds`: the weighted camera math (no game calls).
   - `Pilot/CMPilotGuns.reds`: the two HMGs: discovery, fire modes, cadence and heat.
   - `Pilot/CMPilotHud.reds`: the Militech overlay on the HUD layer.
-  - `UI/CMContent.reds`: the Robot Link pages (a TerminalKit `TKContent`): LINK, SETTINGS (fire mode, disconnect-when-hit, palette), and TOOLS (TerminalKit Tools: inspect, spawn, TweakDB).
-  - `UI/CMTerminal.reds`: the terminal, a subclass of TerminalKit's ready-made `TKPopup` frame.
+  - `UI/CMContent.reds`: the Robot Link pages (a TerminalKit `TKContent`): UNIT, CONFIG and TOOLS (TerminalKit Tools).
+  - `UI/CMTerminal.reds`: the terminal, a subclass of TerminalKit's `TKPopup` frame, with its own style, font and palette.
   - `Core/CMInput.reds`: the keys.
 - `r6/input/ControllableMechs.xml`: the key bindings (Input Loader).
-
+- `r6/tweaks/ControllableMechs/mech.yaml`: the missile's attack record (TweakXL).
 ## Requirements
 
 - redscript
 - **TerminalKit** (the standalone TerminalKIT mod, with TerminalKit Tools). This mod doesn't ship its own copy, so there is only ever one TerminalKit in the load order.
 - Codeware
+- TweakXL
 - RedFunctions (TerminalKit uses it)
 - Input Loader
 - Optional: Mod Settings, to rebind the keys.
@@ -73,7 +65,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 - While a robot is linked, one check runs every second: is it still there, alive and in signal range (250 m)? If not, the link drops.
 - While piloting:
   - Every frame: the camera and the guns. Nothing else runs per frame.
-  - Ten times a second: walk orders, HUD values and the disconnect checks.
+  - Ten times a second: walk orders, HUD values, AI suppression and the disconnect checks.
   - The raw keyboard and mouse callbacks are registered only while piloting.
 - Orders are one AI command at a time. The previous command is cancelled before the next one is sent.
 - The terminal builds each page fresh from the link system when it is shown, so it keeps no state and costs nothing while it is closed.
@@ -82,7 +74,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 ## Roadmap
 
 1. **Command mode:** link a robot, then order it to follow, hold or move to a target.
-2. **Pilot Mode (first build, Minotaur):** direct control with the weighted camera, HUD and both HMGs.
-3. **Third-person camera (first build):** a chase view behind and above the mech (V while piloting, or SETTINGS > VIEW).
+2. **Piloting the Minotaur:** the control framework, with the sensor and chase views, HUD, both HMGs and the missile.
+3. **More mechs** on the same framework.
 4. **Attack orders:** send the robot after the target you look at.
 5. **Your own mech:** spawn one, persist it in the save, and call it in.

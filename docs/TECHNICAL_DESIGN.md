@@ -1,6 +1,8 @@
 # Controllable Mechs: control framework technical design
 
-Status: **rev 4 (2026-09-30): the mod's scope is the mech only.** Omar: "turrets work perfectly fine base game, our priority of the mod is the mech and anything not mech related is not within scope". The emplacement (M2, section 10) is scrapped and its code removed; M1 (the framework core with the Minotaur) and a feel pass are the plan. The emplacement sections below are kept only as history.
+Status: **rev 5 (2026-09-30): M5 reached.** The framework's Minotaur (M1) passed Omar's tests and is now the mod's only pilot mode; the alpha's Pilot Mode, the SPIKES tab and the spike code are removed (the hit trace stays behind CONFIG > DIAGNOSTICS). The settings live on in `CMPilotSystem`, which keeps its name so saves carry over. What remains is the feel and HUD pass.
+
+Rev 4 (2026-09-30): the mod's scope is the mech only.** Omar: "turrets work perfectly fine base game, our priority of the mod is the mech and anything not mech related is not within scope". The emplacement (M2, section 10) is scrapped and its code removed; M1 (the framework core with the Minotaur) and a feel pass are the plan. The emplacement sections below are kept only as history.
 
 Rev 3 (2026-09-30), after spike batches 1-3: the Minotaur first (M1), then the emplacement through the vanilla turret takeover (M2), then a feel pass (M3). Section 14 has what the spikes showed; sections 10, 11 and 13 carry the revised plan. Where older sections below conflict with section 14, section 14 wins.
 

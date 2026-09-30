@@ -1,9 +1,13 @@
 // =============================================================================
 // CONTROLLABLE MECHS - ROBOT LINK PAGES (TerminalKit content provider)
-// Every page is built fresh from CMLinkSystem / CMPilotSystem when it's shown,
-// so the terminal holds no state of its own and costs nothing while closed.
-// The TOOLS tab is TerminalKit Tools (inspect what V looks at, spawn records,
-// log positions): handy for finding robot records to test.
+// Every page is built fresh from CMLinkSystem, the pilot session and the pilot
+// settings when it's shown, so the terminal holds no state of its own and costs
+// nothing while closed.
+//   UNIT    the linked robot: status, the pilot interface, orders, the test spawn
+//   CONFIG  fire control, the operator, the chase camera, the sensor mount,
+//           the display (lengths shown in feet and inches)
+//   TOOLS   TerminalKit Tools (inspect what V looks at, spawn records, log
+//           positions): handy for finding robot records to test
 // =============================================================================
 module ControllableMechs
 
@@ -29,9 +33,6 @@ public class CMContent extends TKContent {
       case "settings":
         this.Settings(p);
         break;
-      case "spikes":
-        CMSpikeSystem.Get(this.game).Page(p);
-        break;
       default:
         this.Link(p);
         break;
@@ -54,11 +55,9 @@ public class CMContent extends TKContent {
     if TKTools.Act(p, action, arg) {
       return;
     }
-    if StrBeginsWith(action, "sp_") && CMSpikeSystem.Get(this.game).Act(p, action, arg) {
-      return;
-    }
     let link = CMLinkSystem.Get(this.game);
-    let pilot = CMPilotSystem.Get(this.game);
+    let cfg = CMPilotSystem.Get(this.game);
+    let session = CMCSession.Get(this.game);
     switch action {
       case "link":
         p.SetMessage(link.LinkLookAt());
@@ -80,19 +79,14 @@ public class CMContent extends TKContent {
         p.SetMessage("*MOVING TO TARGET");
         break;
       case "pilot":
-        let why = pilot.CanPilot(true);
+        let why = session.CanPilot();
         if StrLen(why) > 0 {
           p.SetMessage(why);
           break;
         }
         // the terminal has to close before the view can switch
         CMTerminal.CloseOpen(this.game);
-        // the framework (M1) while its preview is on, else the alpha's Pilot Mode
-        if CMCSession.Get(this.game).Armed() {
-          CMCSession.Get(this.game).RequestBegin(0.4);
-        } else {
-          pilot.RequestEnter(0.4);
-        }
+        session.RequestBegin(0.4);
         break;
       case "spawntest":
         p.SetMessage(link.SpawnTestMech());
@@ -101,57 +95,62 @@ public class CMContent extends TKContent {
         link.DespawnTestMech();
         p.SetMessage("TEST MECH REMOVED");
         break;
+      // ---- CONFIG ----
       case "firemode":
-        pilot.SetFireMode(CMContent.Val(arg, 0));
+        session.SetFireMode(CMContent.Val(arg, 0));
+        break;
+      case "creditv":
+        session.SetCreditV(Equals(CMContent.Str(arg), "1"));
+        break;
+      case "hull":
+        session.SetHullMult(CMContent.Val(arg, 4));
         break;
       case "dropwhenhit":
-        pilot.SetStayWhenHit(!Equals(CMContent.Str(arg), "1"));
-        break;
-      case "camup":
-        pilot.SetCamUpCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(pilot.CamUpCm()))));
-        break;
-      case "camfwd":
-        pilot.SetCamFwdCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(pilot.CamFwdCm()))));
+        cfg.SetStayWhenHit(!Equals(CMContent.Str(arg), "1"));
         break;
       case "sens":
-        pilot.SetSensPct(CMContent.Val(arg, pilot.SensPct()));
+        cfg.SetSensPct(CMContent.Val(arg, cfg.SensPct()));
         break;
-      case "armtrack":
-        pilot.SetArmTrack(Equals(CMContent.Str(arg), "1"));
-        break;
-      case "damage":
-        pilot.SetDamagePct(CMContent.Val(arg, pilot.DamagePct()));
-        break;
-      case "cammode":
-        pilot.SetCamMode(CMContent.Val(arg, 0));
+      case "view":
+        session.SetChaseView(CMContent.Val(arg, 0) == 1);
         break;
       case "chasedist":
-        pilot.SetChaseDistCm(CMContent.FtToCm(CMContent.Val(arg, CMContent.CmToFt(pilot.ChaseDistCm()))));
+        cfg.SetChaseDistCm(CMContent.FtToCm(CMContent.Val(arg, CMContent.CmToFt(cfg.ChaseDistCm()))));
         break;
       case "chaseup":
-        pilot.SetChaseUpCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(pilot.ChaseUpCm()))));
+        cfg.SetChaseUpCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.ChaseUpCm()))));
         break;
-      case "aimmode":
-        pilot.SetAimMode(CMContent.Val(arg, 0));
+      case "chaseside":
+        cfg.SetChaseSideCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.ChaseSideCm()))));
         break;
-      case "traverse":
-        pilot.SetTraverse(CMContent.Val(arg, pilot.Traverse()));
+      case "shoulder":
+        cfg.SetShoulderLeft(CMContent.Val(arg, 0) == 1);
+        break;
+      case "chasereset":
+        cfg.ResetChase();
+        p.SetMessage("*CHASE CAMERA RESET");
+        break;
+      case "camup":
+        cfg.SetCamUpCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.CamUpCm()))));
+        break;
+      case "camfwd":
+        cfg.SetCamFwdCm(CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.CamFwdCm()))));
         break;
       case "camreset":
-        pilot.ResetCamera();
-        p.SetMessage("*CAMERA SETTINGS RESET");
+        cfg.ResetCamera();
+        p.SetMessage("*SENSOR MOUNT AND SENSITIVITY RESET");
         break;
       case "debug":
-        pilot.SetShowDebug(Equals(CMContent.Str(arg), "1"));
+        cfg.SetShowDebug(Equals(CMContent.Str(arg), "1"));
         break;
       case "theme":
-        pilot.SetTheme(arg);
-        p.SetTheme(arg);
+        cfg.SetTheme(CMContent.Str(arg));
+        p.SetTheme(CMContent.Str(arg));
         break;
     }
   }
 
-  // ---- LINK: status, direct control, orders ----
+  // ---- UNIT: status, the pilot interface, orders ----
   private func Link(p: ref<TKPage>) -> Void {
     let link = CMLinkSystem.Get(this.game);
     p.SetTitle("UNIT CONTROL", "MT-FCS FIELD TERMINAL // REMOTE OPERATION");
@@ -170,7 +169,7 @@ public class CMContent extends TKContent {
     p.Stat("ORDER", CMContent.OrderName(link.Order()), "", -1.0);
     if Equals(link.UnitKind(), "MECH") {
       p.Heading("PILOT INTERFACE");
-      p.Item("PILOT THE MECH", "Take its sensor feed: WASD walks, the mouse turns the torso, LMB fires the MK.31s, \\ disconnects.", "", "PILOT  [\\]", "pilot", "", true);
+      p.Item("PILOT THE MECH", "WASD walks, the mouse aims, LMB fires the MK.31s, RMB optics, G missile, V view, B fire mode, \\ disconnects.", "", "PILOT  [\\]", "pilot", "", true);
     }
     p.Heading("UNIT ORDERS");
     p.Buttons("Command the linked unit", "", "", "FOLLOW|HOLD|MOVE TO TARGET", "follow|hold|move", "||");
@@ -190,43 +189,49 @@ public class CMContent extends TKContent {
     }
   }
 
-  // ---- SETTINGS: pilot and palette ----
+  // ---- CONFIG ----
   private func Settings(p: ref<TKPage>) -> Void {
-    let pilot = CMPilotSystem.Get(this.game);
+    let cfg = CMPilotSystem.Get(this.game);
+    let session = CMCSession.Get(this.game);
     p.SetTitle("CONFIGURATION", "FIRE CONTROL, OPTICS AND DISPLAY");
     p.SetSection("settings");
+
     p.Heading("FIRE CONTROL");
     p.Dropdown("FIRE MODE", "How LMB / RMB fire the two MK.31s (B cycles it while piloting)",
-      IntToString(pilot.FireMode()),
+      IntToString(session.FireMode()),
       CMFireMode.Name(0) + "|" + CMFireMode.Name(1) + "|" + CMFireMode.Name(2), "0|1|2", "firemode", "");
     p.SetTip("STAGGERED: LMB fires both, barrels alternating. LINKED SALVO: LMB fires both at once. SPLIT: LMB left gun, RMB right gun, MMB optics.");
-    p.Dropdown("AIM MODE", "Where the rounds go", IntToString(pilot.AimMode()), "GIMBALLED|TO THE RETICLE|ALONG THE BARRELS", "0|1|2", "aimmode", "");
-    p.SetTip("GIMBALLED: rounds go to what the reticle is on, within each gun's travel around its mount (12 deg side to side, 40 down, 25 up); the pips show where they'll land. TO THE RETICLE: always at the reticle; the guns wait for the chassis to line up. ALONG THE BARRELS: straight out of the muzzles.");
-    p.Check("ARM TRACKING (EXPERIMENTAL)", "The mech's arms turn toward the aim point, so the barrel effects follow the rounds", pilot.ArmTrackOn(), "armtrack", "");
-    p.Slider("MK.31 DAMAGE", "Damage of the two HMGs while you pilot", "", "100|300|10|" + IntToString(pilot.DamagePct()) + "|%", "damage", "");
-    p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
+    p.Check("KILLS CREDITED TO V", "The mech's hits count as yours: kills, XP, NCPD heat, who enemies turn on", session.CreditV(), "creditv", "");
+    p.Slider("HULL", "The mech's health while you pilot it, times its own (from the next link-in)", "", "1|10|1|" + IntToString(RoundF(session.HullMult())) + "|x", "hull", "");
+
+    p.Heading("OPERATOR");
+    p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !cfg.StayWhenHit(), "dropwhenhit", "");
+    p.Slider("MOUSE SENSITIVITY", "On top of the game's own mouse setting (from the next link-in)", "", "25|300|5|" + IntToString(cfg.SensPct()) + "|%", "sens", "");
+
     p.Heading("OPTICS // VIEW");
-    p.Dropdown("VIEW", "V switches it while piloting", IntToString(pilot.CamMode()), "SENSOR (FIRST PERSON)|CHASE (THIRD PERSON)", "0|1", "cammode", "");
-    p.Slider("CHASE DISTANCE", "Chase view: behind the mech's centre", "", "13|52|1|" + IntToString(CMContent.CmToFt(pilot.ChaseDistCm())) + "| ft", "chasedist", "");
-    p.Slider("CHASE HEIGHT", "Chase view: above the mech's feet", "", "79|354|2|" + IntToString(CMContent.CmToIn(pilot.ChaseUpCm())) + "| in", "chaseup", "");
-    p.SetTip("Both views pull in when a wall, pole or container is between the mech and the camera.");
+    p.Dropdown("VIEW", "V switches it while piloting", session.IsChase() ? "1" : "0", "SENSOR (FIRST PERSON)|CHASE (THIRD PERSON)", "0|1", "view", "");
+
+    p.Heading("CHASE CAMERA");
+    p.Slider("DISTANCE", "Behind the mech's centre", "", "10|52|1|" + IntToString(CMContent.CmToFt(cfg.ChaseDistCm())) + "| ft", "chasedist", "");
+    p.Slider("HEIGHT", "Above the mech's feet", "", "60|354|2|" + IntToString(CMContent.CmToIn(cfg.ChaseUpCm())) + "| in", "chaseup", "");
+    p.Slider("SIDE OFFSET", "Off the centre line, toward the shoulder (0 = dead centre)", "", "0|156|2|" + IntToString(CMContent.CmToIn(cfg.ChaseSideCm())) + "| in", "chaseside", "");
+    p.Dropdown("SHOULDER", "Which side the camera sits on", cfg.ShoulderLeft() ? "1" : "0", "RIGHT|LEFT", "0|1", "shoulder", "");
+    p.Item("DEFAULTS", "Distance 20 ft, height 146 in, side offset 71 in, right shoulder", "", "RESET", "chasereset", "", true);
+    p.SetTip("All four apply live while you pilot. The camera pulls in when a wall, pole or container is between it and the mech. The view's up and down tilt is the mouse.");
+
     p.Heading("OPTICS // SENSOR MOUNT");
-    p.Slider("HEIGHT", "Above the mech's feet", "", "40|177|1|" + IntToString(CMContent.CmToIn(pilot.CamUpCm())) + "| in", "camup", "");
-    p.SetTip("Applies live: change it, then press \\ to check the view.");
-    p.Slider("FORWARD", "Ahead of the mech's centre", "", "0|196|1|" + IntToString(CMContent.CmToIn(pilot.CamFwdCm())) + "| in", "camfwd", "");
-    p.Slider("TRAVERSE SPEED", "How fast the torso can turn", "", "15|120|5|" + IntToString(pilot.Traverse()) + "| deg/s", "traverse", "");
-    p.Slider("MOUSE SENSITIVITY", "On top of the game's own mouse setting", "", "25|300|5|" + IntToString(pilot.SensPct()) + "|%", "sens", "");
-    p.Item("DEFAULTS", "Height 7 ft 7 in, forward 8 ft 6 in, traverse 40 deg/s, sensitivity 100%", "", "RESET", "camreset", "", true);
-    p.Check("DEBUG READOUT", "A diagnostic line on the pilot HUD (frames, inputs, locks)", pilot.ShowDebug(), "debug", "");
+    p.Slider("HEIGHT", "Sensor view: above the mech's feet", "", "40|177|1|" + IntToString(CMContent.CmToIn(cfg.CamUpCm())) + "| in", "camup", "");
+    p.Slider("FORWARD", "Sensor view: ahead of the mech's centre", "", "0|196|1|" + IntToString(CMContent.CmToIn(cfg.CamFwdCm())) + "| in", "camfwd", "");
+    p.Item("DEFAULTS", "Height 7 ft 7 in, forward 8 ft 6 in, sensitivity 100%", "", "RESET", "camreset", "", true);
+
     p.Heading("DISPLAY");
-    p.Dropdown("TERMINAL PALETTE", "The terminal's colours", pilot.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
+    p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
+    p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
   }
 
-  // A control's value from Act's arg. TerminalKit's slider always hands on "arg:value", so
-  // with an empty row arg it arrives as ":230" (TKView.SlideCommit; its README says
-  // just the value). StringToInt(":230", current) fell back to the current value, so no
-  // slider ever changed anything. Take what follows the last ":", whichever form arrives.
-  // (docs/terminalkit-dev-request-slider.md asks for the fix in TerminalKit.)
+  // A control's value from Act's arg. TerminalKit's slider used to hand on "arg:value" even
+  // with an empty row arg (":230"); it now sends just the value. Taking what follows the
+  // last ":" reads both forms.
   public static func Str(arg: String) -> String {
     let s = arg;
     while StrContains(s, ":") {
@@ -237,7 +242,7 @@ public class CMContent extends TKContent {
 
   public static func Val(arg: String, def: Int32) -> Int32 = StringToInt(CMContent.Str(arg), def)
 
-  // settings show in imperial; the pilot system keeps centimetres
+  // settings show in imperial; the pilot settings keep centimetres
   public static func CmToIn(cm: Int32) -> Int32 = RoundF(Cast<Float>(cm) / 2.54)
   public static func InToCm(inches: Int32) -> Int32 = RoundF(Cast<Float>(inches) * 2.54)
   public static func CmToFt(cm: Int32) -> Int32 = RoundF(Cast<Float>(cm) / 30.48)

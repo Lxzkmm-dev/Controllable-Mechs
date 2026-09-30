@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0
+
+The control framework (`ControllableMechs.Control`) is now the mod's pilot mode. The alpha's Pilot Mode is removed.
+
+- **Aim:** the Minotaur's own arms follow the reticle (look-at requests on its weapon parts), and a gun fires only when its barrel is within 4 degrees of it.
+- **Damage and credit:** rounds are fired by the mech at the reticle point, and a damage pipeline hook credits the hits to V.
+- **Feel:** a heavy camera, a weighted chassis turn, barrel spin-up, optics (RMB), rounds four times as fast, footfall weight, gun and servo audio, and a missile strike (G).
+- **The mech's AI is held off** while piloting, and the hull is multiplied (4 by default) with a low-integrity beep.
+- **HUD:** a Militech overlay with the keys built in as tags.
+- **Terminal:** UNIT, CONFIG and TOOLS tabs with a military style, font and palette. CONFIG holds every setting, in feet and inches, including a CHASE CAMERA section (distance, height, side offset, shoulder).
+- **Removed:** the alpha's Pilot Mode and its settings (aim mode, traverse speed, arm tracking, MK.31 damage, debug readout), the SPIKES tab and all spike code. The hit trace stays behind CONFIG > DIAGNOSTICS, off by default; with it off the mod writes nothing to the game log.
+- **Needs** TweakXL for the missile's attack record.
 ## 0.1.0 Alpha
 
 The first playable build: the proof of concept works in game.

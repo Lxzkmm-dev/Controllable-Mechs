@@ -5,5 +5,5 @@
 module ControllableMechs
 
 public abstract class CMVersion {
-  public static func Text() -> String = "0.1.0 ALPHA"
+  public static func Text() -> String = "0.2.0"
 }
