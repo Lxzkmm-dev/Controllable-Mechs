@@ -266,7 +266,7 @@ public class CMLinkSystem extends ScriptableSystem {
     // ground), then from higher up for ground that rises ahead
     let found = false;
     for lift in [3.0, 8.0] {
-      if !found && sq.SyncRaycastByCollisionGroup(new Vector4(over.X, over.Y, over.Z + lift, 1.0), new Vector4(over.X, over.Y, over.Z - 8.0, 1.0), n"Static", hit, true, false) {
+      if !found && CMGround.Down(game, new Vector4(over.X, over.Y, over.Z + lift, 1.0), new Vector4(over.X, over.Y, over.Z - 8.0, 1.0), hit) {
         found = true;
       }
     }
@@ -468,7 +468,7 @@ public class CMLinkSystem extends ScriptableSystem {
     let pos = mech.GetWorldPosition();
     let hit: TraceResult;
     let gap = 0.0;   // no ground found at all: left alone
-    if GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 60.0, 1.0), n"Static", hit, true, false) {
+    if CMGround.Down(this.GetGameInstance(), new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 60.0, 1.0), hit) {
       gap = pos.Z - Cast<Vector4>(hit.position).Z;
     }
     if gap < 2.0 {
@@ -527,6 +527,20 @@ public class CMLinkSystem extends ScriptableSystem {
       ai.SetAIRole(new AINoRole());
       ai.OnAttach();   // the role only takes effect after this
     }
+  }
+}
+
+// Finding the ground under a point. The "Static" collision group misses some ground (the
+// dirt lots under the overpasses, for one: a mech there was taken for standing on nothing,
+// and one really in the air there went unnoticed), so the ray is tried with the "World
+// Static" preset first, the one the pilot's rangefinder uses, and with the group after.
+public abstract class CMGround {
+  public static func Down(game: GameInstance, from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
+    let sq = GameInstance.GetSpatialQueriesSystem(game);
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hit, true) {
+      return true;
+    }
+    return sq.SyncRaycastByCollisionGroup(from, to, n"Static", hit, true, false);
   }
 }
 

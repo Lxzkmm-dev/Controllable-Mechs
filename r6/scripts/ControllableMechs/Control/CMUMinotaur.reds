@@ -1064,7 +1064,7 @@ public class CMUMinotaur extends CMCUnit {
     while d <= reach {
       let p = pos + dir * d;
       let hit: TraceResult;
-      let ground = sq.SyncRaycastByCollisionGroup(new Vector4(p.X, p.Y, pos.Z + 3.0, 1.0), new Vector4(p.X, p.Y, pos.Z - 6.0, 1.0), n"Static", hit, true, false);
+      let ground = CMGround.Down(this.m_game, new Vector4(p.X, p.Y, pos.Z + 3.0, 1.0), new Vector4(p.X, p.Y, pos.Z - 6.0, 1.0), hit);
       let dz = ground ? Cast<Vector4>(hit.position).Z - pos.Z : -10.0;
       if dz < -2.5 || dz > 2.0 {
         return d - 1.0;
@@ -1084,7 +1084,7 @@ public class CMUMinotaur extends CMCUnit {
     let gap = 0.0;
     // no hit at all is not taken as air: some ground isn't in the static group the ray
     // looks for (a mech standing in such a spot lost all walking, as if it hung 60 m up)
-    if GameInstance.GetSpatialQueriesSystem(this.m_game).SyncRaycastByCollisionGroup(new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 60.0, 1.0), n"Static", hit, true, false) {
+    if CMGround.Down(this.m_game, new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 60.0, 1.0), hit) {
       gap = pos.Z - Cast<Vector4>(hit.position).Z;
     }
     if gap < 1.0 {
