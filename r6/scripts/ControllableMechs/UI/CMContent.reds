@@ -114,6 +114,9 @@ public class CMContent extends TKContent {
       case "dropwhenhit":
         cfg.SetStayWhenHit(!Equals(CMContent.Str(arg), "1"));
         break;
+      case "hidev":
+        cfg.SetHideOperator(Equals(CMContent.Str(arg), "1"));
+        break;
       case "sens":
         cfg.SetSensPct(CMContent.Val(arg, cfg.SensPct()));
         break;
@@ -216,6 +219,7 @@ public class CMContent extends TKContent {
 
     p.Heading("OPERATOR");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !cfg.StayWhenHit(), "dropwhenhit", "");
+    p.Check("HIDE V WHILE LINKED", "Enemies' senses don't pick V up while you pilot, so they go for the mech. Off: enemies who see V may still attack V (from the next link-in)", cfg.HideOperator(), "hidev", "");
     p.Slider("MOUSE SENSITIVITY", "On top of the game's own mouse setting (from the next link-in)", "", "25|300|5|" + IntToString(cfg.SensPct()) + "|%", "sens", "");
 
     p.Heading("OPTICS // VIEW");

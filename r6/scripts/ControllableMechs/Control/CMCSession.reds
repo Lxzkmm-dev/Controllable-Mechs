@@ -77,6 +77,7 @@ public class CMCSession extends ScriptableSystem {
   private let m_timerLoop: Bool;
 
   private let m_restricted: Bool;
+  private let m_hidV: Bool;
   private let m_saveLocked: Bool;
   private let m_vHealth: Float;
   private let m_lastExit: Float;
@@ -930,6 +931,21 @@ public class CMCSession extends ScriptableSystem {
       }
     }
     this.m_restricted = on;
+    // CONFIG > OPERATOR > HIDE V WHILE LINKED (off by default): the game's own switch
+    // that takes V out of what enemy senses can pick up; put back on leaving
+    if on {
+      if CMPilotSystem.Get(this.GetGameInstance()).HideOperator() && !player.IsInvisible() {
+        player.SetInvisible(true);
+        this.m_hidV = true;
+        CMCSession.Log("operator hidden from enemy senses while linked");
+      }
+    } else {
+      if this.m_hidV {
+        player.SetInvisible(false);
+        this.m_hidV = false;
+        CMCSession.Log("operator visible to enemy senses again");
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------

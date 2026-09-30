@@ -175,6 +175,9 @@ public class CMPilotSystem extends ScriptableSystem {
   // ---- the operator ----
   public func StayWhenHit() -> Bool = this.Flag("stayWhenHit", false)
   public func SetStayWhenHit(stay: Bool) -> Void { this.PutFlag("stayWhenHit", stay); }
+  // V out of enemy senses while linked (off by default: it makes piloting nearly safe)
+  public func HideOperator() -> Bool = this.Flag("hideOperator", false)
+  public func SetHideOperator(on: Bool) -> Void { this.PutFlag("hideOperator", on); }
   public func SensPct() -> Int32 = this.Int("sensPct", 100)
   public func SetSensPct(v: Int32) -> Void { this.PutInt("sensPct", Clamp(v, 25, 300)); }
 

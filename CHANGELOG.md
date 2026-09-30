@@ -18,6 +18,7 @@ The control framework (`ControllableMechs.Control`) is now the mod's pilot mode.
 - **Chassis turn:** the standing turn owns the body's heading every frame: a jump back to an old heading is undone the same frame, so it no longer needs the AI's stepped turn. No hold order any more. CONFIG > CHASSIS > TURN SPEED (50-300%, 175% by default) scales the view's traverse and the chassis turn.
 - **Threats:** the game's threat functions skip the piloted mech, its weak spots take no damage while piloted, and a lost gun is looked up again.
 - **Test spawn** lands on the ground, on the navigation mesh where it can.
+- **Aggro:** enemies hit by the piloted mech turn on the mech, not on V; the kill, XP and heat stay V's. CONFIG > OPERATOR > HIDE V WHILE LINKED (off by default) takes V out of enemy senses while piloting.
 - **Needs** TweakXL for the missile's attack record.
 ## 0.1.0 Alpha
 
