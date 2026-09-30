@@ -460,6 +460,7 @@ public class CMCSession extends ScriptableSystem {
     if IsDefined(this.m_hud) {
       this.m_hud.SetAttitude(CMPilotRig.Wrap(-this.rig.yaw), this.rig.pitch);
       this.m_hud.Boot(dt);
+      this.m_hud.Tags(dt);
     }
     this.UpdateAim();
     this.m_unit.Tick(this, dt, now);
@@ -523,6 +524,13 @@ public class CMCSession extends ScriptableSystem {
   // the unit's barrel markers and muzzle flashes, drawn every frame
   public func Hud() -> ref<CMPilotHud> = this.m_hud
 
+  // a key was used: its tag on the HUD lights for a moment
+  public func FlashTag(tag: Int32) -> Void {
+    if IsDefined(this.m_hud) {
+      this.m_hud.TagFlash(tag);
+    }
+  }
+
   // a round of ours connected (the damage pipeline hook): the hit marker, and a small
   // jolt through the frame, bigger on a kill
   public func RoundHit(kill: Bool) -> Void {
@@ -555,6 +563,9 @@ public class CMCSession extends ScriptableSystem {
     this.ApplyWeight();
     if IsDefined(this.m_hud) {
       this.m_hud.SetOptics(on);
+      if on {
+        this.m_hud.TagFlash(CMPilotHud.TagZoom());
+      }
     }
   }
 
@@ -781,6 +792,7 @@ public class CMCSession extends ScriptableSystem {
         if press {
           this.SetChase(!this.m_chase);
           this.m_slow = 1.0;
+          this.FlashTag(CMPilotHud.TagView());
         }
         break;
       case EInputKey.IK_G:
@@ -788,12 +800,14 @@ public class CMCSession extends ScriptableSystem {
         if press && IsDefined(this.m_unit) {
           this.m_unit.Secondary(this);
           this.m_slow = 1.0;
+          this.FlashTag(CMPilotHud.TagMissile());
         }
         break;
       case EInputKey.IK_B:
         if press {
           this.m_fireMode = CMFireMode.Next(this.m_fireMode);
           this.m_slow = 1.0;
+          this.FlashTag(CMPilotHud.TagMode());
         }
         break;
       case EInputKey.IK_Backslash:

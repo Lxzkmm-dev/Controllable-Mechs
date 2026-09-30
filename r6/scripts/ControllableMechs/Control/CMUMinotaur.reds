@@ -304,6 +304,7 @@ public class CMUMinotaur extends CMCUnit {
   // fired and frames a gun was held back
   private func AimLog(s: ref<CMCSession>, trigger: Bool, now: Float) -> Void {
     if trigger && !this.m_triggerWas {
+      s.FlashTag(CMPilotHud.TagFire());
       this.m_logNext = now;
       this.m_held = 0;
       this.m_shots = 0;
