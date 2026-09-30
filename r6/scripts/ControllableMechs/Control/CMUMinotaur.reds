@@ -224,10 +224,6 @@ public class CMUMinotaur extends CMCUnit {
         tracker.ClearThreats();
       }
       this.m_calmResets += 1;
-      // its combat behaviour aims the arms at its own target: ours go back on
-      if ArraySize(this.m_lookAts) > 0 && now - this.m_lookSent > 2.0 {
-        this.ResendLookAts(mech, now);
-      }
       if this.m_calmResets <= 20 {
         CMCSession.Log("AI went to " + EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(state))) + ", set back to relaxed (" + IntToString(this.m_calmResets) + "); " + (this.m_moving ? "walking" : "standing") + (this.m_turning ? ", turning" : ""));
       }
@@ -929,10 +925,11 @@ public class CMUMinotaur extends CMCUnit {
     CMCSession.Log("look-ats sent: RightWeapon, LeftWeapon, Weapon, Chassis (follow x" + FloatToStringPrec(this.LOOKAT_FOLLOW, 1) + ")");
   }
 
-  // The game can drop or override our look-ats (its AI briefly entering combat aims the
-  // arms at its own target). Ten times a second: if both guns have been well off the
-  // reticle for a second and a half while the body faces it, the look-ats are taken off
-  // and sent again, at most once every 5 s.
+  // Diagnostics only: ten times a second, if both guns have been well off a distant
+  // reticle point for a second and a half while the body faces it, say so (at most once
+  // every 5 s). The look-ats themselves are sent once per session and left alone: taking
+  // them off and sending them again left the guns stuck 60-80 deg off for good, where
+  // left alone they came back on target by themselves within seconds.
   private func WatchLookAts(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
     if ArraySize(this.m_lookAts) == 0 || !this.m_guns.left.Ready() || !this.m_guns.right.Ready() {
       return;
@@ -940,30 +937,16 @@ public class CMUMinotaur extends CMCUnit {
     let body = AbsF(CMPilotRig.Wrap(s.rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward())));
     let errL = CMCSession.AimError(this.m_guns.left.weapon, s.aim);
     let errR = CMCSession.AimError(this.m_guns.right.weapon, s.aim);
-    // (a reticle point close by puts the barrels off by parallax alone, so only past 15 m)
     if body < 35.0 && errL > 12.0 && errR > 12.0 && s.aimDist > 15.0 {
       this.m_lookMiss += 1;
     } else {
       this.m_lookMiss = 0;
     }
     if this.m_lookMiss >= 15 && now - this.m_lookSent > 5.0 {
-      CMCSession.Log("look-ats: the guns were " + FloatToStringPrec(errR, 1) + " (R) and " + FloatToStringPrec(errL, 1) + " (L) deg off with the body " + FloatToStringPrec(body, 1) + " deg off, state " + CMUMinotaur.StateName(mech) + ": sending them again");
-      this.ResendLookAts(mech, now);
+      this.m_lookSent = now;
+      CMCSession.Log("guns off the reticle: " + FloatToStringPrec(errR, 1) + " (R) and " + FloatToStringPrec(errL, 1) + " (L) deg with the body " + FloatToStringPrec(body, 1) + " deg off, reticle " + FloatToStringPrec(s.aimDist, 0) + " m, state " + CMUMinotaur.StateName(mech));
     }
   }
-
-  private func ResendLookAts(mech: ref<NPCPuppet>, now: Float) -> Void {
-    for ev in this.m_lookAts {
-      let r = new LookAtRemoveEvent();
-      r.lookAtRef = ev.outLookAtRef;
-      mech.QueueEvent(r);
-    }
-    ArrayClear(this.m_lookAts);
-    this.m_lookMiss = 0;
-    this.m_lookSent = now;
-    this.SendLookAts(mech);
-  }
-
   // WASD relative to where the view looks; the mech walks there on its own legs
   private func Drive(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
     let f = (s.Key(CMCKey.W()) ? 1.0 : 0.0) - (s.Key(CMCKey.S()) ? 1.0 : 0.0);
