@@ -6,8 +6,9 @@ Omar's decisions:
 
 - **Bombus control:** angle mode by default, acro as a setting.
 - **Kamikaze overload on G:** yes.
-- **Left open to keep the focus narrow:** the schematic view for quads and crash loss. The defaults are a front view, and a crashed drone is lost until respawned.
-- **Range:** the mech's 250 m uplink. **[spike]** marks an unknown that a small test build settles first. **[decide]** marks a call for Omar.
+- **Schematic view for quads:** top-down.
+- **Crashes:** a crashed drone is lost.
+- **Range:** a 500 m uplink for drones (the mech keeps 250 m). **[spike]** marks an unknown that a small test build settles first. **[decide]** marks a call for Omar.
 
 ## 1. Goals (Omar)
 

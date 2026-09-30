@@ -91,6 +91,18 @@ public class CMUDrone extends CMCUnit {
   }
 
   public func LostReason() -> String = "!DRONE DESTROYED"
+
+  // ten times a second: the link and the uplink range (500 m for drones)
+  public func SlowTick(s: ref<CMCSession>, now: Float) -> String {
+    let link = CMLinkSystem.Get(this.m_game);
+    if !link.IsLinked() {
+      return "!ROBOT LINK LOST";
+    }
+    if link.Distance() > link.Range() {
+      return "!SIGNAL LOST";
+    }
+    return "";
+  }
   public func Name() -> String = this.m_name
   public func Ground() -> Vector4 = this.m_pos
   public func Facing() -> Float = this.m_yaw

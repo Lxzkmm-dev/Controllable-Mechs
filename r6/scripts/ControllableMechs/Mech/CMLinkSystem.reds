@@ -41,6 +41,11 @@ public class CMLinkSystem extends ScriptableSystem {
   private let LINK_RANGE: Float = 60.0;    // how far V can be from a robot to link it
   // past this the link drops (the pilot session uses the same range)
   public static func SignalRange() -> Float = 250.0
+  // the linked unit's own range: drones carry a longer uplink (Omar: 500 m)
+  public func Range() -> Float {
+    let unit = this.Unit();
+    return IsDefined(unit) && Equals(unit.GetNPCType(), gamedataNPCType.Drone) ? 500.0 : CMLinkSystem.SignalRange();
+  }
   private let CHECK_TICK: Float = 1.0;
 
   // a terminal message for the HUD: the "!" / "*" colour marks are for the terminal only
@@ -459,7 +464,7 @@ public class CMLinkSystem extends ScriptableSystem {
 
   public func SignalFraction() -> Float {
     let d = this.Distance();
-    return d < 0.0 ? 0.0 : ClampF(1.0 - d / CMLinkSystem.SignalRange(), 0.0, 1.0);
+    return d < 0.0 ? 0.0 : ClampF(1.0 - d / this.Range(), 0.0, 1.0);
   }
 
   public func UnitName() -> String {
@@ -489,7 +494,7 @@ public class CMLinkSystem extends ScriptableSystem {
       this.Drop(player, "ROBOT LINK LOST");
       return;
     }
-    if this.Distance() > CMLinkSystem.SignalRange() {
+    if this.Distance() > this.Range() {
       this.Drop(player, CMLinkSystem.KindName(unit) + " OUT OF SIGNAL RANGE");
       return;
     }
