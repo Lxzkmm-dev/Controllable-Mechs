@@ -695,7 +695,7 @@ public class CMCSession extends ScriptableSystem {
     let t = Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).TurnPct()) / 100.0;
     this.rig.SetWeight(this.LOOK_STIFFNESS * t, this.LOOK_DAMPING * SqrtF(t), this.LOOK_YAW_RATE * k * t, this.LOOK_PITCH_RATE * k * t, this.LOOK_LEAD * k);
     this.rig.SetZoomFov(this.OPTICS_FOV);
-    this.rig.SetStepWeight(this.STOMP);
+    this.rig.SetStepWeight(this.STOMP * (IsDefined(this.m_unit) ? this.m_unit.StepWeight() : 1.0));
     this.rig.SetRecoilScale(Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).RecoilPct()) / 100.0);
   }
 
@@ -713,6 +713,14 @@ public class CMCSession extends ScriptableSystem {
     e.Yaw = this.rig.yaw + this.rig.kickYaw;       // recoil shakes the picture,
     e.Pitch = this.rig.pitch + this.rig.kickPitch;   // not the aim
     e.Roll = this.rig.roll;
+    // a drone's tilt, which the game won't show on its body: all of it through its own
+    // sensor, a third of it from the chase camera
+    if IsDefined(this.m_unit) {
+      let tilt = this.m_unit.CamTilt();
+      let k = this.ChaseNow() ? 0.35 : 1.0;
+      e.Pitch += tilt.X * k;
+      e.Roll += tilt.Y * k;
+    }
     this.m_cam.SetLocalOrientation(EulerAngles.ToQuat(e));
     if AbsF(this.rig.fov - this.m_lastFov) > 0.05 {
       this.m_lastFov = this.rig.fov;

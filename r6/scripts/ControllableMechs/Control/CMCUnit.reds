@@ -41,5 +41,10 @@ public abstract class CMCUnit extends IScriptable {
   // false while the unit's optics are knocked out (the optics key does nothing)
   public func OpticsOnline() -> Bool = true
 
+  // a tilt the camera shows on top of the view (degrees: X pitch, Y roll), for a body the
+  // game won't tilt (a drone); and how much of the rig's footfall weight applies (0 = none)
+  public func CamTilt() -> Vector4 = new Vector4(0.0, 0.0, 0.0, 0.0)
+  public func StepWeight() -> Float = 1.0
+
   public func Name() -> String = "UNIT"
 }

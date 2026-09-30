@@ -94,6 +94,9 @@ public class CMContent extends TKContent {
       case "spawndrone":
         p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg)));
         break;
+      case "droneacro":
+        cfg.SetDroneAcro(Equals(CMContent.Str(arg), "1"));
+        break;
       case "dronemove":
         cfg.SetDroneMove(CMContent.Val(arg, 0));
         break;
@@ -265,6 +268,9 @@ public class CMContent extends TKContent {
     p.Heading("CHASSIS");
     p.Slider("TURN SPEED", "How fast the view traverses and the chassis turns; 100% is the heavy baseline (from the next link-in)", "", "50|300|25|" + IntToString(cfg.TurnPct()) + "|%", "turn", "");
     p.Check("PART DAMAGE", "Hits wear down the part they land on: guns can be shot off, the sensor, legs and missile pods knocked out. Off: only the hull (from the next link-in)", cfg.PartDamage(), "parts", "");
+
+    p.Heading("DRONES");
+    p.Check("ACRO MODE", "Off (angle mode): the keys tilt the drone and it levels itself when you let go. On: the keys set how fast it rolls and pitches, and it holds whatever attitude you leave it in (from the next link-in)", cfg.DroneAcro(), "droneacro", "");
 
     p.Heading("OPERATOR");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !cfg.StayWhenHit(), "dropwhenhit", "");

@@ -158,6 +158,10 @@ public class CMPilotSystem extends ScriptableSystem {
   // how fast the view traverses and the chassis turns, % of the heavy baseline
   // the drone test build: how a flown drone is moved each frame (0 facility teleport,
   // 1 AI teleport, 2 AI move carrot)
+  // drones: acro mode (rate control, no self-levelling) instead of angle mode
+  public func DroneAcro() -> Bool = this.Flag("droneAcro", false)
+  public func SetDroneAcro(on: Bool) -> Void { this.PutFlag("droneAcro", on); }
+
   public func DroneMove() -> Int32 = this.Int("droneMove", 1)
   public func SetDroneMove(v: Int32) -> Void { this.PutInt("droneMove", Clamp(v, 0, 3)); }
 

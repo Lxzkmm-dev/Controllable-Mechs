@@ -11,6 +11,16 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 - **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone flight model** (CMFlight), built on what the spikes found:
+  - **What the spikes found:** a drone is an NPC puppet, the facility teleport does not move it, an AI teleport each frame lands within centimetres, and its body can't be tilted.
+  - **The model:** four rotors with spool lag and a per-rotor efficiency (for damage), and lift along the body's up axis, so tilting is what moves it. It has gravity, split drag and a top speed.
+  - **Angle mode** (default): the keys set a wanted tilt that a PD loop reaches, and with no climb input a damped spring holds the altitude.
+  - **Acro mode:** CONFIG > DRONES > ACRO MODE switches to rate control with no self-levelling.
+  - **Profiles per type:** Bombus (light and quick, 35 degree tilt, 18 m/s), Griffin/Wyvern, and Octant (heavy, 20 degrees, 10 m/s).
+  - **Collisions:** the step is swept against the world. The velocity into a surface is removed with a small bounce, and a hit past the type's impact speed costs health, so a crash can destroy it.
+  - **Camera:** it rides the real drone and shows its tilt, all of it in the sensor view and a third in chase. No footfall bob on drones.
+  - **Title line:** mode, altitude above ground and rotor spool.
+  - Checked offline: stable hover, forward flight and climb for all three profiles.
 - **Drone test build** (docs/DRONES_TECHNICAL_DESIGN.md, spikes S0-S2):
   - MOTOR POOL spawns a Bombus, Griffin, Wyvern or Octant, and UNIT CONTROL has FLY THE DRONE.
   - **Flight:** a first angle-mode model. WASD tilt it (up to 25 degrees) and the tilt moves it, Space/Ctrl climb and descend, and the mouse turns. It has drag, a top speed of 15 m/s, a wall stop and a ground floor.
