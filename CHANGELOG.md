@@ -24,5 +24,5 @@ The first playable build: the proof of concept works in game.
 Known issues:
 - **Mech jumps:** the mech has been seen jumping away while piloted. That's now logged so the cause can be found.
 - **Jump key:** Space can still make V jump if the game's NoJump restriction doesn't hold.
-- **Guns:** firing is not yet confirmed in game.
+- **Guns:** they fire in game. Whether the flash and the rounds now line up is still to be confirmed.
 - **Gamepad:** not supported yet.
