@@ -39,6 +39,8 @@ public class CMPilotRig {
   private let m_step: Int32;
   private let m_side: Float;
   private let m_ready: Bool;
+  private let m_chase: Bool;        // third-person: no overshoot, and the orbit lags the aim
+  private let m_orbitYaw: Float;    // where on the ring the camera sits (= yaw in the sensor view)
 
   // tuning (set in Init: field defaults can't be negative)
   private let m_pitchMin: Float;
@@ -82,7 +84,17 @@ public class CMPilotRig {
     this.m_phase = 0.0;
     this.m_step = 0;
     this.m_side = 1.0;
+    this.m_orbitYaw = facingYaw;
+    this.m_chase = false;
     this.m_ready = true;
+  }
+
+  // chase view: critically damped (no snap back), and the camera's place on the ring trails
+  // the aim so turning swings the view round the mech smoothly instead of rigidly
+  public func SetChase(on: Bool) -> Void {
+    this.m_chase = on;
+    this.m_turnDamp = on ? 2.0 * SqrtF(this.m_turnK) : 5.2;
+    this.m_orbitYaw = this.yaw;
   }
 
   // the torso's traverse rate cap, deg/s (SETTINGS slider); pitch follows at 70%
@@ -149,7 +161,12 @@ public class CMPilotRig {
 
     // on the ring, weight on top
     let bob = -this.m_bobAmp * walk * AbsF(SinF(this.m_phase));
-    this.pos = CMPilotRig.Ring(ground, this.yaw, up + bob + this.m_jolt, fwd);
+    if this.m_chase {
+      this.m_orbitYaw = CMPilotRig.Wrap(this.m_orbitYaw + CMPilotRig.Wrap(this.yaw - this.m_orbitYaw) * MinF(1.0, dt * 3.0));
+    } else {
+      this.m_orbitYaw = this.yaw;
+    }
+    this.pos = CMPilotRig.Ring(ground, this.m_orbitYaw, up + bob + this.m_jolt, fwd);
 
     let target = zoom ? this.m_fovZoom : this.m_fovBase;
     this.fov += (target - this.fov) * MinF(1.0, dt * 7.0);

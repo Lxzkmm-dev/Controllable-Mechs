@@ -87,6 +87,12 @@ public class CMContent extends TKContent {
       case "sens":
         pilot.SetSensPct(StringToInt(arg, pilot.SensPct()));
         break;
+      case "armtrack":
+        pilot.SetArmTrack(Equals(arg, "1"));
+        break;
+      case "damage":
+        pilot.SetDamagePct(StringToInt(arg, pilot.DamagePct()));
+        break;
       case "cammode":
         pilot.SetCamMode(StringToInt(arg, 0));
         break;
@@ -167,6 +173,8 @@ public class CMContent extends TKContent {
     p.SetTip("STAGGERED: LMB fires both, barrels alternating. LINKED SALVO: LMB fires both at once. SPLIT: LMB left gun, RMB right gun, MMB optics.");
     p.Dropdown("AIM MODE", "Where the rounds go", IntToString(pilot.AimMode()), "GIMBALLED|TO THE RETICLE|ALONG THE BARRELS", "0|1|2", "aimmode", "");
     p.SetTip("GIMBALLED: rounds go to what the reticle is on, within each gun's travel around its mount (12 deg side to side, 40 down, 25 up); the pips show where they'll land. TO THE RETICLE: always at the reticle; the guns wait for the chassis to line up. ALONG THE BARRELS: straight out of the muzzles.");
+    p.Check("ARM TRACKING (EXPERIMENTAL)", "The mech's arms turn toward the aim point, so the barrel effects follow the rounds", pilot.ArmTrackOn(), "armtrack", "");
+    p.Slider("MK.31 DAMAGE", "Damage of the two HMGs while you pilot", "", "100|300|10|" + IntToString(pilot.DamagePct()) + "|%", "damage", "");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
     p.Heading("CAMERA VIEW");
     p.Dropdown("VIEW", "V switches it while piloting", IntToString(pilot.CamMode()), "SENSOR (FIRST PERSON)|CHASE (THIRD PERSON)", "0|1", "cammode", "");

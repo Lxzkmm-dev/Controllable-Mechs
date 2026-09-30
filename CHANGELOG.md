@@ -32,6 +32,10 @@ The first playable build: the proof of concept works in game.
 - **No run:** Shift no longer does anything, because the Minotaur's "run" came out slower than its walk.
 - **Walls:** walk orders stop 2.5 m short of walls and buildings instead of targeting through them. An unreachable target seems to be what made the game teleport the mech.
 - **Third-person chase camera:** V while piloting, or SETTINGS > VIEW. The camera sits behind and above the mech, 8.5 m back and 4.2 m up by default, with sliders for both. Aiming starts past the mech so it can't hit itself.
+- **Arm tracking (experimental, on by default):** the mech gets the game's look-at requests for its hands and chest, aimed at an invisible marker on the aim point. The goal is for the arms, and the MK.31 barrel effects, to follow the reticle instead of pointing straight ahead. SETTINGS > ARM TRACKING. Which parts the Minotaur's rig answers to is unknown.
+- **MK.31 damage:** a slider in SETTINGS, 100-300% with 150% by default, offsets the aim mismatch. It's a multiplier on the guns' BaseDamage stat while piloting. Whether NPC weapons use that stat is unverified; TOOLS > LOG shows the before and after values.
+- **Chase view:** it's closer by default, 6 m back and 3.2 m up. Turning is critically damped (no snap), and the camera's orbit trails the aim so it swings round the mech smoothly.
+- **Aim fix:** the reticle ray no longer misses the ground when looking steeply down in the chase view.
 - **No camera clipping:** in both views, when geometry is between the mech and the camera, the camera snaps in to just short of it, then eases back out once the way is clear.
 - **Diagnostics:** each trigger pull logs how far each barrel and the chassis are off the view (TOOLS > LOG).
 

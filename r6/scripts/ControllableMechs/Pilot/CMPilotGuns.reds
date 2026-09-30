@@ -94,6 +94,49 @@ public class CMPilotGuns {
   }
 
   public func Describe() -> String = this.m_names
+
+  // ---- damage boost while piloting (SETTINGS > MK.31 DAMAGE) ----
+  // A multiplier on each gun's BaseDamage stat, added on entering and removed on exit.
+  // Whether NPC weapons take their damage from that stat is unverified: the log line shows
+  // the stat before and after so it can be checked.
+  private let m_boostL: ref<gameStatModifierData>;
+  private let m_boostR: ref<gameStatModifierData>;
+
+  public func Boost(game: GameInstance, mult: Float) -> String {
+    this.Unboost(game);
+    if mult <= 1.001 {
+      return "damage x1";
+    }
+    let stats = GameInstance.GetStatsSystem(game);
+    let note = "";
+    if this.left.Ready() {
+      let id = Cast<StatsObjectID>(this.left.weapon.GetEntityID());
+      let before = stats.GetStatValue(id, gamedataStatType.BaseDamage);
+      this.m_boostL = RPGManager.CreateStatModifier(gamedataStatType.BaseDamage, gameStatModifierType.Multiplier, mult);
+      stats.AddModifier(id, this.m_boostL);
+      note += "L BaseDamage " + FloatToStringPrec(before, 1) + " -> " + FloatToStringPrec(stats.GetStatValue(id, gamedataStatType.BaseDamage), 1);
+    }
+    if this.right.Ready() && this.right.weapon != this.left.weapon {
+      let id = Cast<StatsObjectID>(this.right.weapon.GetEntityID());
+      let before = stats.GetStatValue(id, gamedataStatType.BaseDamage);
+      this.m_boostR = RPGManager.CreateStatModifier(gamedataStatType.BaseDamage, gameStatModifierType.Multiplier, mult);
+      stats.AddModifier(id, this.m_boostR);
+      note += "  R BaseDamage " + FloatToStringPrec(before, 1) + " -> " + FloatToStringPrec(stats.GetStatValue(id, gamedataStatType.BaseDamage), 1);
+    }
+    return note;
+  }
+
+  public func Unboost(game: GameInstance) -> Void {
+    let stats = GameInstance.GetStatsSystem(game);
+    if IsDefined(this.m_boostL) && this.left.Ready() {
+      stats.RemoveModifier(Cast<StatsObjectID>(this.left.weapon.GetEntityID()), this.m_boostL);
+    }
+    if IsDefined(this.m_boostR) && this.right.Ready() {
+      stats.RemoveModifier(Cast<StatsObjectID>(this.right.weapon.GetEntityID()), this.m_boostR);
+    }
+    this.m_boostL = null;
+    this.m_boostR = null;
+  }
   public func HasAny() -> Bool = this.left.Ready() || this.right.Ready()
   public func Cycle() -> Float = this.m_cycle
 

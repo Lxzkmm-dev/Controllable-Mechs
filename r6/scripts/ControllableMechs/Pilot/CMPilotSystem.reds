@@ -104,6 +104,13 @@ public class CMPilotSystem extends ScriptableSystem {
   // clipping: how far out from the mech's centre the camera may sit this frame
   private let m_clip: Float;
 
+  // arm tracking (experimental): the mech's arms look at a marker moved to the aim point
+  private persistent let m_armTrackOff: Bool;   // false = on (default)
+  private persistent let m_damagePct: Int32;    // MK.31 damage while piloting, percent, stored +1 (0 = 150)
+  private let m_markerID: EntityID;
+  private let m_marker: wref<Entity>;
+  private let m_lookAts: array<ref<LookAtAddEvent>>;
+
   // sound state: the servo loop plays while the view traverses
   private let m_servoOn: Bool;
   private let m_servoHit: Float;
@@ -270,9 +277,11 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_rig = new CMPilotRig();
     this.m_rig.Init(mech.GetWorldPosition(), this.CamUp(), this.CamFwd(), CMPilotRig.YawOf(mech.GetWorldForward()));
     this.m_clip = 999.0;
+    this.m_rig.SetChase(this.IsChase());
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
     this.m_guns.SetAimMode(this.m_aimMode);
+    TKLog.Add("ControllableMechs", "pilot: damage " + this.m_guns.Boost(this.GetGameInstance(), Cast<Float>(this.DamagePct()) / 100.0));
     this.m_rig.SetTraverse(Cast<Float>(this.Traverse()));
     this.m_servoOn = false;
     this.m_servoHit = 0.0;
@@ -310,6 +319,7 @@ public class CMPilotSystem extends ScriptableSystem {
       this.Exit("!CAMERA LINK FAILED", false);
       return "";
     }
+    this.SpawnMarker();
     this.m_attachPending = true;
     GameInstance.GetCallbackSystem().RegisterCallback(n"Entity/Attached", this, n"OnCamAttached");
     this.m_state = 1;
@@ -448,6 +458,7 @@ public class CMPilotSystem extends ScriptableSystem {
     if IsDefined(this.m_hud) {
       this.m_hud.Remove();
     }
+    this.EndArmTrack(mech, hard);
     this.m_hud = null;
 
     if IsDefined(player) && this.m_restricted {
@@ -459,6 +470,9 @@ public class CMPilotSystem extends ScriptableSystem {
       this.m_saveLocked = false;
     }
     this.m_rig = null;
+    if IsDefined(this.m_guns) {
+      this.m_guns.Unboost(game);
+    }
     this.m_guns = null;
     ArrayClear(this.m_keys);
 
@@ -545,6 +559,7 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_zoom = rmbZoom;
     this.m_rig.Update(dt, mech.GetWorldPosition(), this.CamUp(), this.CamFwd(), this.m_zoom);
     this.ClipCamera(mech, dt);
+    this.MoveMarker();
     if this.m_rig.jumped > 0.0 {
       TKLog.Add("ControllableMechs", "pilot: the mech jumped " + FloatToStringPrec(this.m_rig.jumped, 1) + " m in one frame (moving " + (this.m_moving ? "yes" : "no") + ")");
     }
@@ -674,12 +689,20 @@ public class CMPilotSystem extends ScriptableSystem {
   // the ones Time Dilation Overhaul checks line of sight with.
   private func UpdateAim() -> Void {
     let fwd = this.m_rig.Forward();
-    let from = this.m_rig.pos + fwd * (4.5 + (this.IsChase() ? this.ChaseDist() : 0.0));   // clear of the mech's own body
     let to = this.m_rig.pos + fwd * 600.0;
+    // world geometry: straight from the camera (the clipping keeps it out of walls); anything
+    // dynamic: from just past the mech's centre along the view, so the mech can't hit itself
+    // (this used to start past the mech for both, which went underground when looking down)
+    let mech = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_mechID) as NPCPuppet;
+    let skip = 4.5;
+    if IsDefined(mech) {
+      skip = MaxF(4.5, Vector4.Dot(mech.GetWorldPosition() - this.m_rig.pos, fwd) + 3.0);
+    }
+    let from = this.m_rig.pos + fwd * skip;
     let sq = GameInstance.GetSpatialQueriesSystem(this.GetGameInstance());
     let best = 0.0;
     let hit: TraceResult;
-    if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hit, true) {
+    if sq.SyncRaycastByCollisionPreset(this.m_rig.pos + fwd * 0.3, to, n"World Static", hit, true) {
       this.m_aim = Cast<Vector4>(hit.position);
       best = Vector4.Distance(this.m_rig.pos, this.m_aim);
     }
@@ -730,6 +753,7 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_vHealth = hp;
 
     this.Drive(mech, now);
+    this.ArmTrack(mech);
 
     if !this.Key(CMPilotKey.Lmb()) && !this.Key(CMPilotKey.Rmb()) {
       this.UpdateAim();   // keeps the range readout live
@@ -1129,9 +1153,12 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SetCamMode(mode: Int32) -> Void {
     this.m_camMode = Clamp(mode, 0, 1);
     this.m_clip = 999.0;   // re-measure from the full distance
+    if IsDefined(this.m_rig) {
+      this.m_rig.SetChase(this.IsChase());
+    }
   }
-  public func ChaseDistCm() -> Int32 = this.m_chaseDistCm > 0 ? this.m_chaseDistCm - 1 : 850
-  public func ChaseUpCm() -> Int32 = this.m_chaseUpCm > 0 ? this.m_chaseUpCm - 1 : 420
+  public func ChaseDistCm() -> Int32 = this.m_chaseDistCm > 0 ? this.m_chaseDistCm - 1 : 600
+  public func ChaseUpCm() -> Int32 = this.m_chaseUpCm > 0 ? this.m_chaseUpCm - 1 : 320
   public func SetChaseDistCm(v: Int32) -> Void { this.m_chaseDistCm = Clamp(v, 400, 1600) + 1; }
   public func SetChaseUpCm(v: Int32) -> Void { this.m_chaseUpCm = Clamp(v, 200, 900) + 1; }
   private func ChaseDist() -> Float = Cast<Float>(this.ChaseDistCm()) / 100.0
@@ -1141,6 +1168,99 @@ public class CMPilotSystem extends ScriptableSystem {
   // (piloting only) from the mech's centre at camera height out to where the rig put the
   // camera. On a hit the camera snaps in to 0.35 m short of it, and eases back out at
   // 6 m/s once the way is clear, so it doesn't pop.
+  // ---- arm tracking (experimental) ----
+  // The MK.31 effects leave along the model's barrels, and the gimbal can only bend the
+  // rounds, not the arms. So the mech gets the game's own look-at requests (what NPCs use to
+  // look and aim at things) for its hands and chest, pointed at an invisible marker that
+  // sits on the aim point. If its animations take them, the arms and barrels follow the
+  // reticle and the effects line up with the rounds. Which parts the Minotaur's rig answers
+  // to is unknown, so all three are asked; TOOLS > LOG notes when they're sent.
+  public func DamagePct() -> Int32 = this.m_damagePct > 0 ? this.m_damagePct - 1 : 150
+  public func SetDamagePct(v: Int32) -> Void {
+    this.m_damagePct = Clamp(v, 100, 300) + 1;
+    if IsDefined(this.m_guns) {
+      TKLog.Add("ControllableMechs", "pilot: damage " + this.m_guns.Boost(this.GetGameInstance(), Cast<Float>(this.DamagePct()) / 100.0));
+    }
+  }
+
+  public func ArmTrackOn() -> Bool = !this.m_armTrackOff
+  public func SetArmTrack(on: Bool) -> Void {
+    this.m_armTrackOff = !on;
+    let mech = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_mechID) as NPCPuppet;
+    if !on && IsDefined(mech) {
+      this.RemoveLookAts(mech);
+    }
+  }
+
+  private func SpawnMarker() -> Void {
+    let spec = new StaticEntitySpec();
+    spec.templatePath = r"base\\entities\\cameras\\simple_free_camera.ent";   // never activated: just a point to look at
+    spec.position = this.m_aim;
+    spec.orientation = CMPilotSystem.Identity();
+    spec.attached = true;
+    this.m_markerID = GameInstance.GetStaticEntitySystem().SpawnEntity(spec);
+    this.m_marker = null;
+    ArrayClear(this.m_lookAts);
+  }
+
+  // every frame while piloting: one transform, only once the marker exists
+  private func MoveMarker() -> Void {
+    if !IsDefined(this.m_marker) {
+      return;
+    }
+    let world: WorldPosition;
+    WorldPosition.SetVector4(world, this.m_aim);
+    let wt: WorldTransform;
+    WorldTransform.SetWorldPosition(wt, world);
+    WorldTransform.SetOrientation(wt, CMPilotSystem.Identity());
+    this.m_marker.SetWorldTransform(wt);
+  }
+
+  // ten times a second: send the look-ats once the marker has attached
+  private func ArmTrack(mech: ref<NPCPuppet>) -> Void {
+    if this.m_armTrackOff || ArraySize(this.m_lookAts) > 0 || !EntityID.IsDefined(this.m_markerID) {
+      return;
+    }
+    if !IsDefined(this.m_marker) {
+      this.m_marker = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_markerID);
+      if !IsDefined(this.m_marker) {
+        return;
+      }
+    }
+    for part in [n"RightHand", n"LeftHand", n"Chest"] {
+      let ev = new LookAtAddEvent();
+      ev.SetEntityTarget(this.m_marker, n"", new Vector4(0.0, 0.0, 0.0, 0.0));
+      ev.bodyPart = part;
+      ev.SetStyle(animLookAtStyle.Normal);
+      ev.SetLimits(animLookAtLimitDegreesType.Wide, animLookAtLimitDegreesType.Wide, animLookAtLimitDistanceType.None, animLookAtLimitDegreesType.Wide);
+      mech.QueueEvent(ev);
+      ArrayPush(this.m_lookAts, ev);
+    }
+    TKLog.Add("ControllableMechs", "pilot: arm tracking look-ats sent (RightHand, LeftHand, Chest)");
+  }
+
+  private func RemoveLookAts(mech: ref<NPCPuppet>) -> Void {
+    for ev in this.m_lookAts {
+      let r = new LookAtRemoveEvent();
+      r.lookAtRef = ev.outLookAtRef;
+      mech.QueueEvent(r);
+    }
+    ArrayClear(this.m_lookAts);
+  }
+
+  private func EndArmTrack(mech: ref<NPCPuppet>, hard: Bool) -> Void {
+    if IsDefined(mech) {
+      this.RemoveLookAts(mech);
+    }
+    ArrayClear(this.m_lookAts);
+    this.m_marker = null;
+    if EntityID.IsDefined(this.m_markerID) {
+      GameInstance.GetStaticEntitySystem().DespawnEntity(this.m_markerID);
+    }
+    let empty: EntityID;
+    this.m_markerID = empty;
+  }
+
   private func ClipCamera(mech: ref<NPCPuppet>, dt: Float) -> Void {
     let g = mech.GetWorldPosition();
     let pivot = new Vector4(g.X, g.Y, g.Z + this.CamUp(), 1.0);
