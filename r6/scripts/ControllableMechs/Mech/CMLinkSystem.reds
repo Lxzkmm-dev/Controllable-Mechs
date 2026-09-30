@@ -189,9 +189,16 @@ public class CMLinkSystem extends ScriptableSystem {
       this.m_listening = true;
     }
     let fwd = player.GetWorldForward();
+    fwd.Z = 0.0;
+    fwd = Vector4.Normalize(fwd);
+    let at: Vector4;
+    if !this.SpawnPoint(player.GetWorldPosition(), fwd, at) {
+      GameObject.PlaySoundEvent(player, n"ui_hacking_press_fail");
+      return "!NO CLEAR LZ: STAND ON OPEN, LEVEL GROUND";
+    }
     let spec = new DynamicEntitySpec();
     spec.recordID = record;
-    spec.position = player.GetWorldPosition() + fwd * 14.0;
+    spec.position = at;
     let face: EulerAngles;
     face.Yaw = CMPilotRig.YawOf(fwd) + 180.0;   // facing V
     spec.orientation = EulerAngles.ToQuat(face);
@@ -203,6 +210,83 @@ public class CMLinkSystem extends ScriptableSystem {
     return "*MINOTAUR INBOUND";
   }
 
+  // Where the test mech goes: on the ground, up to 46 ft from V. The point straight ahead
+  // at V's own height can be in the air (V on a ledge, a slope, above a lower road) or
+  // inside a wall, and a mech spawned there falls or gets teleported about by the game.
+  // So candidates are tried in turn (46, 33 and 20 ft ahead, then 33 ft off to each side);
+  // each stops short of a wall, drops a ray for the ground, and is refused if that ground
+  // is more than 16 ft above or below V. The first one on the navigation mesh wins; with
+  // none on the mesh, the first with ground at all. False when nothing is usable.
+  private func SpawnPoint(from: Vector4, fwd: Vector4, out at: Vector4) -> Bool {
+    let yaw = CMPilotRig.YawOf(fwd);
+    let dists: array<Float> = [14.0, 10.0, 6.0, 10.0, 10.0];
+    let turns: array<Float> = [0.0, 0.0, 0.0, 40.0, -40.0];
+    let fallback: Vector4;
+    let haveFallback = false;
+    let i = 0;
+    while i < ArraySize(dists) {
+      let p: Vector4;
+      let onMesh = false;
+      if this.GroundAt(from, CMPilotRig.Dir(yaw + turns[i], 0.0), dists[i], p, onMesh) {
+        if onMesh {
+          at = p;
+          CMCSession.Log("test mech: spawn point " + IntToString(i + 1) + " of 5, on the navigation mesh, " + FloatToStringPrec(Vector4.Distance2D(from, p), 1) + " m from V, ground " + FloatToStringPrec(p.Z - from.Z, 1) + " m from V's level");
+          return true;
+        }
+        if !haveFallback {
+          fallback = p;
+          haveFallback = true;
+        }
+      }
+      i += 1;
+    }
+    if haveFallback {
+      at = fallback;
+      CMCSession.Log("test mech: no spawn point on the navigation mesh, using plain ground " + FloatToStringPrec(Vector4.Distance2D(from, at), 1) + " m from V");
+      return true;
+    }
+    CMCSession.Log("test mech: no ground near V's level at any of the 5 spawn points");
+    return false;
+  }
+
+  private func GroundAt(from: Vector4, dir: Vector4, dist: Float, out p: Vector4, out onMesh: Bool) -> Bool {
+    let game = this.GetGameInstance();
+    let sq = GameInstance.GetSpatialQueriesSystem(game);
+    let hit: TraceResult;
+    let reach = dist;
+    let chest = new Vector4(from.X, from.Y, from.Z + 1.2, 1.0);
+    if sq.SyncRaycastByCollisionGroup(chest, chest + dir * (reach + 3.0), n"Static", hit, true, false) {
+      reach = Vector4.Distance(chest, Cast<Vector4>(hit.position)) - 3.0;   // room for its bulk
+    }
+    if reach < 5.0 {
+      return false;
+    }
+    let over = from + dir * reach;
+    // from a little above V's level first (so a roof or bridge overhead isn't taken for the
+    // ground), then from higher up for ground that rises ahead
+    let found = false;
+    for lift in [3.0, 8.0] {
+      if !found && sq.SyncRaycastByCollisionGroup(new Vector4(over.X, over.Y, over.Z + lift, 1.0), new Vector4(over.X, over.Y, over.Z - 8.0, 1.0), n"Static", hit, true, false) {
+        found = true;
+      }
+    }
+    if !found {
+      return false;
+    }
+    p = Cast<Vector4>(hit.position);
+    p.W = 1.0;
+    if AbsF(p.Z - from.Z) > 5.0 {
+      return false;
+    }
+    // the walkable point under it, when the navigation mesh has one close by
+    let nav = GameInstance.GetNavigationSystem(game).GetNearestNavmeshPointBelowOnlyHumanNavmesh(new Vector4(p.X, p.Y, p.Z + 1.5, 1.0), 1.5, 4);
+    onMesh = !Vector4.IsZero(nav) && AbsF(nav.Z - p.Z) < 2.5;
+    if onMesh {
+      p = nav;
+      p.W = 1.0;
+    }
+    return true;
+  }
   public func DespawnTestMech() -> Void {
     if !this.HasTestMech() {
       return;
