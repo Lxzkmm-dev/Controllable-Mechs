@@ -43,8 +43,21 @@ public class CMGun {
   public let nextShot: Float;      // sim time
   public let lastShot: Float;      // sim time
   public let flash: Float;         // seconds of muzzle-flash on the HUD marker
+  public let offAim: Bool;         // spike S7: the barrel is too far off the reticle to fire
 
   public func Ready() -> Bool = IsDefined(this.weapon)
+}
+
+// spike S7: which fire call the MK.31s use
+public abstract class CMFireCall {
+  public static func Mech() -> Int32 = 0     // owner mech, target point (the alpha's call)
+  public static func V() -> Int32 = 1        // owner V, charge 1, no target point (a V-controlled vanilla turret's call)
+  public static func VPoint() -> Int32 = 2   // owner V, charge 1, with the target point
+  public static func Name(call: Int32) -> String {
+    if call == CMFireCall.V() { return "V, NO POINT"; }
+    if call == CMFireCall.VPoint() { return "V + POINT"; }
+    return "MECH";
+  }
 }
 
 public class CMPilotGuns {
@@ -53,7 +66,7 @@ public class CMPilotGuns {
   private let m_cycle: Float;       // seconds between shots of one gun
   private let m_turnLeft: Bool;     // stagger: which barrel is next
   private let m_names: String;      // what was found, for the HUD / diagnostics
-  public let ownerV: Bool;          // spike S7: fire with the vanilla turret call, V as owner
+  public let call: Int32;           // spike S7: CMFireCall (0 = the mech's call, the default)
   private let m_aimMode: Int32;    // CMAimMode: gimballed (default), to the reticle, along the barrels
 
   private let HEAT_PER_SHOT: Float = 0.022;
@@ -238,7 +251,7 @@ public class CMPilotGuns {
   }
 
   private func CanFire(g: ref<CMGun>, now: Float) -> Bool {
-    return g.Ready() && !g.locked && now >= g.nextShot;
+    return g.Ready() && !g.locked && !g.offAim && now >= g.nextShot;
   }
 
   private func TryFire(mech: ref<NPCPuppet>, g: ref<CMGun>, now: Float, cycle: Float, aim: Vector4, spreadDeg: Float, camPos: Vector4) -> Bool {
@@ -251,12 +264,16 @@ public class CMPilotGuns {
     let cone = Deg2Rad(spreadDeg * (1.0 + g.heat * 1.5));
     let r = dist * cone;
     let target = new Vector4(point.X + RandRangeF(-r, r), point.Y + RandRangeF(-r, r), point.Z + RandRangeF(-r, r) * 0.6, 1.0);
-    if this.ownerV {
+    if this.call == CMFireCall.V() {
       // spike S7: the call a V-controlled vanilla turret makes (V owns the round, charge 1,
       // no target point: it leaves along the barrel)
       AIWeapon.Fire(GetPlayer(mech.GetGame()), g.weapon, now, 1.0, gamedataTriggerMode.FullAuto);
     } else {
-      AIWeapon.Fire(mech, g.weapon, now, 0.0, gamedataTriggerMode.FullAuto, target);
+      if this.call == CMFireCall.VPoint() {
+        AIWeapon.Fire(GetPlayer(mech.GetGame()), g.weapon, now, 1.0, gamedataTriggerMode.FullAuto, target);
+      } else {
+        AIWeapon.Fire(mech, g.weapon, now, 0.0, gamedataTriggerMode.FullAuto, target);
+      }
     }
     g.nextShot = now + cycle;
     g.lastShot = now;

@@ -733,8 +733,8 @@ public class CMSpike2System extends ScriptableSystem {
     let pilot = CMPilotSystem.Get(this.GetGameInstance());
     p.Heading("S7  PILOT WITH THE GUN LOOK-AT (BATCH 3)");
     p.Item("GUN LOOK-AT WHILE PILOTING", "RightWeapon, LeftWeapon, Weapon and Chassis follow the reticle; the MK.31s fire along their barrels", "", pilot.S7On() ? "ON" : "OFF", "sp_b3_s7", pilot.S7On() ? "0" : "1", true);
-    p.Item("ROUNDS OWNED BY", "The mech (the alpha's way) or V (the call a V-controlled turret makes)", "", pilot.S7OwnerV() ? "V" : "MECH", "sp_b3_s7owner", pilot.S7OwnerV() ? "0" : "1", true);
-    p.ItemNote("Question: pilot the mech with this ON and shoot enemies while walking and turning, once with each owner. Do the flash, tracers and hits land on the reticle? Does damage land, and do enemies turn on V or on the mech?");
+    p.Buttons("Fire call (now " + CMFireCall.Name(pilot.S7Call()) + ")", "", "", "MECH|V, NO POINT|V + POINT", "sp_b3_s7call|sp_b3_s7call|sp_b3_s7call", "0|1|2");
+    p.ItemNote("Question: in a quiet spot (no police), pilot with this ON and shoot one enemy per fire call. For each: do the rounds fly normally and land on the reticle, does damage land, and does the enemy turn on V or the mech? Each gun now holds fire until its barrel is within 4 deg of the reticle.");
 
     p.Heading("S2c  THE VANILLA TURRET'S FIRE CALL (LINK A MINOTAUR, SET IT TO HOLD)");
     p.Buttons("Guns turn to your crosshair, then 10 rounds", "", "", "VANILLA CALL|+ TARGET POINT|OWNER MECH", "sp_b3_s2c|sp_b3_s2c|sp_b3_s2c", "4|5|6");
@@ -766,8 +766,12 @@ public class CMSpike2System extends ScriptableSystem {
     let msg = "";
     switch action {
       case "sp_b3_s7": CMPilotSystem.Get(this.GetGameInstance()).SetS7(Equals(arg, "1")); msg = Equals(arg, "1") ? "*S7 ON: PILOT THE MECH" : "S7 OFF"; break;
-      case "sp_b3_s7owner": CMPilotSystem.Get(this.GetGameInstance()).SetS7OwnerV(Equals(arg, "1")); msg = Equals(arg, "1") ? "*ROUNDS OWNED BY V" : "*ROUNDS OWNED BY THE MECH"; break;
-      case "sp_b3_s2c": msg = this.S2cBurst(StringToInt(arg, 4)); break;
+      case "sp_b3_s7call": CMPilotSystem.Get(this.GetGameInstance()).SetS7Call(StringToInt(arg, 0)); msg = "*FIRE CALL: " + CMFireCall.Name(StringToInt(arg, 0)); break;
+      case "sp_b3_s2c":
+        // batch 3 logged only modes 5 and 6: record exactly what the button handed over
+        this.Log("S2c button pressed, arg \"" + arg + "\"");
+        msg = this.S2cBurst(StringToInt(arg, 4));
+        break;
       case "sp_b2_origin": msg = this.ToggleOrigin(); break;
       case "sp_b2_fire": msg = this.S2bBurst(StringToInt(arg, 0)); break;
       case "sp_b2_s5": msg = this.S5bSpawn(StringToInt(arg, 0)); break;

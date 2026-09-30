@@ -114,7 +114,8 @@ public class CMPilotSystem extends ScriptableSystem {
   // spike S7 (dev, not saved): the gun-part look-ats (RightWeapon, LeftWeapon, Weapon,
   // Chassis) follow the reticle, and the MK.31s fire along their barrels
   private let m_s7: Bool;
-  private let m_s7OwnerV: Bool;
+  private let m_s7Call: Int32;       // CMFireCall
+  private let m_s7Held: Int32;       // frames a gun was held back as off the reticle
   private let m_s7Target: wref<GameObject>;
   private let m_s7HP: Float;
   private let m_s7Next: Float;
@@ -289,7 +290,7 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
     this.m_guns.SetAimMode(this.GunAim());
-    this.m_guns.ownerV = this.m_s7 && this.m_s7OwnerV;
+    this.m_guns.call = this.m_s7 ? this.m_s7Call : CMFireCall.Mech();
     TKLog.Add("ControllableMechs", "pilot: damage " + this.m_guns.Boost(this.GetGameInstance(), Cast<Float>(this.DamagePct()) / 100.0));
     this.m_rig.SetTraverse(Cast<Float>(this.Traverse()));
     this.m_servoOn = false;
@@ -600,6 +601,9 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_triggerWas = trigger;
     if lmb || rmb {
       this.UpdateAim();
+      if this.m_s7 {
+        this.S7Gate(mech);
+      }
       let shots = this.m_guns.Update(mech, now, dt, lmb, rmb, this.m_fireMode, this.m_aim, this.SPREAD_DEG, this.m_rig.pos);
       if shots > 0 {
         this.m_rig.Recoil(0.45 * Cast<Float>(shots));
@@ -1321,13 +1325,15 @@ public class CMPilotSystem extends ScriptableSystem {
 
   // ---- spike S7 (dev) ----
   public func S7On() -> Bool = this.m_s7
-  public func S7OwnerV() -> Bool = this.m_s7OwnerV
+  public func S7Call() -> Int32 = this.m_s7Call
 
   public func SetS7(on: Bool) -> Void {
     this.m_s7 = on;
     if IsDefined(this.m_guns) {
       this.m_guns.SetAimMode(this.GunAim());
-      this.m_guns.ownerV = this.m_s7 && this.m_s7OwnerV;
+      this.m_guns.call = this.m_s7 ? this.m_s7Call : CMFireCall.Mech();
+      this.m_guns.left.offAim = false;
+      this.m_guns.right.offAim = false;
     }
     // the look-ats are re-sent with the new parts on the next slow tick
     let mech = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_mechID) as NPCPuppet;
@@ -1337,12 +1343,26 @@ public class CMPilotSystem extends ScriptableSystem {
     CMSpikeSystem.Log("S7: gun-part look-ats while piloting " + (on ? "ON" : "off"));
   }
 
-  public func SetS7OwnerV(on: Bool) -> Void {
-    this.m_s7OwnerV = on;
+  public func SetS7Call(call: Int32) -> Void {
+    this.m_s7Call = Clamp(call, 0, 2);
     if IsDefined(this.m_guns) {
-      this.m_guns.ownerV = this.m_s7 && this.m_s7OwnerV;
+      this.m_guns.call = this.m_s7 ? this.m_s7Call : CMFireCall.Mech();
     }
-    CMSpikeSystem.Log("S7: rounds owned by " + (on ? "V (the vanilla turret call)" : "the mech"));
+    CMSpikeSystem.Log("S7: fire call now " + CMFireCall.Name(this.m_s7Call));
+  }
+
+  // S7: a gun only fires while its barrel is within S7_GATE_DEG of the reticle, so the
+  // rounds land where the reticle is even while the mech walks and turns
+  private let S7_GATE_DEG: Float = 4.0;
+
+  private func S7Gate(mech: ref<NPCPuppet>) -> Void {
+    let offL = CMSpike2System.AimError(ScriptedPuppet.GetWeaponLeft(mech), this.m_aim) > this.S7_GATE_DEG;
+    let offR = CMSpike2System.AimError(ScriptedPuppet.GetWeaponRight(mech), this.m_aim) > this.S7_GATE_DEG;
+    this.m_guns.left.offAim = offL;
+    this.m_guns.right.offAim = offR;
+    if offL || offR {
+      this.m_s7Held += 1;
+    }
   }
 
   // on trigger: the target and its health; while held, each gun's aim error once a second;
@@ -1353,12 +1373,13 @@ public class CMPilotSystem extends ScriptableSystem {
       this.m_s7Target = GameInstance.GetTargetingSystem(game).GetLookAtObject(GetPlayer(game));
       this.m_s7HP = CMSpike2System.Health(this.m_s7Target);
       this.m_s7Next = now;
-      CMSpikeSystem.Log("S7 fire (" + (this.m_s7OwnerV ? "owner V" : "owner mech") + "): target " + CMSpike2System.Describe(this.m_s7Target) + ", health " + FloatToStringPrec(this.m_s7HP, 1));
+      this.m_s7Held = 0;
+      CMSpikeSystem.Log("S7 fire (call " + CMFireCall.Name(this.m_s7Call) + "): target " + CMSpike2System.Describe(this.m_s7Target) + ", health " + FloatToStringPrec(this.m_s7HP, 1));
     }
     if trigger && now >= this.m_s7Next {
       this.m_s7Next = now + 1.0;
       CMSpikeSystem.Log("S7 aim error to the reticle: right " + FloatToStringPrec(CMSpike2System.AimError(ScriptedPuppet.GetWeaponRight(mech), this.m_aim), 1)
-        + " deg, left " + FloatToStringPrec(CMSpike2System.AimError(ScriptedPuppet.GetWeaponLeft(mech), this.m_aim), 1) + " deg, reticle " + FloatToStringPrec(Vector4.Distance(this.m_rig.pos, this.m_aim), 0) + " m out");
+        + " deg, left " + FloatToStringPrec(CMSpike2System.AimError(ScriptedPuppet.GetWeaponLeft(mech), this.m_aim), 1) + " deg, reticle " + FloatToStringPrec(Vector4.Distance(this.m_rig.pos, this.m_aim), 0) + " m out, frames held off-aim " + IntToString(this.m_s7Held));
     }
     if !trigger && this.m_triggerWas {
       let cb = new CMSpikeS7ReportCb();
