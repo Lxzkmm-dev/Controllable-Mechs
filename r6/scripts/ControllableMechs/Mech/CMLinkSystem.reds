@@ -467,7 +467,7 @@ public class CMLinkSystem extends ScriptableSystem {
   private func KeepGrounded(mech: ref<NPCPuppet>) -> Void {
     let pos = mech.GetWorldPosition();
     let hit: TraceResult;
-    let gap = 60.0;
+    let gap = 0.0;   // no ground found at all: left alone
     if GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 60.0, 1.0), n"Static", hit, true, false) {
       gap = pos.Z - Cast<Vector4>(hit.position).Z;
     }
@@ -478,7 +478,7 @@ public class CMLinkSystem extends ScriptableSystem {
     this.m_airChecks += 1;
     // three checks (3 s) first, so the game's own settling from a small height isn't cut
     // short, then one try every 5 s while it stays up
-    if this.m_airChecks < 3 || gap >= 60.0 {
+    if this.m_airChecks < 3 {
       return;
     }
     this.m_airChecks = -2;
