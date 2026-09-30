@@ -172,6 +172,8 @@ public class CMUMinotaur extends CMCUnit {
       this.m_target = GameInstance.GetTargetingSystem(this.m_game).GetLookAtObject(GetPlayer(this.m_game));
       this.m_targetHP = CMSpike2System.Health(this.m_target);
       CMCSession.Log("fire (" + CMFireCall.Name(this.m_guns.call) + "): target " + CMSpike2System.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1));
+      let mech = this.Mech();
+      CMCSession.Log(CMHitLog.Muzzle("R", this.m_guns.right.weapon, mech, s.rig.pos, s.aim) + "; " + CMHitLog.Muzzle("L", this.m_guns.left.weapon, mech, s.rig.pos, s.aim));
     }
     if !trigger && this.m_triggerWas && IsDefined(this.m_target) {
       let cb = new CMUMinotaurReportCb();

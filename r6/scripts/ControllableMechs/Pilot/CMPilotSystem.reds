@@ -1375,6 +1375,7 @@ public class CMPilotSystem extends ScriptableSystem {
       this.m_s7Next = now;
       this.m_s7Held = 0;
       CMSpikeSystem.Log("S7 fire (call " + CMFireCall.Name(this.m_s7Call) + "): target " + CMSpike2System.Describe(this.m_s7Target) + ", health " + FloatToStringPrec(this.m_s7HP, 1));
+      CMSpikeSystem.Log("S7 " + CMHitLog.Muzzle("R", ScriptedPuppet.GetWeaponRight(mech), mech, this.m_rig.pos, this.m_aim) + "; " + CMHitLog.Muzzle("L", ScriptedPuppet.GetWeaponLeft(mech), mech, this.m_rig.pos, this.m_aim));
     }
     if trigger && now >= this.m_s7Next {
       this.m_s7Next = now + 1.0;

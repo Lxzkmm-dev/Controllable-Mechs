@@ -264,6 +264,7 @@ public class CMPilotGuns {
     let cone = Deg2Rad(spreadDeg * (1.0 + g.heat * 1.5));
     let r = dist * cone;
     let target = new Vector4(point.X + RandRangeF(-r, r), point.Y + RandRangeF(-r, r), point.Z + RandRangeF(-r, r) * 0.6, 1.0);
+    g.weapon.m_cmWatched = true;   // its hits go to the hit trace (CMHitLog)
     if this.call == CMFireCall.V() {
       // spike S7: the call a V-controlled vanilla turret makes (V owns the round, charge 1,
       // no target point: it leaves along the barrel)

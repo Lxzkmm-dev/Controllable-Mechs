@@ -256,6 +256,7 @@ public class CMSpike2System extends ScriptableSystem {
     }
     let to = this.AimPoint();
     let now = EngineTime.ToFloat(GameInstance.GetSimTime(game));
+    weapon.m_cmWatched = true;   // its hits go to the hit trace (CMHitLog)
     if this.m_mode >= 4 {
       let trigger = gamedataTriggerMode.FullAuto;
       let rec = weapon.GetWeaponRecord();
