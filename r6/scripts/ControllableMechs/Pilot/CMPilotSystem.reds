@@ -162,7 +162,9 @@ public class CMPilotSystem extends ScriptableSystem {
   public func DroneAcro() -> Bool = this.Flag("droneAcro", false)
   public func SetDroneAcro(on: Bool) -> Void { this.PutFlag("droneAcro", on); }
 
-  public func DroneMove() -> Int32 = this.Int("droneMove", 1)
+  // only AI TELEPORT (1) and AI MOVE CARROT (2) move a drone: the facility teleports (0, 3)
+  // were tested and do nothing, so an old setting of either reads as 1
+  public func DroneMove() -> Int32 = this.Int("droneMove", 1) == 2 ? 2 : 1
   public func SetDroneMove(v: Int32) -> Void { this.PutInt("droneMove", Clamp(v, 0, 3)); }
 
   public func TurnPct() -> Int32 = this.Int("turnPct", 175)

@@ -72,6 +72,12 @@ public class CMFlight {
   // one step. f/s: forward/right stick (-1..1), c: climb (-1..1), view: the yaw to face
   public func Step(dt: Float, fwd: Float, side: Float, c: Float, view: Float) -> Void {
     let p = this.p;
+    // a diagonal stick is no stronger than a straight one
+    let stick = SqrtF(fwd * fwd + side * side);
+    if stick > 1.0 {
+      fwd /= stick;
+      side /= stick;
+    }
     // --- the body's attitude: angle mode aims for a tilt, acro for a rate ---
     let wantPitchRate: Float;
     let wantRollRate: Float;
@@ -87,7 +93,7 @@ public class CMFlight {
     }
     // --- the rotors: collective for the height, differential for the attitude ---
     let hover = CMFlight.HoverSpool(p);
-    let lift = MaxF(0.2, CosF(Deg2Rad(this.pitch)) * CosF(Deg2Rad(this.roll)));
+    let lift = MaxF(0.5, CosF(Deg2Rad(this.pitch)) * CosF(Deg2Rad(this.roll)));
     let collective: Float;
     if AbsF(c) > 0.05 {
       this.holding = false;
@@ -108,8 +114,12 @@ public class CMFlight {
     let kp = 15.0 / MaxF(0.001, 4.0 * p.thrust * p.arm / inertia0 * 57.3);
     let dp = ClampF((wantPitchRate - this.pitchRate) * kp, -0.25, 0.25);
     let dr = ClampF((wantRollRate - this.rollRate) * kp, -0.25, 0.25);
-    // front left, front right, back left, back right
-    let cmd: array<Float> = [collective + dp - dr, collective + dp + dr, collective - dp - dr, collective - dp + dr];
+    // the attitude keeps its margin: the collective is held where both corrections fit
+    // (with it saturated the drone could no longer right itself, and tumbled)
+    let margin = AbsF(dp) + AbsF(dr);
+    collective = MaxF(margin, MinF(1.0 - margin, collective));
+    // front left, front right, back left, back right: more on the left rolls it right
+    let cmd: array<Float> = [collective + dp + dr, collective + dp - dr, collective - dp + dr, collective - dp - dr];
     let k = MinF(1.0, dt / MaxF(0.01, p.spool));
     let i = 0;
     while i < 4 {
