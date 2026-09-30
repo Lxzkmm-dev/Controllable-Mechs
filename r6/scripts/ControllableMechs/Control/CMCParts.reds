@@ -225,7 +225,7 @@ public class CMCParts extends ScriptableSystem {
     }
     mech.m_cmTestTarget = true;
     GameInstance.GetGodModeSystem(mech.GetGame()).AddGodMode(mech.GetEntityID(), gameGodModeType.Immortal, n"CMDamageTest");
-    // the vanilla weak spots must not die under fire: that takes both guns off (BlowGun)
+    // the vanilla weak spots only die when part damage breaks that gun (BlowGun), not to\n    // the game's own weak spot damage
     CMCParts.ShieldSpots(mech, true);
     this.m_test = mech;
     CMCSession.Log("parts: damage test on");
@@ -296,10 +296,9 @@ public class CMCParts extends ScriptableSystem {
     }
   }
 
-  // A gun shot off: the weak spot on that arm plays its "destroyed" effects, but is not
-  // killed. Killing it (ScriptedWeakspotObject.Kill) takes BOTH guns off the Minotaur and
-  // leaves it unable to fire (Omar's test, 2026-09-30), so the one gun is hidden by its
-  // mesh component instead (ShowGun). The two weak spots are told apart by their side.
+  // A gun shot off the vanilla way: the weak spot on that arm destroyed as the game does
+  // it (its smoke, sparks and "destroyed" look; Omar's pick after trying both). Killing one
+  // takes only that gun (Omar's clip of 8298d66). The two are told apart by their side.
   public static func BlowGun(mech: ref<NPCPuppet>, left: Bool) -> Void {
     let comp = mech.GetWeakspotComponent();
     if !IsDefined(comp) {
@@ -313,9 +312,12 @@ public class CMCParts extends ScriptableSystem {
       if IsDefined(spot) {
         let side = Vector4.Dot(spot.GetWorldPosition() - pos, right);
         if (left && side < 0.0) || (!left && side > 0.0) {
-          GameObjectEffectHelper.StartEffectEvent(spot, n"weakspot_destroyed");
-          GameObjectEffectHelper.StartEffectEvent(spot, n"weakspot_broken");
-          CMCSession.Log("parts: " + (left ? "left" : "right") + " gun blown off (" + FloatToStringPrec(side, 1) + " m to the side)");
+          // it has to be able to take the kill: the pilot session and the damage test shield it
+          let gods = GameInstance.GetGodModeSystem(mech.GetGame());
+          gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"ControllableMechs");
+          gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"CMDamageTest");
+          ScriptedWeakspotObject.Kill(spot);
+          CMCSession.Log("parts: weak spot on the " + (left ? "left" : "right") + " (" + FloatToStringPrec(side, 1) + " m to the side) destroyed");
         }
       }
     }

@@ -12,7 +12,7 @@ Part damage, per docs/DAMAGE_DESIGN.md. Untested in game.
   - missile pods.
 - **How a hit lands.** A hit on the piloted mech wears down the part it lands on. The game's hit zone decides the part when it names a limb or the head. Otherwise the part is worked out from where the hit landed on the body. A part breaks once the hits on it add up to its share of the hull (sensor 30%, arms 35%, legs 40%, pods 30%).
 - **What a broken part does:**
-  - **MK.31 arm:** that gun is shot off (its mesh hidden, the weak spot's destroyed effects played on that side) and goes offline. The vanilla weak spot is no longer killed: that took both guns off and stopped the mech firing. The fire modes use the other gun. With both guns gone you keep walking.
+  - **MK.31 arm:** that gun is shot off the vanilla way (the weak spot on that arm destroyed, with the game's own smoke, sparks and destroyed look) and goes offline. The fire modes use the other gun. With both guns gone you keep walking.
   - **Sensor:** optics (RMB zoom), the rangefinder, the compass tape and pitch ladder, the heading and the hit-direction markers go offline, and the display throws static bursts. Below 50% the rangefinder drops out and static bursts come now and then.
   - **Legs:** a slower walk (the walk animation runs at 60% with one leg broken, 40% with both, 85% with a leg under half) in halting strides, with the view sagging onto the bad leg. The Minotaur has no limping walk of its own, and the game's crippled-leg status did nothing on it.
   - **Pods:** missiles offline. Below 50%, the reload is 1.5x slower.
