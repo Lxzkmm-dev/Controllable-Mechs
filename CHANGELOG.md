@@ -17,7 +17,7 @@ Part damage, per docs/DAMAGE_DESIGN.md. Untested in game.
   - **Legs:** a limp. The walk comes in halting strides and the view sags onto the bad leg; both legs broken is slower still, and a leg under 50% gives a slight hitch. (The game's crippled-leg status did nothing on the Minotaur.)
   - **Pods:** missiles offline. Below 50%, the reload is 1.5x slower.
 - **Broken parts stay broken** for the game session until repaired. Repair is a planned mechanic.
-- **HUD damage schematic** above the chassis plate:
+- **HUD damage schematic** above the chassis plate. It is the Minotaur's own model, wireframed in a straight front view (flipped, so its left gun is on the left) and cut into its seven parts, which are tinted by damage and put back together small. The pods on its back show through the torso. It ships as `archive/pc/mod/MechsOfNightCity.archive`, the mod's first non-script file; `tools/schematic` rebuilds it from the game's meshes.
   - each part is green, amber (below 70%) or red (below 35%);
   - a broken part is dark with a red cross and blinks as it breaks;
   - the part just hit flashes;

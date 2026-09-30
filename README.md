@@ -34,12 +34,14 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 
 ## Layout
 
+- `archive/pc/mod/MechsOfNightCity.archive`: the HUD damage schematic (a texture atlas of the Minotaur's own model, wireframed, one layer per part). Rebuilt by `tools/schematic/build.ps1` (Python and the WolvenKit CLI).
 - `r6/scripts/ControllableMechs`
   - `Mech/CMLinkSystem.reds`: the link. It holds the one linked robot by EntityID, sends its orders (follow, hold, move to a point), reads its telemetry and spawns the test Minotaur.
   - `Control/CMCSession.reds`: the pilot session. Enter and exit, the per-frame loop, input, the camera, the reticle trace, exit checks and V's restrictions.
   - `Control/CMCUnit.reds`: what a pilotable unit must provide.
   - `Control/CMUMinotaur.reds`: the Minotaur: look-at aim, the fire gate, the chassis turn, walking, AI suppression, hull, audio and the missile.
   - `Control/CMCHits.reds`: the damage pipeline hook (V's credit, the hit marker, the diagnostics trace).
+  - `Control/CMCParts.reds`: part damage: the seven parts' integrity, which part a hit lands on, the damage test and the dev tools.
   - `Control/CMCCalm.reds`: keeps the piloted mech's own AI out of the fight (threats, alerts, combat refused at the source) and turns V's enemies on the mech.
   - `Pilot/CMPilotSystem.reds`: the settings. They are kept in `r6/storages/ControllableMechs/settings.txt`, not in the save, so loading an older save never changes them.
   - `Pilot/CMPilotRig.reds`: the weighted camera math (no game calls).

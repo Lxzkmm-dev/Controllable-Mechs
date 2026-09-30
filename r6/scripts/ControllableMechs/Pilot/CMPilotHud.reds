@@ -21,6 +21,7 @@
 module ControllableMechs
 
 import Codeware.UI.ScreenHelper
+import ControllableMechs.Control.*
 
 // A bar of cells that light up left to right; the last lit cell fades in by quarters.
 // Widgets are only touched when the quarter count or the colour changes.
@@ -734,61 +735,65 @@ public class CMPilotHud {
     this.Tag(root, inkEAnchor.BottomLeft, x + 190.0, top - 218.0, "[\\] DISCONNECT", false);   // tag 5
   }
 
-  // The damage schematic, above the chassis plate: the Minotaur seen from behind (its left
-  // on the left) in plain blocks, one colour per part (CMPart). Built once; a part is only
-  // touched when its value changes (SetPart) or it is hit (PartHit).
+  // The damage schematic, above the chassis plate: the Minotaur's own model, wireframed in
+  // a straight front view (flipped, so its left gun is on the left) and cut into its seven
+  // parts, each a white layer of the mod's atlas (archive/pc/mod/MechsOfNightCity.archive,
+  // built by tools/schematic) tinted by its damage. The pods sit behind the torso and
+  // show through it. Built once; a part is only touched when its value changes (SetPart)
+  // or it is hit (PartHit).
+  public static func Schematic() -> ResRef = r"mnc\\hud\\minotaur_schematic.inkatlas"
+
   private func BuildParts(root: ref<inkCanvas>) -> Void {
     ArrayClear(this.m_parts);
-    let top = this.PLATE_GAP + 300.0 + 300.0;   // above the chassis plate
-    let x = this.PLATE_X + 60.0;
+    ArrayResize(this.m_parts, CMPart.Count());
+    let k = 0.66;                               // atlas pixels to design units
+    let w = 460.0 * k;
+    let h = 512.0 * k;
+    let top = this.PLATE_GAP + 300.0 + h + 30.0;   // above the chassis plate
+    let x = this.PLATE_X + 40.0;
+    this.Glow(root, inkEAnchor.BottomLeft, x - 60.0, top + 40.0, w + 120.0, h + 80.0, CMPilotHud.Black());
     let box = new inkCanvas();
     box.SetAnchor(inkEAnchor.BottomLeft);
     box.SetMargin(CMPilotHud.Edge(inkEAnchor.BottomLeft, x, top));
-    box.SetSize(Vector2(200.0, 240.0));
+    box.SetSize(Vector2(w, h));
     box.SetInteractive(false);
     box.Reparent(root);
-    this.Glow(root, inkEAnchor.BottomLeft, x - 40.0, top + 20.0, 280.0, 280.0, CMPilotHud.Black());
-    CMPilotHud.Label(root, inkEAnchor.BottomLeft, x + 215.0, top - 4.0, "CHASSIS", 22, n"Medium", CMPilotHud.Dim());
-    // in CMPart order: sensor, torso, arm L (with its gun), arm R, leg L, leg R, pods
-    this.PartBlocks(box, 80.0, 0.0, 40.0, 28.0, 0.0, 0.0, 0.0, 0.0);
-    this.PartBlocks(box, 60.0, 58.0, 80.0, 82.0, 0.0, 0.0, 0.0, 0.0);
-    this.PartBlocks(box, 10.0, 58.0, 42.0, 62.0, 14.0, 124.0, 34.0, 44.0);
-    this.PartBlocks(box, 148.0, 58.0, 42.0, 62.0, 152.0, 124.0, 34.0, 44.0);
-    this.PartBlocks(box, 62.0, 146.0, 32.0, 92.0, 0.0, 0.0, 0.0, 0.0);
-    this.PartBlocks(box, 106.0, 146.0, 32.0, 92.0, 0.0, 0.0, 0.0, 0.0);
-    this.PartBlocks(box, 48.0, 34.0, 104.0, 18.0, 0.0, 0.0, 0.0, 0.0);
+    CMPilotHud.Label(root, inkEAnchor.BottomLeft, x + w + 10.0, top - h + 30.0, "CHASSIS", 22, n"Medium", CMPilotHud.Dim());
+    // back to front; the offsets and sizes are the layers' place in the 460 x 512 front view
+    this.PartLayer(box, k, CMPart.Pods(), n"pods", 126.0, 108.0, 212.0, 107.0);
+    this.PartLayer(box, k, CMPart.LegL(), n"leg_l", 112.0, 175.0, 101.0, 332.0);
+    this.PartLayer(box, k, CMPart.LegR(), n"leg_r", 248.0, 175.0, 101.0, 332.0);
+    this.PartLayer(box, k, CMPart.Torso(), n"torso", 94.0, 42.0, 273.0, 271.0);
+    this.PartLayer(box, k, CMPart.ArmL(), n"arm_l", 5.0, 44.0, 124.0, 117.0);
+    this.PartLayer(box, k, CMPart.ArmR(), n"arm_r", 331.0, 44.0, 125.0, 117.0);
+    this.PartLayer(box, k, CMPart.Sensor(), n"sensor", 168.0, 5.0, 124.0, 90.0);
   }
 
-  // one part: one or two blocks (w2 > 0 adds the second), and a red cross shown once it breaks
-  private func PartBlocks(box: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, x2: Float, y2: Float, w2: Float, h2: Float) -> Void {
+  // one part: its layer of the atlas, and a red cross over it shown once it breaks
+  private func PartLayer(box: ref<inkCanvas>, k: Float, i: Int32, texture: CName, x: Float, y: Float, w: Float, h: Float) -> Void {
     let p = new CMHudPart();
     p.hp = -1.0;
     p.canvas = new inkCanvas();
-    p.canvas.SetSize(Vector2(200.0, 240.0));
+    p.canvas.SetMargin(inkMargin(x * k, y * k, 0.0, 0.0));
+    p.canvas.SetSize(Vector2(w * k, h * k));
     p.canvas.SetInteractive(false);
     p.canvas.Reparent(box);
-    ArrayPush(p.blocks, CMPilotHud.Bar(p.canvas, x, y, w, h, CMPilotHud.Amber(), 0.75));
-    if w2 > 0.0 {
-      ArrayPush(p.blocks, CMPilotHud.Bar(p.canvas, x2, y2, w2, h2, CMPilotHud.Amber(), 0.75));
-    }
-    // the cross over the whole part
-    let right = w2 > 0.0 ? MaxF(x + w, x2 + w2) : x + w;
-    let bottom = w2 > 0.0 ? MaxF(y + h, y2 + h2) : y + h;
-    let cx = (x + right) * 0.5;
-    let cy = (y + bottom) * 0.5;
-    let len = SqrtF((right - x) * (right - x) + (bottom - y) * (bottom - y));
-    let angle = Rad2Deg(AtanF(bottom - y, right - x));
+    p.image = CMPilotHud.Img(p.canvas, inkEAnchor.TopLeft, 0.0, 0.0, w * k, h * k, CMPilotHud.Schematic(), texture, CMPilotHud.Amber(), 1.0);
+    let cx = w * k * 0.5;
+    let cy = h * k * 0.5;
+    let len = SqrtF(w * w + h * h) * k * 0.8;
+    let angle = Rad2Deg(AtanF(h, w));
     p.cross = new inkCanvas();
+    p.cross.SetSize(Vector2(w * k, h * k));
     p.cross.SetInteractive(false);
     p.cross.Reparent(p.canvas);
-    let a = CMPilotHud.Bar(p.cross, cx - len * 0.5, cy - 3.0, len, 6.0, CMPilotHud.Red(), 1.0);
+    let a = CMPilotHud.Bar(p.cross, cx - len * 0.5, cy - 3.0, len, 6.0, CMPilotHud.Red(), 0.9);
     a.SetRotation(angle);
-    let b = CMPilotHud.Bar(p.cross, cx - len * 0.5, cy - 3.0, len, 6.0, CMPilotHud.Red(), 1.0);
+    let b = CMPilotHud.Bar(p.cross, cx - len * 0.5, cy - 3.0, len, 6.0, CMPilotHud.Red(), 0.9);
     b.SetRotation(-angle);
     p.cross.SetVisible(false);
-    ArrayPush(this.m_parts, p);
+    this.m_parts[i] = p;
   }
-
   // A part's integrity (0-1): green, amber below 70%, red below 35%, and dark with the
   // cross once broken, blinking for two seconds as it goes.
   private func SetPart(i: Int32, hp: Float) -> Void {
@@ -802,10 +807,8 @@ public class CMPilotHud {
     let broke = hp <= 0.0 && p.hp > 0.0;
     p.hp = hp;
     let color = hp <= 0.0 ? CMPilotHud.Dim() : (hp < 0.35 ? CMPilotHud.Red() : (hp < 0.7 ? CMPilotHud.Caution() : CMPilotHud.Amber()));
-    for r in p.blocks {
-      r.SetTintColor(color);
-      r.SetOpacity(hp <= 0.0 ? 0.35 : 0.75);
-    }
+    p.image.SetTintColor(color);
+    p.image.SetOpacity(hp <= 0.0 ? 0.45 : 1.0);
     p.cross.SetVisible(hp <= 0.0);
     if broke {
       let blink = new inkAnimDef();
@@ -1286,7 +1289,7 @@ public class CMPilotHudState {
 // one part on the damage schematic
 public class CMHudPart {
   public let canvas: ref<inkCanvas>;
-  public let blocks: array<ref<inkRectangle>>;
+  public let image: ref<inkImage>;
   public let cross: ref<inkCanvas>;
   public let hp: Float;
 }
