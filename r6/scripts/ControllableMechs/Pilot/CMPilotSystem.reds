@@ -158,8 +158,8 @@ public class CMPilotSystem extends ScriptableSystem {
   // how fast the view traverses and the chassis turns, % of the heavy baseline
   // the drone test build: how a flown drone is moved each frame (0 facility teleport,
   // 1 AI teleport, 2 AI move carrot)
-  public func DroneMove() -> Int32 = this.Int("droneMove", 0)
-  public func SetDroneMove(v: Int32) -> Void { this.PutInt("droneMove", Clamp(v, 0, 2)); }
+  public func DroneMove() -> Int32 = this.Int("droneMove", 1)
+  public func SetDroneMove(v: Int32) -> Void { this.PutInt("droneMove", Clamp(v, 0, 3)); }
 
   public func TurnPct() -> Int32 = this.Int("turnPct", 175)
   public func SetTurnPct(v: Int32) -> Void { this.PutInt("turnPct", Clamp(v, 50, 300)); }

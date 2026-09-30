@@ -25,7 +25,8 @@ public class CMUDrone extends CMCUnit {
   private let m_yaw: Float;
   private let m_pitch: Float;          // the body's tilt, degrees (nose down is negative)
   private let m_roll: Float;
-  private let m_method: Int32;         // 0 facility teleport, 1 AI teleport, 2 AI move carrot
+  private let m_method: Int32;         // 0 facility teleport, 1 AI teleport, 2 AI move carrot,
+                                       // 3 AI off + facility teleport
   private let m_cmd: ref<AICommand>;
   private let m_cmdAt: Float;
   private let m_logAt: Float;
@@ -69,6 +70,13 @@ public class CMUDrone extends CMCUnit {
     this.m_errN = 0;
     this.m_frames = 0;
     this.Pacify(drone, true);
+    // method 3: its AI controller off for the flight, so nothing moves it but the teleports
+    if this.m_method == 3 {
+      let ai = drone.GetAIControllerComponent();
+      if IsDefined(ai) {
+        ai.Toggle(false);
+      }
+    }
     // S0: what a drone is
     CMCSession.Log("drone: " + this.m_name + ", class " + NameToString(drone.GetClassName()) + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID())
       + ", type " + EnumValueToString("gamedataNPCType", Cast<Int64>(EnumInt(drone.GetNPCType())))
@@ -80,6 +88,12 @@ public class CMUDrone extends CMCUnit {
     let drone = this.m_drone;
     if IsDefined(drone) {
       this.Cancel(drone);
+      if this.m_method == 3 {
+        let ai = drone.GetAIControllerComponent();
+        if IsDefined(ai) {
+          ai.Toggle(true);
+        }
+      }
       this.Pacify(drone, false);
     }
     this.m_drone = null;
@@ -187,6 +201,7 @@ public class CMUDrone extends CMCUnit {
     e.Roll = this.m_roll;
     switch this.m_method {
       case 0:
+      case 3:
         GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, this.m_pos, e);
         break;
       case 1:
@@ -287,6 +302,7 @@ public class CMUDrone extends CMCUnit {
     switch m {
       case 0: return "FACILITY TELEPORT";
       case 1: return "AI TELEPORT";
+      case 3: return "AI OFF + TELEPORT";
     }
     return "AI MOVE CARROT";
   }

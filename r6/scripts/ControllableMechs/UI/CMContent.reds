@@ -291,7 +291,7 @@ public class CMContent extends TKContent {
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
     p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
     if cfg.ShowDebug() {
-      p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "FACILITY TELEPORT|AI TELEPORT|AI MOVE CARROT", "0|1|2", "dronemove", "");
+      p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "FACILITY TELEPORT (NO EFFECT)|AI TELEPORT|AI MOVE CARROT|AI OFF + TELEPORT", "0|1|2|3", "dronemove", "");
     }
   }
 
