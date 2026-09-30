@@ -860,7 +860,8 @@ public class CMUMinotaur extends CMCUnit {
       stats.AddModifier(id, this.m_armour);
     }
     CMCSession.Log("hull x" + FloatToStringPrec(mult, 1) + ": max health " + FloatToStringPrec(before, 0) + " -> " + FloatToStringPrec(pools.GetStatPoolMaxPointValue(id, gamedataStatPoolType.Health), 0)
-      + ", now " + FloatToStringPrec(pools.GetStatPoolValue(id, gamedataStatPoolType.Health, false), 0));
+      + ", now " + FloatToStringPrec(pools.GetStatPoolValue(id, gamedataStatPoolType.Health, false), 0)
+      + " (Health stat " + FloatToStringPrec(stats.GetStatValue(id, gamedataStatType.Health), 0) + (IsDefined(this.m_armour) ? ", our modifier on" : ", no modifier of ours") + ")");
   }
 
   // ten times a second: below 30% a beep repeats, from every 1.2 s at 30% to every 0.25 s
