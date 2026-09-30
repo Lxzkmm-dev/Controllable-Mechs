@@ -8,7 +8,9 @@ Omar's decisions:
 - **Kamikaze overload on G:** yes.
 - **Schematic view for quads:** top-down.
 - **Crashes:** a crashed drone is lost.
-- **Range:** a 500 m uplink for drones (the mech keeps 250 m). **[spike]** marks an unknown that a small test build settles first. **[decide]** marks a call for Omar.
+- **Range:** a 500 m uplink for drones (the mech keeps 250 m).
+- **Order (2026-09-30):** perfect the flight model first. Weapons and the kamikaze come last.
+- **Found in test:** AI TELEPORT is the move method (the facility teleport, with or without the drone's AI, does not move it). **[spike]** marks an unknown that a small test build settles first. **[decide]** marks a call for Omar.
 
 ## 1. Goals (Omar)
 
