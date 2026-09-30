@@ -6,8 +6,8 @@
 //   - an invisible marker entity is moved to the aim point every frame, and four
 //     look-at requests (RightWeapon, LeftWeapon, Weapon, Chassis) follow it
 //     (spikes S6 / S7: the barrels settle within a few degrees of the reticle)
-//   - each gun fires only while its barrel is within GATE_DEG of the reticle, and
-//     the rounds leave along the barrel, so flash, tracer and hit line up
+//   - the guns fire while they swing onto the reticle (the rounds go to the reticle
+//     point); optionally each gun waits until its barrel is within GATE_DEG of it
 //   - the rounds are fired at the reticle point with the mech as owner (the one call
 //     that deals damage); the damage pipeline hook (CMCHits) credits the hits to V
 //   - the legs: AI walk orders from WASD relative to the view, targets clipped
@@ -104,6 +104,7 @@ public class CMUMinotaur extends CMCUnit {
   private let m_impactToggle: Bool;
 
   private let GATE_DEG: Float = 4.0;
+  private let m_gate: Bool;           // CONFIG: hold a gun's fire until its barrel is on the reticle
   private let SPREAD_DEG: Float = 0.6;
   private let SIGNAL_RANGE: Float = 250.0;
 
@@ -145,6 +146,7 @@ public class CMUMinotaur extends CMCUnit {
     this.m_turnOrders = 0;
     let turn = Cast<Float>(CMPilotSystem.Get(this.m_game).TurnPct()) / 100.0;
     this.m_turnRate = this.TURN_RATE * turn;
+    this.m_gate = CMPilotSystem.Get(this.m_game).FireGate();
     this.m_turnAccel = this.TURN_ACCEL * turn;
     this.m_stoodPos = mech.GetWorldPosition();
     this.m_lookMiss = 0;
@@ -379,9 +381,13 @@ public class CMUMinotaur extends CMCUnit {
     // gun's reticle shows it (tight and bright when locked on)
     let offL = CMCSession.AimError(this.m_guns.left.weapon, s.aim) > this.GATE_DEG;
     let offR = CMCSession.AimError(this.m_guns.right.weapon, s.aim) > this.GATE_DEG;
-    this.m_guns.left.offAim = offL;
-    this.m_guns.right.offAim = offR;
-    if trigger && (offL || offR) {
+    // By default the guns fire while they are still swinging onto the reticle: the rounds
+    // go to the reticle point either way. With CONFIG > HOLD FIRE UNTIL ON TARGET a gun
+    // waits until its barrel is within GATE_DEG of it. The gun reticles show the barrels'
+    // state in both cases.
+    this.m_guns.left.offAim = this.m_gate && offL;
+    this.m_guns.right.offAim = this.m_gate && offR;
+    if this.m_gate && trigger && (offL || offR) {
       this.m_held += 1;
     }
     let flashL = this.m_guns.left.flash;

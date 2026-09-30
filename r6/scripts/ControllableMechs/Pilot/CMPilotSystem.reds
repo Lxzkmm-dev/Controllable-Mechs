@@ -181,6 +181,10 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SensPct() -> Int32 = this.Int("sensPct", 100)
   public func SetSensPct(v: Int32) -> Void { this.PutInt("sensPct", Clamp(v, 25, 300)); }
 
+  // hold a gun's fire until its barrel is on the reticle (off: fire while the guns traverse)
+  public func FireGate() -> Bool = this.Flag("fireGate", false)
+  public func SetFireGate(on: Bool) -> Void { this.PutFlag("fireGate", on); }
+
   public func RecoilPct() -> Int32 = this.Int("recoilPct", 100)
   public func SetRecoilPct(v: Int32) -> Void { this.PutInt("recoilPct", Clamp(v, 0, 200)); }
 
