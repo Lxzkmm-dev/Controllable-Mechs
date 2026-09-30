@@ -865,22 +865,23 @@ public class CMUMinotaur extends CMCUnit {
   }
 
   // ten times a second: below 30% a beep repeats, from every 1.2 s at 30% to every 0.25 s
-  // near zero; one alarm as it first crosses the line
-  private func IntegrityAlarm(now: Float) -> Void {
+  // near zero; one alarm as it first crosses the line. Played on the mech, where the camera
+  // is: world sounds played on V were too far from the camera to be heard.
+  private func IntegrityAlarm(mech: ref<NPCPuppet>, now: Float) -> Void {
     let hp = this.m_hull;
     if hp < 0.3 {
       if !this.m_lowAlarm {
         this.m_lowAlarm = true;
         // louder: the alarm with a Militech drone's final warning over it
-        GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"dev_alarm_02");
-        GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"dev_drone_octant_default_sgn_reprimand_final_warning");
+        GameObject.PlaySoundEvent(mech, n"dev_alarm_02");
+        GameObject.PlaySoundEvent(mech, n"dev_drone_octant_default_sgn_reprimand_final_warning");
         CMCSession.Log("hull below 30%: alarm");
       }
       if now >= this.m_beepNext {
         this.m_beepNext = now + 0.25 + 0.95 * (hp / 0.3);
         // two drone beeps layered, so it cuts through gunfire
-        GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"dev_drone_griffin_default_sgn_idle_beep");
-        GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"dev_drone_octant_default_sgn_idle_beep");
+        GameObject.PlaySoundEvent(mech, n"dev_drone_griffin_default_sgn_idle_beep");
+        GameObject.PlaySoundEvent(mech, n"dev_drone_octant_default_sgn_idle_beep");
       }
     }
     if hp > 0.4 {
@@ -958,7 +959,7 @@ public class CMUMinotaur extends CMCUnit {
     this.KeepCalm(s, mech, now);
     this.WatchLookAts(s, mech, now);
     this.ReadHull(mech);
-    this.IntegrityAlarm(now);
+    this.IntegrityAlarm(mech, now);
     this.Drive(s, mech, now);
     return "";
   }
