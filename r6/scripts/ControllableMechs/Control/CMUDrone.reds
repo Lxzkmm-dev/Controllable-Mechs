@@ -37,6 +37,9 @@ public class CMUDrone extends CMCUnit {
   private let m_errN: Int32;
   private let m_frames: Int32;
   private let m_hits: Int32;
+  private let m_stalls: Int32;         // frames the drone didn't move though it was sent on
+  private let m_last: Vector4;         // where it was the frame before
+  private let m_dt: Float;             // the last frame's length (the teleport leads by one)
   private let m_ground: Float;         // metres above the ground, last measured
 
   private let RADIUS: Float = 0.45;    // m, the collision sphere around the drone
@@ -68,6 +71,9 @@ public class CMUDrone extends CMCUnit {
     this.m_errN = 0;
     this.m_frames = 0;
     this.m_hits = 0;
+    this.m_stalls = 0;
+    this.m_last = drone.GetWorldPosition();
+    this.m_dt = 0.016;
     this.Pacify(drone, true);
     if this.m_method == 3 {
       let ai = drone.GetAIControllerComponent();
@@ -134,6 +140,12 @@ public class CMUDrone extends CMCUnit {
     this.m_frames += 1;
     let actual = drone.GetWorldPosition();
     this.m_seen = actual;
+    // a stall: the model moved on but the drone stayed put this frame
+    if Vector4.Length(this.m_flight.vel) > 0.5 && Vector4.Distance(actual, this.m_last) < 0.002 {
+      this.m_stalls += 1;
+    }
+    this.m_last = actual;
+    this.m_dt = dt;
     if this.m_method == 2 {
       this.m_flight.pos = actual;   // the AI does the moving: the model follows it
     } else {
@@ -225,11 +237,17 @@ public class CMUDrone extends CMCUnit {
         GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, fl.pos, e);
         break;
       case 1:
+        // a teleport lands the frame after it is sent: sent one frame ahead, it lands
+        // where the model is when that frame is drawn. It completes at once, so the last
+        // one isn't cancelled (cancelling could drop one still pending: a stalled frame)
         let tp = new AITeleportCommand();
-        tp.position = fl.pos;
+        tp.position = fl.pos + fl.vel * this.m_dt;
         tp.rotation = fl.yaw;
         tp.doNavTest = false;
-        this.Send(drone, tp);
+        let ai = drone.GetAIControllerComponent();
+        if IsDefined(ai) {
+          ai.SendCommand(tp);
+        }
         break;
       default:
         if now - this.m_cmdAt >= 0.25 {
@@ -274,8 +292,10 @@ public class CMUDrone extends CMCUnit {
   private func Report(drone: ref<NPCPuppet>) -> Void {
     let fl = this.m_flight;
     let avg = this.m_errN > 0 ? this.m_errSum / Cast<Float>(this.m_errN) : -1.0;
+    let stalls = this.m_stalls;
+    this.m_stalls = 0;
     CMCSession.Log("drone: " + CMUDrone.MethodName(this.m_method) + ", " + IntToString(this.m_frames) + " frames"
-      + (this.m_method == 2 ? "" : ", off by " + FloatToStringPrec(avg, 2) + " m avg / " + FloatToStringPrec(this.m_errMax, 2) + " m max")
+      + (this.m_method == 2 ? "" : ", off by " + FloatToStringPrec(avg, 2) + " m avg / " + FloatToStringPrec(this.m_errMax, 2) + " m max, " + IntToString(stalls) + " stalled frames")
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up");
