@@ -9,7 +9,6 @@ module ControllableMechs
 
 import TerminalKit.*
 import TerminalKit.Tools.*
-import ControllableMechs.Control.*
 
 public class CMContent extends TKContent {
   public let game: GameInstance;
@@ -74,20 +73,6 @@ public class CMContent extends TKContent {
         break;
       case "spawntest":
         p.SetMessage(link.SpawnTestMech());
-        break;
-      case "empmodel":
-        CMCEmplacements.Get(this.game).SetModel(StringToInt(arg, 0));
-        break;
-      case "empspawn":
-        p.SetMessage(CMCEmplacements.Get(this.game).Spawn());
-        break;
-      case "empdespawn":
-        p.SetMessage(CMCEmplacements.Get(this.game).Despawn());
-        break;
-      case "emptake":
-        // the terminal has to close before the view can switch
-        CMTerminal.CloseOpen(this.game);
-        CMCSession.Get(this.game).RequestTakeover(0.4);
         break;
       case "despawntest":
         link.DespawnTestMech();
@@ -172,22 +157,13 @@ public class CMContent extends TKContent {
     this.Test(p, link);
   }
 
-  // ---- test tools: a Minotaur on demand, and the emplacement (M2) ----
+  // ---- test tools: a Minotaur on demand ----
   private func Test(p: ref<TKPage>, link: ref<CMLinkSystem>) -> Void {
     p.Heading("TEST");
     if link.HasTestMech() {
       p.Item("TEST MINOTAUR", "Spawned for testing; not kept in the save.", "", "REMOVE", "despawntest", "", true);
     } else {
       p.Item("MILITECH MINOTAUR", "Spawns one 14 m in front of you and links it.", "", "SPAWN", "spawntest", "", true);
-    }
-    let emp = CMCEmplacements.Get(this.game);
-    p.Heading("EMPLACEMENT");
-    p.Buttons("Model (now " + CMCEmplacements.ModelName(emp.Model()) + ")", "", "", "ARASAKA HMG|SECURITY TURRET", "empmodel|empmodel", "0|1");
-    if emp.Has() {
-      p.Item(CMCEmplacements.ModelName(emp.Model()), "Take it with \\ while you look at it or stand by it. Esc or \\ leaves it.", "", "TAKE CONTROL", "emptake", "", true);
-      p.Item("REMOVE THE EMPLACEMENT", "Not kept in the save.", "", "REMOVE", "empdespawn", "", true);
-    } else {
-      p.Item("SPAWN AN EMPLACEMENT", "4 m in front of you, friendly to you.", "", "SPAWN", "empspawn", "", true);
     }
   }
 

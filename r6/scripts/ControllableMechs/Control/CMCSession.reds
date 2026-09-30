@@ -43,13 +43,8 @@ public abstract class CMCKey {
 }
 
 public class CMCSession extends ScriptableSystem {
-  // 0 idle, 1 camera spawning, 2 controlling, 3 in a vanilla turret takeover (M2)
+  // 0 idle, 1 camera spawning, 2 controlling
   private let m_state: Int32;
-  // M2: the turret V has taken over; the game owns the camera, HUD and fire meanwhile
-  private let m_takeoverID: EntityID;
-  private let m_takeoverSeen: Bool;
-  private let m_takeoverAt: Float;
-  private let m_tkCamOn: Bool;   // our chase camera is up over the takeover
   private let m_gen: Int32;
   private let m_unit: ref<CMCUnit>;
 
@@ -270,7 +265,7 @@ public class CMCSession extends ScriptableSystem {
     }
     this.m_attachPending = false;
     GameInstance.GetCallbackSystem().UnregisterCallback(n"Entity/Attached", this, n"OnCamAttached");
-    if this.m_state != 1 && this.m_state != 3 {
+    if this.m_state != 1 {
       return;
     }
     let cam = entity.FindComponentByName(n"camera") as CameraComponent;
@@ -280,27 +275,6 @@ public class CMCSession extends ScriptableSystem {
           cam = c as CameraComponent;
         }
       }
-    }
-    if this.m_state == 3 {
-      // the chase camera over an emplacement takeover
-      if !IsDefined(cam) {
-        CMCSession.Log("emplacement chase view: no camera component, staying in the turret's view");
-        return;
-      }
-      this.m_camEntity = entity;
-      this.m_cam = cam;
-      this.m_tkCamOn = true;
-      this.TakeoverCamPlace();
-      cam.Activate(0.35, true);
-      let owner = GetPlayer(this.GetGameInstance());
-      if IsDefined(owner) {
-        owner.m_cmcSession = this;   // the frame event reaches us (game actions still pass: state 3)
-      }
-      this.m_frames = 0;
-      this.m_timerLoop = false;
-      this.ScheduleFrame();
-      CMCSession.Log("emplacement chase view on");
-      return;
     }
     if !IsDefined(cam) {
       this.End("!CAMERA LINK FAILED", false);
@@ -336,10 +310,6 @@ public class CMCSession extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   public func End(reason: String, hard: Bool) -> Void {
     if this.m_state == 0 {
-      return;
-    }
-    if this.m_state == 3 {
-      this.EndTakeover(reason);
       return;
     }
     let game = this.GetGameInstance();
@@ -404,249 +374,6 @@ public class CMCSession extends ScriptableSystem {
   }
 
   // ---------------------------------------------------------------------------
-  // M2: the emplacement, through the game's own turret takeover
-  // The game runs the view (the turret's own camera: no chase view there), the turret
-  // HUD, aiming and firing (V-credited, per S0b), and its own Esc exit. The session
-  // starts the takeover, watches it at 10 Hz for the exit, adds \ as a second exit,
-  // and releases it on every teardown path (turret gone, V dead, load, session end).
-  // ---------------------------------------------------------------------------
-  public func BeginTakeover() -> Void {
-    this.Warn(this.StartTakeover());
-  }
-
-  public func RequestTakeover(delay: Float) -> Void {
-    let cb = new CMCTakeoverCb();
-    cb.system = this;
-    GameInstance.GetDelaySystem(this.GetGameInstance()).DelayCallback(cb, delay, false);
-  }
-
-  private func StartTakeover() -> String {
-    if this.m_state != 0 {
-      return "";
-    }
-    let game = this.GetGameInstance();
-    let player = GetPlayer(game);
-    if !IsDefined(player) || player.IsDead() {
-      return "!NO OPERATOR";
-    }
-    if CMPilotSystem.Get(game).IsPiloting() {
-      return "!THE ALPHA PILOT MODE IS ACTIVE";
-    }
-    let veh: wref<VehicleObject>;
-    VehicleComponent.GetVehicle(game, player.GetEntityID(), veh);
-    if IsDefined(veh) {
-      return "!LEAVE THE VEHICLE FIRST";
-    }
-    let turret = CMCEmplacements.Get(game).Turret();
-    if !IsDefined(turret) {
-      return "!NO EMPLACEMENT OUT";
-    }
-    let action = turret.GetDevicePS().ActionToggleTakeOverControl();
-    action.SetExecutor(player);
-    TakeOverControlSystem.RequestTakeControl(turret, action);
-    this.m_gen += 1;
-    this.m_state = 3;
-    this.m_takeoverID = turret.GetEntityID();
-    this.m_takeoverSeen = false;
-    this.m_takeoverAt = this.Now();
-    this.ScheduleTakeoverWatch();
-    CMCSession.Log("takeover requested: " + CMCEmplacements.ModelName(CMCEmplacements.Get(game).Model()) + " (sight view only: the takeover uses the turret's own camera)");
-    return "";
-  }
-
-  private func ScheduleTakeoverWatch() -> Void {
-    let cb = new CMCTakeoverWatchCb();
-    cb.system = this;
-    cb.generation = this.m_gen;
-    GameInstance.GetDelaySystem(this.GetGameInstance()).DelayCallback(cb, 0.1, false);
-  }
-
-  private func TakeoverSystem() -> ref<TakeOverControlSystem> {
-    return GameInstance.GetScriptableSystemsContainer(this.GetGameInstance()).Get(n"TakeOverControlSystem") as TakeOverControlSystem;
-  }
-
-  private func InOurTurret() -> Bool {
-    let tocs = this.TakeoverSystem();
-    if !IsDefined(tocs) {
-      return false;
-    }
-    let obj = tocs.GetControlledObject();
-    return IsDefined(obj) && obj.GetEntityID() == this.m_takeoverID;
-  }
-
-  public func OnTakeoverWatch(generation: Int32) -> Void {
-    if generation != this.m_gen || this.m_state != 3 {
-      return;
-    }
-    let game = this.GetGameInstance();
-    let player = GetPlayer(game);
-    if !IsDefined(player) || player.IsDead() {
-      this.End("", false);
-      return;
-    }
-    let turret = GameInstance.FindEntityByID(game, this.m_takeoverID) as SecurityTurret;
-    if !IsDefined(turret) {
-      this.End("!EMPLACEMENT LOST", false);
-      return;
-    }
-    if this.InOurTurret() {
-      if !this.m_takeoverSeen {
-        this.m_takeoverSeen = true;
-        CMCSession.Log("takeover active");
-        if this.m_chase {
-          this.StartTakeoverCam();
-        }
-      }
-    } else {
-      if this.m_takeoverSeen {
-        this.End("", false);   // the game's own exit (Esc) already put V back
-        return;
-      }
-      if this.Now() - this.m_takeoverAt > 3.0 {
-        this.End("!TAKEOVER FAILED", false);
-        return;
-      }
-    }
-    this.ScheduleTakeoverWatch();
-  }
-
-  private func EndTakeover(reason: String) -> Void {
-    this.StopTakeoverCam(false);
-    this.m_gen += 1;
-    this.m_state = 0;
-    this.m_lastExit = this.Now();
-    if this.InOurTurret() {
-      TakeOverControlSystem.ReleaseControl(this.GetGameInstance());
-      CMCSession.Log("takeover released by the framework (" + reason + ")");
-    } else {
-      CMCSession.Log("takeover ended (" + reason + ")");
-    }
-    let empty: EntityID;
-    this.m_takeoverID = empty;
-    this.Warn(reason);
-  }
-
-  // ---- the emplacement's chase view: our camera behind and above the turret, looking
-  // along its gun at what the gun is on. The takeover keeps the turret's own aiming and
-  // fire (so damage stays V's); the camera follows the gun, and the vanilla crosshair at
-  // the screen centre sits on the gun's aim point. V switches it on and off.
-  private func StartTakeoverCam() -> Void {
-    if this.m_tkCamOn || this.m_attachPending {
-      return;
-    }
-    let turret = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_takeoverID);
-    if !IsDefined(turret) {
-      return;
-    }
-    let spec = new StaticEntitySpec();
-    spec.templatePath = r"base\\entities\\cameras\\simple_free_camera.ent";
-    spec.position = turret.GetWorldPosition() + new Vector4(0.0, 0.0, 2.2, 0.0);
-    spec.orientation = CMCSession.Identity();
-    spec.attached = true;
-    this.m_camID = GameInstance.GetStaticEntitySystem().SpawnEntity(spec);
-    if !EntityID.IsDefined(this.m_camID) {
-      CMCSession.Log("emplacement chase view: the camera didn't spawn");
-      return;
-    }
-    this.m_attachPending = true;
-    GameInstance.GetCallbackSystem().RegisterCallback(n"Entity/Attached", this, n"OnCamAttached");
-  }
-
-  // `backToTurret`: give the view back to the turret's own camera (the view switch);
-  // on leaving, the game's release puts V's camera back
-  private func StopTakeoverCam(backToTurret: Bool) -> Void {
-    let game = this.GetGameInstance();
-    if this.m_attachPending {
-      this.m_attachPending = false;
-      GameInstance.GetCallbackSystem().UnregisterCallback(n"Entity/Attached", this, n"OnCamAttached");
-    }
-    let wasOn = this.m_tkCamOn;
-    this.m_tkCamOn = false;
-    let owner = GetPlayer(game);
-    if IsDefined(owner) && wasOn {
-      owner.m_cmcSession = null;
-    }
-    if IsDefined(this.m_cam) {
-      this.m_cam.Deactivate(0.25, true);
-    }
-    this.m_cam = null;
-    this.m_camEntity = null;
-    if EntityID.IsDefined(this.m_camID) {
-      let cb = new CMCDespawnCb();
-      cb.id = this.m_camID;
-      GameInstance.GetDelaySystem(game).DelayCallback(cb, 0.4, false);
-    }
-    let empty: EntityID;
-    this.m_camID = empty;
-    if wasOn && backToTurret {
-      let turret = GameInstance.FindEntityByID(game, this.m_takeoverID);
-      let found = false;
-      if IsDefined(turret) {
-        for c in turret.GetComponents() {
-          let tc = c as CameraComponent;
-          if !found && IsDefined(tc) {
-            tc.Activate(0.25, true);
-            found = true;
-            CMCSession.Log("emplacement sight view: turret camera " + NameToString(c.GetName()) + " reactivated");
-          }
-        }
-      }
-      if !found {
-        CMCSession.Log("emplacement sight view: no camera component on the turret to hand back to");
-      }
-    }
-  }
-
-  private func TakeoverCamPlace() -> Void {
-    let game = this.GetGameInstance();
-    let turret = GameInstance.FindEntityByID(game, this.m_takeoverID) as SecurityTurret;
-    if !IsDefined(turret) || !IsDefined(this.m_camEntity) || !IsDefined(this.m_cam) {
-      return;
-    }
-    let weapon = GameInstance.GetTransactionSystem(game).GetItemInSlot(turret, t"AttachmentSlots.WeaponRight") as WeaponObject;
-    let gunPos = IsDefined(weapon) ? weapon.GetWorldPosition() : turret.GetWorldPosition() + new Vector4(0.0, 0.0, 1.2, 0.0);
-    let fwd = Vector4.Normalize(IsDefined(weapon) ? weapon.GetWorldForward() : turret.GetWorldForward());
-    let sq = GameInstance.GetSpatialQueriesSystem(game);
-    // what the gun is on
-    let aimAt = gunPos + fwd * 80.0;
-    let hit: TraceResult;
-    if sq.SyncRaycastByCollisionPreset(gunPos + fwd * 1.0, aimAt, n"World Static", hit, true) {
-      aimAt = Cast<Vector4>(hit.position);
-    }
-    // behind and above the gun along its heading, pulled in short of walls
-    let yaw = CMPilotRig.YawOf(fwd);
-    let pivot = gunPos + new Vector4(0.0, 0.0, 1.0, 0.0);
-    let want = pivot - CMPilotRig.Dir(yaw, 0.0) * 4.5 + new Vector4(0.0, 0.0, 1.2, 0.0);
-    let off = want - pivot;
-    let full = Vector4.Length(off);
-    let pos = want;
-    let wall: TraceResult;
-    if full > 0.3 && sq.SyncRaycastByCollisionGroup(pivot, want, n"Static", wall, true, false) {
-      pos = pivot + off * (MaxF(0.2, Vector4.Distance(pivot, Cast<Vector4>(wall.position)) - 0.35) / full);
-    }
-    let world: WorldPosition;
-    WorldPosition.SetVector4(world, pos);
-    let wt: WorldTransform;
-    WorldTransform.SetWorldPosition(wt, world);
-    WorldTransform.SetOrientation(wt, CMCSession.Identity());
-    this.m_camEntity.SetWorldTransform(wt);
-    let look = Vector4.Normalize(aimAt - pos);
-    let e: EulerAngles;
-    e.Yaw = CMPilotRig.YawOf(look);
-    e.Pitch = Rad2Deg(AsinF(ClampF(look.Z, -1.0, 1.0)));
-    this.m_cam.SetLocalOrientation(EulerAngles.ToQuat(e));
-  }
-
-  // the emplacement is being removed: leave it first
-  public func EndIfTakeover(id: EntityID) -> Void {
-    if this.m_state == 3 && this.m_takeoverID == id {
-      this.End("EMPLACEMENT REMOVED", false);
-    }
-  }
-
-  public func InTakeover() -> Bool = this.m_state == 3
-
-  // ---------------------------------------------------------------------------
   // The frame loop (only while controlling)
   // ---------------------------------------------------------------------------
   private func ScheduleFrame() -> Void {
@@ -688,19 +415,7 @@ public class CMCSession extends ScriptableSystem {
   }
 
   public func OnFrame(generation: Int32) -> Void {
-    if generation != this.m_gen {
-      return;
-    }
-    if this.m_state == 3 {
-      // the emplacement's chase camera: only while it's up
-      if this.m_tkCamOn {
-        this.m_frames += 1;
-        this.TakeoverCamPlace();
-        this.ScheduleFrame();
-      }
-      return;
-    }
-    if this.m_state != 2 {
+    if generation != this.m_gen || this.m_state != 2 {
       return;
     }
     this.m_frames += 1;
@@ -967,23 +682,6 @@ public class CMCSession extends ScriptableSystem {
   }
 
   protected cb func OnKey(event: ref<KeyInputEvent>) -> Void {
-    if this.m_state == 3 {
-      // in the emplacement: \ leaves it too (not in the first half second, which is
-      // the press that started it arriving through the raw channel)
-      if Equals(event.GetKey(), EInputKey.IK_Backslash) && Equals(event.GetAction(), EInputAction.IACT_Press) && this.Now() - this.m_takeoverAt > 0.5 {
-        this.End("EMPLACEMENT RELEASED", false);
-      }
-      // V: chase view <-> the turret's own sight view
-      if Equals(event.GetKey(), EInputKey.IK_V) && Equals(event.GetAction(), EInputAction.IACT_Press) && this.m_takeoverSeen {
-        this.m_chase = !this.m_chase;
-        if this.m_chase {
-          this.StartTakeoverCam();
-        } else {
-          this.StopTakeoverCam(true);
-        }
-      }
-      return;
-    }
     if this.m_state != 2 {
       return;
     }
@@ -1173,25 +871,6 @@ public class CMCBeginCb extends DelayCallback {
   public func Call() -> Void {
     if IsDefined(this.system) {
       this.system.BeginFromCallback();
-    }
-  }
-}
-
-public class CMCTakeoverCb extends DelayCallback {
-  public let system: wref<CMCSession>;
-  public func Call() -> Void {
-    if IsDefined(this.system) {
-      this.system.BeginTakeover();
-    }
-  }
-}
-
-public class CMCTakeoverWatchCb extends DelayCallback {
-  public let system: wref<CMCSession>;
-  public let generation: Int32;
-  public func Call() -> Void {
-    if IsDefined(this.system) {
-      this.system.OnTakeoverWatch(this.generation);
     }
   }
 }
