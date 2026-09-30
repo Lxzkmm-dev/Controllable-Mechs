@@ -71,7 +71,9 @@ public class CMUMinotaur extends CMCUnit {
     link.SetOrder(CMOrder.Pilot());
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
-    this.m_guns.SetAimMode(CMAimMode.Barrels());
+    // rounds go to the reticle point (the alpha's damaging path); the look-ats aim the
+    // barrels there and the gate holds each gun until it's on it, so the flash lines up
+    this.m_guns.SetAimMode(CMAimMode.Reticle());
     this.m_guns.call = s.FireCall();
     this.m_moving = false;
     this.m_triggerWas = false;

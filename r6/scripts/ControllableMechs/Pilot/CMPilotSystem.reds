@@ -578,7 +578,7 @@ public class CMPilotSystem extends ScriptableSystem {
     // triggers: the MK.31s are fixed to the body, so they only fire once it faces the reticle
     // (otherwise the flash leaves the barrels one way and the rounds go another)
     this.m_aligned = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))) < this.ALIGN_DEG;
-    if this.GunAim() == CMAimMode.Reticle() && !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
+    if !this.m_s7 && this.GunAim() == CMAimMode.Reticle() && !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
       this.m_unalignedHeld += dt;
       if this.m_unalignedHeld > 2.0 && this.m_unalignedHeld - dt <= 2.0 {
         TKLog.Add("ControllableMechs", "pilot: trigger held 2 s but the chassis is still " + FloatToStringPrec(AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))), 0) + " deg off the reticle");
@@ -587,7 +587,8 @@ public class CMPilotSystem extends ScriptableSystem {
       this.m_unalignedHeld = 0.0;
     }
     // along the barrels, the rounds always follow the muzzles, so there's nothing to wait for
-    let gate = this.GunAim() != CMAimMode.Reticle() || this.m_aligned;
+    // S7 gates each gun on its own barrel (S7Gate), not on the chassis
+    let gate = this.m_s7 || this.GunAim() != CMAimMode.Reticle() || this.m_aligned;
     let lmb = gate && this.Key(CMPilotKey.Lmb());
     let rmb = gate && this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb());
     let trigger = this.Key(CMPilotKey.Lmb()) || (this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb()));
@@ -928,7 +929,7 @@ public class CMPilotSystem extends ScriptableSystem {
       if s.signal < 0.2 {
         s.warning = "SIGNAL DEGRADED - RETURN TO OPERATOR";
       } else {
-        if this.GunAim() == CMAimMode.Reticle() && !this.m_aligned {
+        if !this.m_s7 && this.GunAim() == CMAimMode.Reticle() && !this.m_aligned {
           s.warning = "ALIGNING CHASSIS";
         }
       }
@@ -1321,7 +1322,9 @@ public class CMPilotSystem extends ScriptableSystem {
   }
 
   // the aim mode the guns use: spike S7 fires along the barrels, the look-ats aim them
-  private func GunAim() -> Int32 = this.m_s7 ? CMAimMode.Barrels() : this.m_aimMode
+  // (S7 fires at the reticle point, as the alpha did when its rounds killed; the barrel
+  // projection it used in e8e6991-3be8ac5 is the one path that never hurt anything)
+  private func GunAim() -> Int32 = this.m_s7 ? CMAimMode.Reticle() : this.m_aimMode
 
   // ---- spike S7 (dev) ----
   public func S7On() -> Bool = this.m_s7
