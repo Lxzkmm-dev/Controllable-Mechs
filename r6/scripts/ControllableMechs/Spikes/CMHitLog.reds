@@ -10,6 +10,8 @@
 // =============================================================================
 module ControllableMechs
 
+import ControllableMechs.Control.*
+
 @addField(WeaponObject)
 public let m_cmWatched: Bool;
 
@@ -30,6 +32,10 @@ private final func ProcessPipeline(hitEvent: ref<gameHitEvent>, cache: ref<Cache
     }
   }
   wrappedMethod(hitEvent, cache);
+  if IsDefined(w) && w.m_cmCreditV && !hitEvent.attackData.HasFlag(hitFlag.DealNoDamage) {
+    // M1: a round of ours connected; the pilot HUD shows it
+    CMHitLog.Connected(w.GetGame(), hitEvent.attackData.HasFlag(hitFlag.WasKillingBlow));
+  }
   if IsDefined(w) && w.m_cmWatched {
     CMHitLog.Note(hitEvent);
   }
@@ -41,6 +47,13 @@ public class CMHitLog extends ScriptableSystem {
 
   public static func Get(game: GameInstance) -> ref<CMHitLog> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.CMHitLog") as CMHitLog;
+  }
+
+  public static func Connected(game: GameInstance, kill: Bool) -> Void {
+    let session = CMCSession.Get(game);
+    if IsDefined(session) {
+      session.RoundHit(kill);
+    }
   }
 
   public static func Note(hit: ref<gameHitEvent>) -> Void {

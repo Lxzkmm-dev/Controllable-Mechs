@@ -47,6 +47,9 @@ public class CMPilotHud {
   private let m_pipRX: Float;
   private let m_pipRY: Float;
 
+  private let m_hitBars: array<ref<inkRectangle>>;
+  private let m_hitT: Float;
+
   private let BAR_W: Float = 420.0;
 
   public static func Amber() -> HDRColor = new HDRColor(1.0, 0.76, 0.18, 1.0)
@@ -175,6 +178,14 @@ public class CMPilotHud {
     CMPilotHud.Bar(r, 200.0 - 70.0, 200.0 - 3.0, 44.0, 6.0, c, 0.95);   // left
     CMPilotHud.Bar(r, 200.0 + 26.0, 200.0 - 3.0, 44.0, 6.0, c, 0.95);   // right
     CMPilotHud.Bar(r, 200.0 - 4.0, 200.0 - 4.0, 8.0, 8.0, CMPilotHud.Pale(), 1.0);
+    // hit marker: four short diagonals round the centre, shown when a round connects (M1)
+    for sx in [-1.0, 1.0] {
+      for sy in [-1.0, 1.0] {
+        let d = CMPilotHud.Bar(r, 200.0 + sx * 30.0 - 11.0, 200.0 + sy * 30.0 - 3.0, 22.0, 6.0, CMPilotHud.Pale(), 0.0);
+        d.SetRotation(sx * sy > 0.0 ? 45.0 : -45.0);
+        ArrayPush(this.m_hitBars, d);
+      }
+    }
     // barrel markers: light up when that gun fires
     this.m_markL = CMPilotHud.Bar(r, 200.0 - 150.0, 200.0 - 40.0, 8.0, 80.0, c, 0.35);
     this.m_markR = CMPilotHud.Bar(r, 200.0 + 142.0, 200.0 - 40.0, 8.0, 80.0, c, 0.35);
@@ -256,6 +267,30 @@ public class CMPilotHud {
     if NotEquals(right, this.m_markROn) {
       this.m_markROn = right;
       this.m_markR.SetOpacity(right ? 1.0 : 0.35);
+    }
+  }
+
+  // a round connected: the marker flashes (red for a kill) and fades over 0.25 s
+  public func Hit(kill: Bool) -> Void {
+    if !IsDefined(this.m_root) {
+      return;
+    }
+    this.m_hitT = kill ? 0.45 : 0.25;
+    for d in this.m_hitBars {
+      d.SetTintColor(kill ? CMPilotHud.Red() : CMPilotHud.Pale());
+      d.SetOpacity(1.0);
+    }
+  }
+
+  // every frame, only while a marker is showing
+  public func FadeHit(dt: Float) -> Void {
+    if this.m_hitT <= 0.0 {
+      return;
+    }
+    this.m_hitT = MaxF(0.0, this.m_hitT - dt);
+    let a = ClampF(this.m_hitT / 0.25, 0.0, 1.0);
+    for d in this.m_hitBars {
+      d.SetOpacity(a);
     }
   }
 

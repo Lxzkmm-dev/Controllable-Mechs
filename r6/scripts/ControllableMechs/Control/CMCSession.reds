@@ -503,6 +503,20 @@ public class CMCSession extends ScriptableSystem {
   // the unit's barrel markers and muzzle flashes, drawn every frame
   public func Hud() -> ref<CMPilotHud> = this.m_hud
 
+  // a round of ours connected (the damage pipeline hook): the hit marker, and a small
+  // jolt through the frame, bigger on a kill
+  public func RoundHit(kill: Bool) -> Void {
+    if this.m_state != 2 {
+      return;
+    }
+    if IsDefined(this.m_hud) {
+      this.m_hud.Hit(kill);
+    }
+    if kill && IsDefined(this.rig) {
+      this.rig.Recoil(0.35);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Camera and aim
   // ---------------------------------------------------------------------------

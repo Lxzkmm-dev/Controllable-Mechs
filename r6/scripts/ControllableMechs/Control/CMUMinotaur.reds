@@ -61,6 +61,7 @@ public class CMUMinotaur extends CMCUnit {
   private let LOOKAT_BLEND: Float = 3.0;     // look-at blend-in speed
 
   private let ROUND_SPEED: Float = 4.0;      // x the MK.31's smart-round velocity while piloted
+  private let KICK: Float = 0.6;             // camera kick per round (alpha: 0.45)
 
   private let GATE_DEG: Float = 4.0;
   private let SPREAD_DEG: Float = 0.6;
@@ -222,11 +223,12 @@ public class CMUMinotaur extends CMCUnit {
     let shots = this.m_guns.Update(mech, now, dt, lmb, rmb, s.FireMode(), s.aim, this.SPREAD_DEG, s.rig.pos);
     if shots > 0 {
       this.m_shots += shots;
-      s.rig.Recoil(0.45 * Cast<Float>(shots));
+      s.rig.Recoil(this.KICK * Cast<Float>(shots));
     }
     this.AimLog(s, trigger, now);
     let hud = s.Hud();
     if IsDefined(hud) {
+      hud.FadeHit(dt);
       hud.Flash(this.m_guns.left.flash > 0.0, this.m_guns.right.flash > 0.0);
       let range = s.aimDist > 1.0 ? s.aimDist : 150.0;
       let l = s.PipOffset(this.m_guns.BarrelPoint(this.m_guns.left, range));
