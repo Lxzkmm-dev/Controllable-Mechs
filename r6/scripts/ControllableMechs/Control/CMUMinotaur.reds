@@ -73,6 +73,11 @@ public class CMUMinotaur extends CMCUnit {
   // servo thunk on each start (state changes only)
   private let m_servoOn: Bool;
   private let m_servoHit: Float;
+  private let m_audioTrigger: Bool;
+  private let m_fireLoop: Bool;
+  private let m_heatWarned: Bool;
+  private let m_audioLocked: Bool;
+  private let m_lowAlarm: Bool;
   private let m_impactToggle: Bool;
 
   private let GATE_DEG: Float = 4.0;
@@ -124,6 +129,7 @@ public class CMUMinotaur extends CMCUnit {
     this.m_markerID = GameInstance.GetStaticEntitySystem().SpawnEntity(spec);
     this.m_marker = null;
     this.Pacify(mech, true);
+    GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_q110_personal_link_01");   // link established
     CMCSession.Log("Minotaur: guns " + this.m_guns.Describe());
     CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
     return "";
@@ -168,6 +174,8 @@ public class CMUMinotaur extends CMCUnit {
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
     let mech = this.Mech();
     this.StopServo(mech);
+    this.StopFireLoop(mech);
+    GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"q110_sc_08c_personal_link_disconnected");
     this.Pacify(mech, false);
     if IsDefined(mech) {
       this.CancelCmd(mech, this.m_moveCmd);
@@ -258,6 +266,7 @@ public class CMUMinotaur extends CMCUnit {
     }
     this.AimLog(s, trigger, now);
     this.Servo(s, mech, now);
+    this.GunAudio(mech, trigger, shots > 0);
     let hud = s.Hud();
     if IsDefined(hud) {
       hud.FadeHit(dt);
@@ -377,6 +386,68 @@ public class CMUMinotaur extends CMCUnit {
     return wt;
   }
 
+  // ---- audio: the game's own Militech HMG sounds layered on the mech, and cues for V.
+  // Only on state changes: trigger pull and release, the fire loop starting and ending,
+  // heat crossing the warning line, a gun locking or unlocking.
+  private func GunAudio(mech: ref<NPCPuppet>, trigger: Bool, fired: Bool) -> Void {
+    if trigger && !this.m_audioTrigger {
+      GameObject.PlaySoundEvent(mech, n"w_gun_hmg_militech_init");   // spin-up
+    }
+    if !trigger && this.m_audioTrigger && this.m_spin > this.SPIN_FIRE {
+      GameObject.PlaySoundEvent(mech, n"w_gun_hmg_militech_shutdown");   // wind-down
+    }
+    this.m_audioTrigger = trigger;
+    if fired && !this.m_fireLoop {
+      this.m_fireLoop = true;
+      GameObject.PlaySoundEvent(mech, n"w_gun_hmg_militech_fire_auto");
+    }
+    let locked = this.m_guns.left.locked && this.m_guns.right.locked;
+    if this.m_fireLoop && (!trigger || locked) {
+      this.StopFireLoop(mech);
+    }
+    let heat = MaxF(this.m_guns.left.heat, this.m_guns.right.heat);
+    if heat > 0.8 && !this.m_heatWarned {
+      this.m_heatWarned = true;
+      GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_hacking_press_fail");
+    }
+    if heat < 0.6 {
+      this.m_heatWarned = false;
+    }
+    let anyLocked = this.m_guns.left.locked || this.m_guns.right.locked;
+    if anyLocked && !this.m_audioLocked {
+      GameObject.PlaySoundEvent(mech, n"w_gun_hmg_militech_overheat_open");
+      GameObject.PlaySoundEvent(mech, n"w_gun_hmg_militech_overheat_steam");
+    }
+    if !anyLocked && this.m_audioLocked {
+      GameObject.PlaySoundEvent(mech, n"w_gun_hmg_militech_overheat_close");
+    }
+    this.m_audioLocked = anyLocked;
+  }
+
+  private func StopFireLoop(mech: ref<NPCPuppet>) -> Void {
+    if !this.m_fireLoop {
+      return;
+    }
+    this.m_fireLoop = false;
+    if IsDefined(mech) {
+      GameObject.StopSoundEvent(mech, n"w_gun_hmg_militech_fire_auto");
+      GameObject.PlaySoundEvent(mech, n"w_gun_hmg_militech_fire_auto_stop");
+    }
+  }
+
+  // ten times a second: the integrity alarm when the mech drops below 30% (once per dip)
+  private func IntegrityAlarm() -> Void {
+    let hp = CMLinkSystem.Get(this.m_game).HealthFraction();
+    if hp < 0.3 && !this.m_lowAlarm {
+      this.m_lowAlarm = true;
+      GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"dev_alarm_02");
+      CMCSession.Log("integrity below 30%: alarm");
+    }
+    if hp > 0.4 {
+      this.m_lowAlarm = false;
+    }
+  }
+
   private func Servo(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
     let rate = AbsF(s.rig.YawRate());
     if !this.m_servoOn && (rate > 8.0 || this.m_turning) {
@@ -443,6 +514,7 @@ public class CMUMinotaur extends CMCUnit {
     }
     this.SendLookAts(mech);
     this.KeepCalm(mech, now);
+    this.IntegrityAlarm();
     this.Drive(s, mech, now);
     return "";
   }
