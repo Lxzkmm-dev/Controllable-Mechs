@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 Alpha (branch 0.7.0-alpha, in progress)
+
+Plan: docs/ROADMAP_0.7.0.md.
+
+- **Phase 0, stability** (after two engine crashes on 2026-09-30, one soon after a disconnect):
+  - **Attached effects:** they are killed when a unit leaves the link (unlink, the test mech despawned) or dies, so none outlives what it is attached to. They come back when the mech is next linked.
+  - **Weak spots:** a destroyed vanilla weak spot is never sent another event.
+  - **Missing slots:** an attached effect is skipped, and logged, if the unit lacks the slot.
+  - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
+  - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 ## 0.6.0 Alpha (branch 0.6.0-alpha)
 
 Part damage, per docs/DAMAGE_DESIGN.md. Untested in game.

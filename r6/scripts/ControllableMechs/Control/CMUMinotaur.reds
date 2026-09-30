@@ -354,8 +354,11 @@ public class CMUMinotaur extends CMCUnit {
       GameObjectEffectHelper.StopEffectEvent(mech, n"hacks_overheat_lvl2");
     }
     this.m_critFx = false;
-    // destroyed under the pilot: the Minotaur's own explosion
+    // destroyed under the pilot: the Minotaur's own explosion, and no attached effect left
+    // on the wreck
     if IsDefined(mech) && !ScriptedPuppet.IsAlive(mech) {
+      CMCParts.Get(this.m_game).DropFx(mech);
+      CMCSession.Log("fx: start explode_death");
       GameObjectEffectHelper.StartEffectEvent(mech, n"explode_death");
     }
     if IsDefined(mech) && this.m_gait != 1.0 {
@@ -1205,9 +1208,9 @@ public class CMUMinotaur extends CMCUnit {
   }
   // A part has just broken: on the model, in how the mech works, and on the HUD.
   private func BreakPart(s: ref<CMCSession>, mech: ref<NPCPuppet>, part: Int32) -> Void {
-    if part == CMPart.ArmL() || part == CMPart.ArmR() {
-      let left = part == CMPart.ArmL();
-      CMCParts.BlowGun(mech, left);
+    if (part == CMPart.ArmL() || part == CMPart.ArmR()) && !this.m_parts.killed[part] {
+      this.m_parts.killed[part] = true;
+      CMCParts.BlowGun(mech, part == CMPart.ArmL());
     }
     this.ApplyParts(s, mech);
     this.m_partNote = CMPart.Name(part) + (part == CMPart.Sensor() ? " DESTROYED - OPTICS OFFLINE" : (part == CMPart.LegL() || part == CMPart.LegR() ? " CRIPPLED" : " DESTROYED"));

@@ -147,6 +147,11 @@ public class CMLinkSystem extends ScriptableSystem {
     this.MakeFriendly(npc);
     this.SetNoRole(npc);
     this.Hold();
+    // a mech with broken parts shows them again (their attached effects were dropped when
+    // it last left the link)
+    if Equals(npc.GetNPCType(), gamedataNPCType.Mech) {
+      CMCParts.Get(this.GetGameInstance()).Effects(npc);
+    }
     this.Schedule();
     return "*" + CMLinkSystem.KindName(npc) + " LINKED";
   }
@@ -159,6 +164,7 @@ public class CMLinkSystem extends ScriptableSystem {
     let unit = this.Unit();
     if IsDefined(unit) {
       this.CancelCmd(unit);
+      CMCParts.Get(this.GetGameInstance()).DropFx(unit);
     }
     CMCParts.Get(this.GetGameInstance()).SetTest(null, false);
     this.Clear();

@@ -219,9 +219,35 @@ public class CMPilotHud {
 
   public func Remove() -> Void {
     if IsDefined(this.m_root) && IsDefined(this.m_parent) {
+      // every running animation stopped before the widgets go: the root's, the display's
+      // flicker, and the schematic's blinks and hit flashes
       this.m_root.StopAllAnimations();
+      if IsDefined(this.m_face) {
+        this.m_face.StopAllAnimations();
+      }
+      for p in this.m_parts {
+        if IsDefined(p) && IsDefined(p.canvas) {
+          p.canvas.StopAllAnimations();
+        }
+      }
+      for m in this.m_hitDirs {
+        if IsDefined(m) {
+          m.StopAllAnimations();
+        }
+      }
+      if IsDefined(this.m_warnPulse) {
+        this.m_warnPulse.Stop();
+      }
+      if IsDefined(this.m_warnSweepAnim) {
+        this.m_warnSweepAnim.Stop();
+      }
+      if IsDefined(this.m_hurt) {
+        this.m_hurt.StopAllAnimations();
+      }
       this.m_parent.RemoveChild(this.m_root);
     }
+    ArrayClear(this.m_parts);
+    ArrayClear(this.m_hitDirs);
     this.m_root = null;
     this.m_face = null;
     this.m_warnPulse = null;

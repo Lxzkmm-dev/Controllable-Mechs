@@ -75,6 +75,9 @@ public class CMPartState {
   public let stage: array<Int32>;              // each arm's weak spot damage stage shown (0-2)
   public let fxInst: array<ref<FxInstance>>;   // the effects attached to it, and their parts
   public let fxPart: array<Int32>;
+  public let att: array<Bool>;                 // a part's attached effects are up
+  public let killed: array<Bool>;              // that arm's vanilla weak spot is destroyed:
+                                               // never sent another event
 }
 
 public class CMCParts extends ScriptableSystem {
@@ -98,6 +101,8 @@ public class CMCParts extends ScriptableSystem {
       ArrayPush(st.hp, 1.0);
       ArrayPush(st.fx, false);
       ArrayPush(st.stage, 0);
+      ArrayPush(st.att, false);
+      ArrayPush(st.killed, false);
       i += 1;
     }
     ArrayPush(this.m_states, st);
@@ -133,8 +138,10 @@ public class CMCParts extends ScriptableSystem {
     if !IsDefined(mech) || part < 0 || part >= CMPart.Count() || part == CMPart.Torso() {
       return;
     }
-    this.State(mech.GetEntityID()).hp[part] = 0.0;
-    if part == CMPart.ArmL() || part == CMPart.ArmR() {
+    let st = this.State(mech.GetEntityID());
+    st.hp[part] = 0.0;
+    if (part == CMPart.ArmL() || part == CMPart.ArmR()) && !st.killed[part] {
+      st.killed[part] = true;
       CMCParts.BlowGun(mech, part == CMPart.ArmL());
       CMCParts.ShowGun(mech, part == CMPart.ArmL(), false);
     }
@@ -323,15 +330,22 @@ public class CMCParts extends ScriptableSystem {
       if NotEquals(on, st.fx[i]) {
         st.fx[i] = on;
         for name in CMCParts.EffectsOf(i) {
+          CMCSession.Log("fx: " + (on ? "start " : "stop ") + NameToString(name));
           if on {
             GameObjectEffectHelper.StartEffectEvent(mech, name);
           } else {
             GameObjectEffectHelper.StopEffectEvent(mech, name);
           }
         }
-        if on {
-          this.Attach(mech, st, i);
-        } else {
+      }
+      // the attached effects are dropped when the unit leaves the link (DropFx) and put
+      // back when it is next linked or piloted
+      if on && !st.att[i] {
+        st.att[i] = true;
+        this.Attach(mech, st, i);
+      } else {
+        if !on && st.att[i] {
+          st.att[i] = false;
           this.Detach(st, i);
         }
       }
@@ -368,9 +382,52 @@ public class CMCParts extends ScriptableSystem {
     }
   }
 
+  // Every attached effect on a unit killed: when it leaves the link (unlink, the test mech
+  // despawned) or dies, so no effect outlives what it is attached to. The unit's part
+  // damage stays; the effects come back with Effects() on the next link.
+  public func DropFx(mech: ref<NPCPuppet>) -> Void {
+    if !IsDefined(mech) {
+      return;
+    }
+    let st = this.State(mech.GetEntityID());
+    if ArraySize(st.fxInst) > 0 {
+      CMCSession.Log("fx: dropping " + IntToString(ArraySize(st.fxInst)) + " attached effects");
+    }
+    for inst in st.fxInst {
+      if IsDefined(inst) {
+        inst.BreakLoop();
+        inst.Kill();
+      }
+    }
+    ArrayClear(st.fxInst);
+    ArrayClear(st.fxPart);
+    let i = 0;
+    while i < CMPart.Count() {
+      st.att[i] = false;
+      i += 1;
+    }
+  }
+
+  // whether this unit has the slot (variants may not): its slot components are asked
+  public static func HasSlot(mech: ref<NPCPuppet>, slot: CName) -> Bool {
+    let wt: WorldTransform;
+    for comp in [n"Item_Attachment_Slot", n"Slot5006"] {
+      let sc = mech.FindComponentByName(comp) as SlotComponent;
+      if IsDefined(sc) && sc.GetSlotTransform(slot, wt) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   // one effect file spawned at the mech and attached to one of its slots, `side` metres
   // across from it
   private func AttachFx(mech: ref<NPCPuppet>, st: ref<CMPartState>, part: Int32, path: ResRef, slot: CName, side: Float) -> Void {
+    if !CMCParts.HasSlot(mech, slot) {
+      CMCSession.Log("fx: no slot " + NameToString(slot) + " on this unit, effect skipped");
+      return;
+    }
+    CMCSession.Log("fx: attach to " + NameToString(slot));
     let fx: FxResource;
     ResourceAsyncRef.SetPath(fx.effect, path);
     let at: WorldTransform;
@@ -410,6 +467,11 @@ public class CMCParts extends ScriptableSystem {
     if stage == st.stage[part] {
       return;
     }
+    if st.killed[part] {
+      st.stage[part] = stage;   // its weak spot is gone: nothing to send it
+      return;
+    }
+    CMCSession.Log("fx: " + (left ? "left" : "right") + " gun stage " + IntToString(stage));
     let spot = CMCParts.Spot(mech, left);
     if IsDefined(spot) {
       if stage >= 1 && st.stage[part] < 1 {
@@ -475,6 +537,7 @@ public class CMCParts extends ScriptableSystem {
           let gods = GameInstance.GetGodModeSystem(mech.GetGame());
           gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"ControllableMechs");
           gods.RemoveGodMode(spot.GetEntityID(), gameGodModeType.Invulnerable, n"CMDamageTest");
+          CMCSession.Log("parts: killing the " + (left ? "left" : "right") + " weak spot");
           ScriptedWeakspotObject.Kill(spot);
           CMCSession.Log("parts: weak spot on the " + (left ? "left" : "right") + " (" + FloatToStringPrec(side, 1) + " m to the side) destroyed");
         }
