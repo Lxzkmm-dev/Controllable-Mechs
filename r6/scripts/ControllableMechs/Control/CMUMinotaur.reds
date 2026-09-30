@@ -37,8 +37,13 @@ public class CMUMinotaur extends CMCUnit {
   // (it has no order otherwise, and its combat behaviour takes over)
   private let m_holdCmd: ref<AICommand>;
   private let m_holdSent: Float;
-  private let m_calmChecked: Float;
   private let m_calmResets: Int32;
+  // what the AI still does on its own, for the log: the body moving or turning while we
+  // gave no order
+  private let m_stoodPos: Vector4;
+  private let m_stoodAt: Float;
+  private let m_strayLogs: Int32;
+  private let m_strayYawAt: Float;
 
   // the aim log while firing: once a second
   private let m_triggerWas: Bool;
@@ -152,12 +157,19 @@ public class CMUMinotaur extends CMCUnit {
     return "";
   }
 
-  // While piloted the mech's own combat AI must not act: with its senses and target
-  // tracking off it perceives no threats, and its high-level state is put back to
-  // relaxed if combat still reaches it (checked once a second). All restored on exit.
+  // While piloted the mech's own AI must not act. What woke it was its reaction component:
+  // gunfire, explosions and bullets landing near it are stimuli, and each one put it in the
+  // Alerted state, where it turns toward the noise and walks over to look (the log showed
+  // 26 of those against one Combat). So that component is switched off, with its senses
+  // and target tracking (no threats, so nothing to fight), and its high-level state is put
+  // back to relaxed ten times a second if anything still moves it. All restored on exit.
   private func Pacify(mech: ref<NPCPuppet>, on: Bool) -> Void {
     if !IsDefined(mech) {
       return;
+    }
+    let reactions = mech.GetStimReactionComponent();
+    if IsDefined(reactions) {
+      reactions.Toggle(!on);
     }
     let senses = mech.GetSensesComponent();
     if IsDefined(senses) {
@@ -165,29 +177,59 @@ public class CMUMinotaur extends CMCUnit {
     }
     let tracker = mech.GetTargetTrackerComponent();
     if IsDefined(tracker) {
+      if on {
+        tracker.ClearThreats();
+      }
       tracker.Toggle(!on);
     }
     if on {
       NPCPuppet.ChangeHighLevelState(mech, gamedataNPCHighLevelState.Relaxed);
     }
-    CMCSession.Log("AI " + (on ? "suppressed (senses and target tracking off, relaxed)" : "restored") + ", state now " + EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(mech.GetHighLevelStateFromBlackboard()))));
+    this.m_calmResets = 0;
+    this.m_strayLogs = 0;
+    CMCSession.Log("AI " + (on ? "suppressed (stimulus reactions" + (IsDefined(reactions) ? "" : " [no component]") + ", senses and target tracking off, relaxed)" : "restored") + ", state now " + CMUMinotaur.StateName(mech));
   }
 
+  private static func StateName(mech: ref<NPCPuppet>) -> String {
+    return EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(mech.GetHighLevelStateFromBlackboard())));
+  }
+
+  // ten times a second: one blackboard read and two flag reads unless something is wrong
   private func KeepCalm(mech: ref<NPCPuppet>, now: Float) -> Void {
-    if now - this.m_calmChecked < 1.0 {
-      return;
-    }
-    this.m_calmChecked = now;
     let state = mech.GetHighLevelStateFromBlackboard();
     if Equals(state, gamedataNPCHighLevelState.Combat) || Equals(state, gamedataNPCHighLevelState.Alerted) {
       NPCPuppet.ChangeHighLevelState(mech, gamedataNPCHighLevelState.Relaxed);
+      let tracker = mech.GetTargetTrackerComponent();
+      if IsDefined(tracker) {
+        tracker.ClearThreats();
+      }
       this.m_calmResets += 1;
-      if this.m_calmResets <= 10 {
-        CMCSession.Log("AI went to " + EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(state))) + ", set back to relaxed (" + IntToString(this.m_calmResets) + ")");
+      if this.m_calmResets <= 20 {
+        CMCSession.Log("AI went to " + EnumValueToString("gamedataNPCHighLevelState", Cast<Int64>(EnumInt(state))) + ", set back to relaxed (" + IntToString(this.m_calmResets) + "); " + (this.m_moving ? "walking" : "standing") + (this.m_turning ? ", turning" : ""));
+      }
+    }
+    // something switched its reactions back on (a quest or a system re-initialising it)
+    let reactions = mech.GetStimReactionComponent();
+    if IsDefined(reactions) && reactions.IsEnabled() {
+      reactions.Toggle(false);
+      CMCSession.Log("AI: stimulus reactions were back on, switched off again");
+    }
+    // standing, a second or more after the last walk order: has the body moved by itself?
+    let pos = mech.GetWorldPosition();
+    if !this.m_moving && now - this.m_stoodAt > 1.5 && this.m_strayLogs < 20 {
+      let moved = Vector4.Distance2D(pos, this.m_stoodPos);
+      if moved > 0.6 {
+        this.m_strayLogs += 1;
+        CMCSession.Log("NOT OURS: the mech moved " + FloatToStringPrec(moved, 1) + " m while standing, state " + CMUMinotaur.StateName(mech));
+        this.m_stoodPos = pos;
+      }
+    } else {
+      this.m_stoodPos = pos;
+      if this.m_moving {
+        this.m_stoodAt = now;
       }
     }
   }
-
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
     let mech = this.Mech();
     this.StopServo(mech);
@@ -344,7 +386,14 @@ public class CMUMinotaur extends CMCUnit {
     if !this.m_turning {
       // between turns, take the body's real heading: never teleport it back against a
       // rotation something else made (that was a source of the fight-back)
-      this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
+      let real = CMPilotRig.YawOf(mech.GetWorldForward());
+      let strayed = AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw));
+      if strayed > 3.0 && s.Now() - this.m_stoodAt > 1.5 && s.Now() - this.m_strayYawAt > 1.0 && this.m_strayLogs < 20 {
+        this.m_strayYawAt = s.Now();
+        this.m_strayLogs += 1;
+        CMCSession.Log("NOT OURS: the chassis turned " + FloatToStringPrec(strayed, 1) + " deg in a frame while standing, state " + CMUMinotaur.StateName(mech));
+      }
+      this.m_bodyYaw = real;
     }
     let off = CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw);
     if !this.m_turning {
