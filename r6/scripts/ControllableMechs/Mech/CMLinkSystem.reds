@@ -8,7 +8,10 @@
 //     cancelled before the next is sent
 //   - telemetry for the terminal (health, distance, order), read on demand
 //
-// Quest and boss NPCs are refused, so a link can't break a story scene.
+// Quest NPCs are refused, so a link can't break a story scene.
+//
+// Test spawn: SpawnTestMech() puts a Militech Minotaur in front of V through
+// the DynamicEntitySystem (not saved) and links it as soon as it has spawned.
 //
 // Timers: nothing runs while no robot is linked. While linked, one 1s check
 // (unit still there, alive, in range). Nothing runs per frame. The unit is held
@@ -21,6 +24,7 @@ public abstract class CMOrder {
   public static func Follow() -> Int32 = 1
   public static func Hold() -> Int32 = 2
   public static func MoveTo() -> Int32 = 3
+  public static func Pilot() -> Int32 = 4
 }
 
 public class CMLinkSystem extends ScriptableSystem {
@@ -29,6 +33,8 @@ public class CMLinkSystem extends ScriptableSystem {
   private let m_order: Int32;
   private let m_cmd: ref<AICommand>;
   private let m_generation: Int32;   // bumps on every link / unlink / session: stale ticks drop out
+  private let m_testID: EntityID;    // the test Minotaur, if one is out
+  private let m_listening: Bool;
 
   private let LINK_RANGE: Float = 60.0;    // how far V can be from a robot to link it
   private let SIGNAL_RANGE: Float = 250.0; // past this the link drops
@@ -42,8 +48,10 @@ public class CMLinkSystem extends ScriptableSystem {
   // Lifecycle
   // ---------------------------------------------------------------------------
   private func OnPlayerAttach(request: ref<PlayerAttachRequest>) -> Void {
-    // New session or load: whatever we linked before is gone
+    // New session or load: whatever we linked (or spawned) before is gone
     this.Clear();
+    let empty: EntityID;
+    this.m_testID = empty;
   }
 
   private func Clear() -> Void {
@@ -92,6 +100,7 @@ public class CMLinkSystem extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   public func IsLinked() -> Bool = this.m_linked && IsDefined(this.Unit())
   public func Order() -> Int32 = this.m_order
+  public func SetOrder(order: Int32) -> Void { this.m_order = order; }
 
   public func Unit() -> ref<NPCPuppet> {
     if !this.m_linked {
@@ -113,7 +122,7 @@ public class CMLinkSystem extends ScriptableSystem {
     if !ScriptedPuppet.IsAlive(npc) {
       return "!" + CMLinkSystem.KindName(npc) + " IS DESTROYED";
     }
-    if npc.IsQuest() || npc.IsBoss() {
+    if npc.IsQuest() {
       return "!" + CMLinkSystem.KindName(npc) + " IS SHIELDED FROM THE LINK";
     }
     if Vector4.Distance(player.GetWorldPosition(), npc.GetWorldPosition()) > this.LINK_RANGE {
@@ -137,11 +146,85 @@ public class CMLinkSystem extends ScriptableSystem {
   }
 
   public func Unlink() -> Void {
+    let pilot = CMPilotSystem.Get(this.GetGameInstance());
+    if IsDefined(pilot) && pilot.IsPiloting() {
+      pilot.Exit("NEURAL LINK CLOSED", false);
+    }
     let unit = this.Unit();
     if IsDefined(unit) {
       this.CancelCmd(unit);
     }
     this.Clear();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Test spawn: a Minotaur in front of V, linked once it's in the world
+  // ---------------------------------------------------------------------------
+  public func HasTestMech() -> Bool = EntityID.IsDefined(this.m_testID)
+
+  public func SpawnTestMech() -> String {
+    let game = this.GetGameInstance();
+    let player = GetPlayer(game);
+    if !IsDefined(player) {
+      return "";
+    }
+    if this.HasTestMech() {
+      return "!A TEST MECH IS ALREADY OUT";
+    }
+    let record: TweakDBID;
+    let found = false;
+    for id in [t"Character.q003_militech_mech", t"Character.q114_arasaka_netnest_mech_friendly_quest", t"Character.Mech_NPC_Base"] {
+      if !found && IsDefined(TweakDBInterface.GetCharacterRecord(id)) {
+        record = id;
+        found = true;
+      }
+    }
+    if !found {
+      return "!NO MINOTAUR RECORD IN THIS GAME VERSION";
+    }
+    if !this.m_listening {
+      GameInstance.GetDynamicEntitySystem().RegisterListener(n"ControllableMechsTest", this, n"OnTestMechEvent");
+      this.m_listening = true;
+    }
+    let fwd = player.GetWorldForward();
+    let spec = new DynamicEntitySpec();
+    spec.recordID = record;
+    spec.position = player.GetWorldPosition() + fwd * 14.0;
+    let face: EulerAngles;
+    face.Yaw = CMPilotRig.YawOf(fwd) + 180.0;   // facing V
+    spec.orientation = EulerAngles.ToQuat(face);
+    spec.persistState = false;
+    spec.persistSpawn = false;
+    spec.alwaysSpawned = true;
+    spec.tags = [n"ControllableMechsTest"];
+    this.m_testID = GameInstance.GetDynamicEntitySystem().CreateEntity(spec);
+    return "*MINOTAUR INBOUND";
+  }
+
+  public func DespawnTestMech() -> Void {
+    if !this.HasTestMech() {
+      return;
+    }
+    if this.m_linked && this.m_unitID == this.m_testID {
+      this.Unlink();
+    }
+    GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_testID);
+    let empty: EntityID;
+    this.m_testID = empty;
+  }
+
+  protected cb func OnTestMechEvent(event: ref<DynamicEntityEvent>) -> Void {
+    if !Equals(event.GetEventType(), DynamicEntityEventType.Spawned) || event.GetEntityID() != this.m_testID {
+      return;
+    }
+    let npc = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_testID) as NPCPuppet;
+    if IsDefined(npc) {
+      let msg = this.Link(npc);
+      let player = GetPlayer(this.GetGameInstance());
+      if IsDefined(player) {
+        player.SetWarningMessage(StrReplaceAll(StrReplaceAll(msg, "!", ""), "*", ""));
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------

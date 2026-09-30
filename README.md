@@ -1,17 +1,58 @@
 # Controllable Mechs
 
-A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game's robotic NPCs (mechs, androids, drones and spiderbots) through a Robot Link terminal built with TerminalKit. Quest and boss NPCs are refused so a link can't break a story scene.
+A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game's robotic NPCs (mechs, androids, drones and spiderbots) through a Robot Link terminal built with TerminalKit, and pilot a Militech Minotaur directly: its sensor feed, its legs and both MK.31 HMGs. Quest NPCs are refused so a link can't break a story scene.
 
-Early scaffold. It compiles against the game, but has not been tested in game yet.
+Early build. It compiles against the game; Pilot Mode has not been tested in game yet.
+
+## Keys
+
+- **K**: open the Robot Link terminal.
+- **J**: link the robot you are looking at (within 60 m).
+- **L**: pilot the linked mech, and disconnect again. L always disconnects while piloting, even if it has been rebound.
+- While piloting:
+  - **WASD**: walk, relative to where the torso looks. **Shift**: run.
+  - **Mouse**: turn the torso.
+  - **LMB**: fire.
+  - **RMB**: optics (x2).
+  - **B**: cycle the fire mode.
+
+## Pilot Mode
+
+- **View:** the game's own free camera entity (`base\entities\cameras\simple_free_camera.ent`) sits on the mech's sensor mount and takes over the view.
+- **Weight:** the camera follows your mouse through a spring with mass:
+  - the torso turn speeds up, is capped at a traverse rate, overshoots a little and settles;
+  - the camera lags the mech's movement and catches up;
+  - every footfall jolts and rolls the view;
+  - each shot kicks it.
+- **Guns:** both MK.31s fire through the game's NPC firing call (`AIWeapon.Fire`) at the point under the reticle, so rounds leave the real muzzles.
+  - Fire modes (terminal Settings, or B):
+    - **staggered** (default): LMB fires both, barrels alternating;
+    - **linked salvo**: LMB fires both at once;
+    - **split**: LMB left gun, RMB right gun, MMB optics.
+  - Each gun heats as it fires and locks at 100% until it cools to 35%.
+- **HUD:** the vanilla HUD fades out and a Militech overlay replaces it:
+  - reticle with barrel markers and range;
+  - heading;
+  - integrity and signal bars, speed;
+  - the fire mode;
+  - per-gun heat and state;
+  - key hints.
+- **V:** V stays where they are, locked in place by the game's gameplay restrictions. A save lock is held while piloting.
+- **Disconnects:** you are disconnected when you press L, the mech is destroyed, the signal drops (250 m), the link closes, or the session ends. Damage to V also disconnects you, like camera hacking; this can be turned off in Settings.
+- **Test spawn:** the terminal's TEST section spawns a Militech Minotaur (`Character.q003_militech_mech`) 14 m in front of V and links it. It is not saved.
 
 ## Layout
 
 - `r6/scripts/ControllableMechs`
-  - `Mech/CMLinkSystem.reds`: the link. It holds the one linked robot by EntityID, sends its orders (follow, hold, move to a point) and reads its telemetry.
+  - `Mech/CMLinkSystem.reds`: the link. It holds the one linked robot by EntityID, sends its orders (follow, hold, move to a point), reads its telemetry and spawns the test Minotaur.
+  - `Pilot/CMPilotSystem.reds`: Pilot Mode. It handles enter and exit, the per-frame loop, raw input, walk orders, exit checks and V's restrictions.
+  - `Pilot/CMPilotRig.reds`: the weighted camera math (no game calls).
+  - `Pilot/CMPilotGuns.reds`: the two HMGs: discovery, fire modes, cadence and heat.
+  - `Pilot/CMPilotHud.reds`: the Militech overlay on the HUD layer.
   - `UI/CMContent.reds`: the Robot Link pages (a TerminalKit `TKContent`).
   - `UI/CMTerminal.reds`: the terminal frame (a Codeware `InGamePopup` with a `TKView`).
-  - `Core/CMInput.reds`: the keys, K to open the Robot Link and J to link the robot you are looking at.
-- `r6/scripts/TerminalKit`: TerminalKit, copied from `Lxzkmm-dev/Night-City-Empires-assets` (branch `main`, commit b0033b7).
+  - `Core/CMInput.reds`: the keys.
+- `r6/scripts/TerminalKit`: TerminalKit, copied unchanged from `Lxzkmm-dev/Night-City-Empires-assets` (branch `main`, commit b0033b7).
 - `r6/input/ControllableMechs.xml`: the key bindings (Input Loader).
 
 ## Requirements
@@ -26,15 +67,19 @@ Early scaffold. It compiles against the game, but has not been tested in game ye
 
 - While no robot is linked, nothing runs.
 - While a robot is linked, one check runs every second: is it still there, alive and in signal range (250 m)? If not, the link drops.
+- While piloting:
+  - Every frame: the camera and the guns. Nothing else runs per frame.
+  - Ten times a second: walk orders, HUD values and the disconnect checks.
+  - The raw keyboard and mouse callbacks are registered only while piloting.
 - Orders are one AI command at a time. The previous command is cancelled before the next one is sent.
 - The terminal builds each page fresh from the link system when it is shown, so it keeps no state and costs nothing while it is closed.
-- The robot is looked up by EntityID when needed and never held by a strong reference, so a despawned robot cannot crash the mod.
+- Robots are looked up by EntityID when needed and never held by a strong reference, so a despawned robot cannot crash the mod.
 
 ## Roadmap
 
-1. **Command mode (this scaffold):** link a robot, then order it to follow, hold or move to a target.
-2. **Attack orders:** send the robot after the target you look at.
-3. **Direct drive:** steer the robot with WASD while the camera rides it. Every 0.1 s, a move command goes to a point ahead in the direction you are steering, and this timer only runs while you are driving. Still to work out: locking V's own movement and attaching the camera.
+1. **Command mode:** link a robot, then order it to follow, hold or move to a target.
+2. **Pilot Mode (first build, Minotaur):** direct control with the weighted camera, HUD and both HMGs.
+3. **Attack orders:** send the robot after the target you look at.
 4. **Your own mech:** spawn one, persist it in the save, and call it in.
 
 ## TerminalKit and other mods

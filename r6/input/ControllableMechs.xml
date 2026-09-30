@@ -1,9 +1,10 @@
 <?xml version="1.0"?>
-<!-- Controllable Mechs keys (needs Input Loader). K opens the Robot Link, J links the robot you look at. -->
+<!-- Controllable Mechs keys (needs Input Loader). K opens the Robot Link, J links the robot you look at, L pilots the linked mech. -->
 <bindings>
 	<context name="CMMechLink">
 		<action name="CM_OpenLink" map="CM_OpenLink_Button" />
 		<action name="CM_LinkLookAt" map="CM_LinkLookAt_Button" />
+		<action name="CM_Pilot" map="CM_Pilot_Button" />
 	</context>
 
 	<context name="Items" append="true">
@@ -16,11 +17,17 @@
 	<acceptedEvents action="CM_LinkLookAt">
 		<event name="BUTTON_PRESSED" />
 	</acceptedEvents>
+	<acceptedEvents action="CM_Pilot">
+		<event name="BUTTON_PRESSED" />
+	</acceptedEvents>
 
 	<mapping name="CM_OpenLink_Button" type="Button">
 		<button id="IK_K" overridableUI="cmOpenLink" />
 	</mapping>
 	<mapping name="CM_LinkLookAt_Button" type="Button">
 		<button id="IK_J" overridableUI="cmLinkLookAt" />
+	</mapping>
+	<mapping name="CM_Pilot_Button" type="Button">
+		<button id="IK_L" overridableUI="cmPilot" />
 	</mapping>
 </bindings>

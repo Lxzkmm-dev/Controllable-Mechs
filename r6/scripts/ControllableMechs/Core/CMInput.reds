@@ -1,6 +1,7 @@
 // =============================================================================
 // CONTROLLABLE MECHS - KEYS
-// K opens the Robot Link, J links the robot V is looking at (mech, android, drone, spiderbot)
+// K opens the Robot Link, J links the robot V is looking at (mech, android, drone, spiderbot),
+// L pilots the linked mech (and disconnects again)
 // (r6/input/ControllableMechs.xml, needs Input Loader; rebindable in Mod Settings).
 // =============================================================================
 module ControllableMechs
@@ -12,7 +13,16 @@ public class CMInput extends IScriptable {
     if !ListenerAction.IsButtonJustPressed(action) {
       return false;
     }
-    switch ListenerAction.GetName(action) {
+    let pilot = CMPilotSystem.Get(this.player.GetGame());
+    let name = ListenerAction.GetName(action);
+    if Equals(name, n"CM_Pilot") {
+      pilot.Toggle();
+      return false;
+    }
+    if pilot.IsPiloting() {
+      return false;   // the terminal and look-at linking wait until V is back
+    }
+    switch name {
       case n"CM_OpenLink":
         CMTerminal.Toggle(this.player);
         break;
@@ -38,6 +48,7 @@ protected cb func OnGameAttached() -> Bool {
   this.m_cmInput.player = this;
   this.RegisterInputListener(this.m_cmInput, n"CM_OpenLink");
   this.RegisterInputListener(this.m_cmInput, n"CM_LinkLookAt");
+  this.RegisterInputListener(this.m_cmInput, n"CM_Pilot");
   return result;
 }
 
@@ -63,6 +74,12 @@ public class CMKeybinds {
   @runtimeProperty("ModSettings.displayName", "Link the robot you look at")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
   public let cmLinkLookAt: EInputKey = EInputKey.IK_J;
+
+  @runtimeProperty("ModSettings.mod", "Controllable Mechs")
+  @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
+  @runtimeProperty("ModSettings.displayName", "Pilot the linked mech")
+  @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
+  public let cmPilot: EInputKey = EInputKey.IK_L;
 }
 
 @if(ModuleExists("ModSettingsModule"))
