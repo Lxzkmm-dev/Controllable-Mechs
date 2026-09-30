@@ -1,5 +1,5 @@
 // =============================================================================
-// CONTROLLABLE MECHS - MECH LINK TERMINAL (the TerminalKit frame)
+// CONTROLLABLE MECHS - ROBOT LINK TERMINAL (the TerminalKit frame)
 // A Codeware popup over the world: brand bar,
 // tabs on the left, the page on the right. TerminalKit draws the pages from
 // CMContent. Opened with K (CM_OpenLink, Input Loader) or CMTerminal.Toggle.
@@ -35,7 +35,7 @@ public class CMTerminal extends InGamePopup {
       return;
     }
     if player.IsInCombat() {
-      player.SetWarningMessage("MECH LINK UNAVAILABLE IN COMBAT");
+      player.SetWarningMessage("ROBOT LINK UNAVAILABLE IN COMBAT");
       return;
     }
     let terminal = new CMTerminal();
@@ -100,7 +100,7 @@ public class CMTerminal extends InGamePopup {
     this.m_view.SetFrame(owner);
 
     // top bar
-    let brand = TKInk.Plain(frame, "MILITECH  //  MECH LINK", TKScale.TypeXL(), n"Semi-Bold", 0.0);
+    let brand = TKInk.Plain(frame, "CONTROLLABLE MECHS  //  ROBOT LINK", TKScale.TypeXL(), n"Semi-Bold", 0.0);
     brand.SetMargin(inkMargin(70.0, 40.0, 0.0, 0.0));
     this.m_view.Chrome(brand, "accent");
     let rule = new inkRectangle();

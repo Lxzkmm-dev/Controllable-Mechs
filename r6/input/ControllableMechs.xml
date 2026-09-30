@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<!-- Controllable Mechs keys (needs Input Loader). K opens the Mech Link, J links the mech you look at. -->
+<!-- Controllable Mechs keys (needs Input Loader). K opens the Robot Link, J links the robot you look at. -->
 <bindings>
 	<context name="CMMechLink">
 		<action name="CM_OpenLink" map="CM_OpenLink_Button" />

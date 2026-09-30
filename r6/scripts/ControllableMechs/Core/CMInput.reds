@@ -1,6 +1,6 @@
 // =============================================================================
 // CONTROLLABLE MECHS - KEYS
-// K opens the Mech Link, J links the mech V is looking at
+// K opens the Robot Link, J links the robot V is looking at (mech, android, drone, spiderbot)
 // (r6/input/ControllableMechs.xml, needs Input Loader; rebindable in Mod Settings).
 // =============================================================================
 module ControllableMechs
@@ -54,13 +54,13 @@ protected cb func OnDetach() -> Bool {
 public class CMKeybinds {
   @runtimeProperty("ModSettings.mod", "Controllable Mechs")
   @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
-  @runtimeProperty("ModSettings.displayName", "Open Mech Link")
+  @runtimeProperty("ModSettings.displayName", "Open Robot Link")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
   public let cmOpenLink: EInputKey = EInputKey.IK_K;
 
   @runtimeProperty("ModSettings.mod", "Controllable Mechs")
   @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
-  @runtimeProperty("ModSettings.displayName", "Link the mech you look at")
+  @runtimeProperty("ModSettings.displayName", "Link the robot you look at")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
   public let cmLinkLookAt: EInputKey = EInputKey.IK_J;
 }

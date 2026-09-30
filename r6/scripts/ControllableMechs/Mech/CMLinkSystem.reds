@@ -1,15 +1,17 @@
 // =============================================================================
-// CONTROLLABLE MECHS - MECH LINK (the native side)
+// CONTROLLABLE MECHS - ROBOT LINK (the native side)
 //
-// Owns the one mech V is linked to and everything it does in the world:
-//   - Link(): take over the mech V is looking at (a gamedataNPCType.Mech NPC),
-//     turn it friendly and clear its AI role so our commands stick
+// Owns the one robotic NPC V is linked to and everything it does in the world:
+//   - Link(): take over the robot V is looking at (a mech, android, drone or
+//     spiderbot NPC), turn it friendly and clear its AI role so our commands stick
 //   - orders: follow V, hold, move to a point; one live AI command at a time,
 //     cancelled before the next is sent
 //   - telemetry for the terminal (health, distance, order), read on demand
 //
-// Timers: nothing runs while no mech is linked. While linked, one 1s check
-// (mech still there, alive, in range). Nothing runs per frame. The mech is held
+// Quest and boss NPCs are refused, so a link can't break a story scene.
+//
+// Timers: nothing runs while no robot is linked. While linked, one 1s check
+// (unit still there, alive, in range). Nothing runs per frame. The unit is held
 // by EntityID and looked up when needed, never kept alive by a strong ref.
 // =============================================================================
 module ControllableMechs
@@ -22,13 +24,13 @@ public abstract class CMOrder {
 }
 
 public class CMLinkSystem extends ScriptableSystem {
-  private let m_mechID: EntityID;
+  private let m_unitID: EntityID;
   private let m_linked: Bool;
   private let m_order: Int32;
   private let m_cmd: ref<AICommand>;
   private let m_generation: Int32;   // bumps on every link / unlink / session: stale ticks drop out
 
-  private let LINK_RANGE: Float = 60.0;    // how far V can be from a mech to link it
+  private let LINK_RANGE: Float = 60.0;    // how far V can be from a robot to link it
   private let SIGNAL_RANGE: Float = 250.0; // past this the link drops
   private let CHECK_TICK: Float = 1.0;
 
@@ -52,34 +54,67 @@ public class CMLinkSystem extends ScriptableSystem {
   }
 
   // ---------------------------------------------------------------------------
+  // Which NPCs count as robots
+  // ---------------------------------------------------------------------------
+  public static func IsRobot(npc: ref<NPCPuppet>) -> Bool {
+    if !IsDefined(npc) {
+      return false;
+    }
+    switch npc.GetNPCType() {
+      case gamedataNPCType.Mech:
+      case gamedataNPCType.Android:
+      case gamedataNPCType.Drone:
+      case gamedataNPCType.Spiderbot:
+        return true;
+    }
+    return false;
+  }
+
+  public static func KindName(npc: ref<NPCPuppet>) -> String {
+    if !IsDefined(npc) {
+      return "";
+    }
+    switch npc.GetNPCType() {
+      case gamedataNPCType.Mech:
+        return "MECH";
+      case gamedataNPCType.Android:
+        return "ANDROID";
+      case gamedataNPCType.Drone:
+        return "DRONE";
+      case gamedataNPCType.Spiderbot:
+        return "SPIDERBOT";
+    }
+    return "UNIT";
+  }
+
+  // ---------------------------------------------------------------------------
   // Link
   // ---------------------------------------------------------------------------
-  public func IsLinked() -> Bool = this.m_linked && IsDefined(this.Mech())
+  public func IsLinked() -> Bool = this.m_linked && IsDefined(this.Unit())
   public func Order() -> Int32 = this.m_order
 
-  public func Mech() -> ref<NPCPuppet> {
+  public func Unit() -> ref<NPCPuppet> {
     if !this.m_linked {
       return null;
     }
-    return GameInstance.FindEntityByID(this.GetGameInstance(), this.m_mechID) as NPCPuppet;
+    return GameInstance.FindEntityByID(this.GetGameInstance(), this.m_unitID) as NPCPuppet;
   }
 
-  public static func IsMech(npc: ref<NPCPuppet>) -> Bool {
-    return IsDefined(npc) && Equals(npc.GetNPCType(), gamedataNPCType.Mech);
-  }
-
-  // Links the mech V is looking at; returns a message for the HUD / terminal
+  // Links the robot V is looking at; returns a message for the HUD / terminal
   public func LinkLookAt() -> String {
     let player = GetPlayer(this.GetGameInstance());
     if !IsDefined(player) {
       return "";
     }
     let npc = GameInstance.GetTargetingSystem(this.GetGameInstance()).GetLookAtObject(player) as NPCPuppet;
-    if !CMLinkSystem.IsMech(npc) {
-      return "!NO MECH IN SIGHT";
+    if !CMLinkSystem.IsRobot(npc) {
+      return "!NO ROBOT IN SIGHT";
     }
     if !ScriptedPuppet.IsAlive(npc) {
-      return "!MECH IS DESTROYED";
+      return "!" + CMLinkSystem.KindName(npc) + " IS DESTROYED";
+    }
+    if npc.IsQuest() || npc.IsBoss() {
+      return "!" + CMLinkSystem.KindName(npc) + " IS SHIELDED FROM THE LINK";
     }
     if Vector4.Distance(player.GetWorldPosition(), npc.GetWorldPosition()) > this.LINK_RANGE {
       return "!OUT OF LINK RANGE";
@@ -91,20 +126,20 @@ public class CMLinkSystem extends ScriptableSystem {
     if this.m_linked {
       this.Unlink();
     }
-    this.m_mechID = npc.GetEntityID();
+    this.m_unitID = npc.GetEntityID();
     this.m_linked = true;
     this.m_generation += 1;
     this.MakeFriendly(npc);
     this.SetNoRole(npc);
     this.Hold();
     this.Schedule();
-    return "*MECH LINKED";
+    return "*" + CMLinkSystem.KindName(npc) + " LINKED";
   }
 
   public func Unlink() -> Void {
-    let mech = this.Mech();
-    if IsDefined(mech) {
-      this.CancelCmd(mech);
+    let unit = this.Unit();
+    if IsDefined(unit) {
+      this.CancelCmd(unit);
     }
     this.Clear();
   }
@@ -113,27 +148,27 @@ public class CMLinkSystem extends ScriptableSystem {
   // Orders: one live command, the old one cancelled first
   // ---------------------------------------------------------------------------
   public func Follow() -> Void {
-    let mech = this.Mech();
+    let unit = this.Unit();
     let player = GetPlayer(this.GetGameInstance());
-    if !IsDefined(mech) || !IsDefined(player) {
+    if !IsDefined(unit) || !IsDefined(player) {
       return;
     }
     let cmd = new AIFollowTargetCommand();
     cmd.target = player;
     cmd.lookAtTarget = player;
-    cmd.distance = 6.0;
+    cmd.desiredDistance = 6.0;
     cmd.tolerance = 2.0;
     cmd.stopWhenDestinationReached = false;
     cmd.movementType = moveMovementType.Run;
-    this.Send(mech, cmd, CMOrder.Follow());
+    this.Send(unit, cmd, CMOrder.Follow());
   }
 
   public func Hold() -> Void {
-    let mech = this.Mech();
-    if !IsDefined(mech) {
+    let unit = this.Unit();
+    if !IsDefined(unit) {
       return;
     }
-    this.CancelCmd(mech);
+    this.CancelCmd(unit);
     this.m_order = CMOrder.Hold();
   }
 
@@ -145,7 +180,7 @@ public class CMLinkSystem extends ScriptableSystem {
     }
     let target = GameInstance.GetTargetingSystem(this.GetGameInstance()).GetLookAtObject(player);
     let pos: Vector4;
-    if IsDefined(target) && NotEquals(target.GetEntityID(), this.m_mechID) {
+    if IsDefined(target) && NotEquals(target.GetEntityID(), this.m_unitID) {
       pos = target.GetWorldPosition();
     } else {
       pos = player.GetWorldPosition() + player.GetWorldForward() * 15.0;
@@ -154,8 +189,8 @@ public class CMLinkSystem extends ScriptableSystem {
   }
 
   public func MoveTo(pos: Vector4) -> Void {
-    let mech = this.Mech();
-    if !IsDefined(mech) {
+    let unit = this.Unit();
+    if !IsDefined(unit) {
       return;
     }
     let world: WorldPosition;
@@ -166,23 +201,23 @@ public class CMLinkSystem extends ScriptableSystem {
     cmd.movementTarget = spec;
     cmd.ignoreNavigation = false;
     cmd.finishWhenDestinationReached = true;
-    this.Send(mech, cmd, CMOrder.MoveTo());
+    this.Send(unit, cmd, CMOrder.MoveTo());
   }
 
-  private func Send(mech: ref<NPCPuppet>, cmd: ref<AICommand>, order: Int32) -> Void {
-    let ai = mech.GetAIControllerComponent();
+  private func Send(unit: ref<NPCPuppet>, cmd: ref<AICommand>, order: Int32) -> Void {
+    let ai = unit.GetAIControllerComponent();
     if !IsDefined(ai) {
       return;
     }
-    this.CancelCmd(mech);
+    this.CancelCmd(unit);
     ai.SendCommand(cmd);
     this.m_cmd = cmd;
     this.m_order = order;
   }
 
-  private func CancelCmd(mech: ref<NPCPuppet>) -> Void {
+  private func CancelCmd(unit: ref<NPCPuppet>) -> Void {
     if IsDefined(this.m_cmd) {
-      let ai = mech.GetAIControllerComponent();
+      let ai = unit.GetAIControllerComponent();
       if IsDefined(ai) {
         ai.CancelCommand(this.m_cmd);
       }
@@ -194,21 +229,21 @@ public class CMLinkSystem extends ScriptableSystem {
   // Telemetry (read when the terminal draws, not polled)
   // ---------------------------------------------------------------------------
   public func HealthFraction() -> Float {
-    let mech = this.Mech();
-    if !IsDefined(mech) {
+    let unit = this.Unit();
+    if !IsDefined(unit) {
       return 0.0;
     }
-    let id = Cast<StatsObjectID>(mech.GetEntityID());
+    let id = Cast<StatsObjectID>(unit.GetEntityID());
     return GameInstance.GetStatPoolsSystem(this.GetGameInstance()).GetStatPoolValue(id, gamedataStatPoolType.Health, true) / 100.0;
   }
 
   public func Distance() -> Float {
-    let mech = this.Mech();
+    let unit = this.Unit();
     let player = GetPlayer(this.GetGameInstance());
-    if !IsDefined(mech) || !IsDefined(player) {
+    if !IsDefined(unit) || !IsDefined(player) {
       return -1.0;
     }
-    return Vector4.Distance(player.GetWorldPosition(), mech.GetWorldPosition());
+    return Vector4.Distance(player.GetWorldPosition(), unit.GetWorldPosition());
   }
 
   public func SignalFraction() -> Float {
@@ -216,13 +251,15 @@ public class CMLinkSystem extends ScriptableSystem {
     return d < 0.0 ? 0.0 : ClampF(1.0 - d / this.SIGNAL_RANGE, 0.0, 1.0);
   }
 
-  public func MechName() -> String {
-    let mech = this.Mech();
-    return IsDefined(mech) ? GetLocalizedTextByKey(mech.GetDisplayName()) : "";
+  public func UnitName() -> String {
+    let unit = this.Unit();
+    return IsDefined(unit) ? unit.GetDisplayName() : "";
   }
 
+  public func UnitKind() -> String = CMLinkSystem.KindName(this.Unit())
+
   // ---------------------------------------------------------------------------
-  // The 1s link check: only scheduled while a mech is linked
+  // The 1s link check: only scheduled while a robot is linked
   // ---------------------------------------------------------------------------
   private func Schedule() -> Void {
     let cb = new CMLinkTick();
@@ -235,14 +272,14 @@ public class CMLinkSystem extends ScriptableSystem {
     if generation != this.m_generation || !this.m_linked {
       return;
     }
-    let mech = this.Mech();
+    let unit = this.Unit();
     let player = GetPlayer(this.GetGameInstance());
-    if !IsDefined(mech) || !ScriptedPuppet.IsAlive(mech) {
-      this.Drop(player, "MECH LINK LOST");
+    if !IsDefined(unit) || !ScriptedPuppet.IsAlive(unit) {
+      this.Drop(player, "ROBOT LINK LOST");
       return;
     }
     if this.Distance() > this.SIGNAL_RANGE {
-      this.Drop(player, "MECH OUT OF SIGNAL RANGE");
+      this.Drop(player, CMLinkSystem.KindName(unit) + " OUT OF SIGNAL RANGE");
       return;
     }
     this.Schedule();
@@ -256,7 +293,7 @@ public class CMLinkSystem extends ScriptableSystem {
   }
 
   // ---------------------------------------------------------------------------
-  // Taking the mech over: friendly to V, no AI role of its own
+  // Taking the robot over: friendly to V, no AI role of its own
   // ---------------------------------------------------------------------------
   private func MakeFriendly(npc: ref<NPCPuppet>) -> Void {
     let player = GetPlayer(this.GetGameInstance());

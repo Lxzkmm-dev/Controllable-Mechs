@@ -52,22 +52,22 @@ public class CMContent extends TKContent {
   // ---- LINK: status and orders ----
   private func Link(p: ref<TKPage>) -> Void {
     let link = CMLinkSystem.Get(this.game);
-    p.SetTitle("MECH LINK", "REMOTE OPERATION // MILITECH NEURAL UPLINK");
+    p.SetTitle("ROBOT LINK", "REMOTE OPERATION // NEURAL UPLINK");
     p.SetSection("link");
     if !link.IsLinked() {
-      p.Dossier("NO MECH LINKED", "Look at a mech within 60 m and press J, or link it from here.", "OFFLINE", "red");
+      p.Dossier("NO UNIT LINKED", "Look at a mech, android, drone or spiderbot within 60 m and press J, or link it from here.", "OFFLINE", "red");
       p.Gap();
-      p.Button("LINK LOOKED-AT MECH", "link", "", true);
+      p.Button("LINK LOOKED-AT ROBOT", "link", "", true);
       return;
     }
-    p.Dossier(link.MechName(), "Linked unit", "ONLINE", "green");
+    p.Dossier(link.UnitName(), "Linked " + StrLower(link.UnitKind()), "ONLINE", "green");
     let hp = link.HealthFraction();
     p.Stat("INTEGRITY", IntToString(RoundF(hp * 100.0)) + "%", hp < 0.3 ? "!CRITICAL" : "*NOMINAL", hp);
     p.Stat("SIGNAL", IntToString(RoundF(link.Distance())) + " m", "", link.SignalFraction());
     p.Stat("ORDER", CMContent.OrderName(link.Order()), "", -1.0);
     p.Heading("ORDERS");
-    p.Buttons("Command the linked mech", "", "", "FOLLOW|HOLD|MOVE TO TARGET", "follow|hold|move", "||");
-    p.SetTip("MOVE TO TARGET sends the mech to what you look at when the link closes, or 15 m ahead of you.");
+    p.Buttons("Command the linked unit", "", "", "FOLLOW|HOLD|MOVE TO TARGET", "follow|hold|move", "||");
+    p.SetTip("MOVE TO TARGET sends the unit to what you look at when the link closes, or 15 m ahead of you.");
     p.Gap();
     p.Button("CLOSE LINK", "unlink", "", true);
   }
