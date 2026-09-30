@@ -81,11 +81,14 @@ public class CMCSession extends ScriptableSystem {
   private let m_vHealth: Float;
   private let m_lastExit: Float;
 
-  // settings, kept in the save
+  // Settings. They live in the settings file (CMPilotSystem), not the save; these fields
+  // are the session's copy, filled by Sync() once per game session. They are still marked
+  // persistent so a value an older build left in a save can seed the file once.
   private persistent let m_fireMode: Int32;   // CMFireMode
   private persistent let m_chase: Bool;
   private persistent let m_creditVOff: Bool;  // false = kills and aggro credit V (the default)
   private persistent let m_hullX: Int32;      // hull multiplier while piloted, stored +1 (0 = the default, x4)
+  private let m_synced: Bool;
 
   // the view's weight: moving a hulking piece of equipment (both views)
   private let LOOK_STIFFNESS: Float = 7.0;    // spring toward where the mouse points
@@ -135,10 +138,31 @@ public class CMCSession extends ScriptableSystem {
     this.End("", true);
   }
 
+  private func Sync() -> Void {
+    if this.m_synced {
+      return;
+    }
+    this.m_synced = true;
+    let cfg = CMPilotSystem.Get(this.GetGameInstance());
+    if this.m_fireMode != 0 { cfg.Seed("fireMode", IntToString(this.m_fireMode)); }
+    if this.m_chase { cfg.Seed("chaseView", "1"); }
+    if this.m_creditVOff { cfg.Seed("creditV", "0"); }
+    if this.m_hullX > 0 { cfg.Seed("hullMult", IntToString(this.m_hullX - 1)); }
+    this.m_fireMode = Clamp(cfg.Int("fireMode", 0), 0, 2);
+    this.m_chase = cfg.Flag("chaseView", false);
+    this.m_creditVOff = !cfg.Flag("creditV", true);
+    this.m_hullX = Clamp(cfg.Int("hullMult", 4), 1, 10) + 1;
+  }
+
   public func IsActive() -> Bool = this.m_state != 0
-  public func FireMode() -> Int32 = this.m_fireMode
+  public func FireMode() -> Int32 {
+    this.Sync();
+    return this.m_fireMode;
+  }
   public func SetFireMode(mode: Int32) -> Void {
+    this.Sync();
     this.m_fireMode = Clamp(mode, 0, 2);
+    CMPilotSystem.Get(this.GetGameInstance()).PutInt("fireMode", this.m_fireMode);
   }
   // from the terminal (V does the same while piloting)
   public func SetChaseView(on: Bool) -> Void {
@@ -161,17 +185,30 @@ public class CMCSession extends ScriptableSystem {
     return "";
   }
   // how much tougher the mech is while piloted: x its health, 4 by default (stored +1)
-  public func HullMult() -> Float = this.m_hullX > 0 ? Cast<Float>(this.m_hullX - 1) : 4.0
+  public func HullMult() -> Float {
+    this.Sync();
+    return this.m_hullX > 0 ? Cast<Float>(this.m_hullX - 1) : 4.0;
+  }
   public func SetHullMult(x: Int32) -> Void {
+    this.Sync();
     this.m_hullX = Clamp(x, 1, 10) + 1;
+    CMPilotSystem.Get(this.GetGameInstance()).PutInt("hullMult", this.m_hullX - 1);
     CMCSession.Log("hull multiplier x" + IntToString(x) + " (applies on the next link)");
   }
-  public func CreditV() -> Bool = !this.m_creditVOff
+  public func CreditV() -> Bool {
+    this.Sync();
+    return !this.m_creditVOff;
+  }
   public func SetCreditV(on: Bool) -> Void {
+    this.Sync();
     this.m_creditVOff = !on;
+    CMPilotSystem.Get(this.GetGameInstance()).PutFlag("creditV", on);
     CMCSession.Log("credit to V " + (on ? "ON" : "off"));
   }
-  public func IsChase() -> Bool = this.m_chase
+  public func IsChase() -> Bool {
+    this.Sync();
+    return this.m_chase;
+  }
 
   // ---------------------------------------------------------------------------
   // The Pilot key
@@ -232,6 +269,7 @@ public class CMCSession extends ScriptableSystem {
     }
 
     this.rig.Init(unit.Ground(), this.CamUp(), this.CamFwd(), unit.Facing());
+    this.Sync();
     this.rig.SetChase(this.m_chase);
     this.ApplyWeight();
     this.m_clip = 999.0;
@@ -574,7 +612,9 @@ public class CMCSession extends ScriptableSystem {
   }
 
   private func SetChase(on: Bool) -> Void {
+    this.Sync();
     this.m_chase = on;
+    CMPilotSystem.Get(this.GetGameInstance()).PutFlag("chaseView", on);
     this.m_clip = 999.0;
     if IsDefined(this.rig) {
       this.rig.SetChase(this.ChaseNow());
@@ -810,7 +850,7 @@ public class CMCSession extends ScriptableSystem {
         break;
       case EInputKey.IK_B:
         if press {
-          this.m_fireMode = CMFireMode.Next(this.m_fireMode);
+          this.SetFireMode(CMFireMode.Next(this.m_fireMode));
           this.m_slow = 1.0;
           this.FlashTag(CMPilotHud.TagMode());
         }

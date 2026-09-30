@@ -19,16 +19,16 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 
 ## Piloting
 
-- **View:** the game's own free camera entity sits on the mech's sensor mount, or behind it in the chase view, and takes over the view. It turns heavily: a soft spring, capped turn rates, and a limit on how far the view can lead the guns. Footfalls jolt it and each round kicks it. Both views pull in when a wall is between the camera and the mech.
+- **View:** the game's own free camera entity sits on the mech's sensor mount, or behind it in the chase view, and takes over the view. It turns heavily: a soft spring, capped turn rates, and a limit on how far the view can lead the guns. Footfalls jolt it. Recoil is a separate, capped shake of the picture that never moves the aim (CONFIG > RECOIL). Both views pull in when a wall is between the camera and the mech.
 - **Aim:** the mech's own arms aim. Four look-at requests (the rig's LeftWeapon, RightWeapon, Weapon and Chassis parts) follow a marker on the reticle point, and the chassis turns toward it at a capped, accelerating rate. A gun fires only when its barrel is within 4 degrees of the reticle; the HUD shows each gun's state.
 - **Guns:** both MK.31s fire through the game's NPC firing call (`AIWeapon.Fire`) at the reticle point, with the mech as owner, which is the one call that deals damage. A hook on the damage pipeline makes V the instigator, so kills, XP and NCPD heat are V's (CONFIG > KILLS CREDITED TO V). Round speed is four times the NPC default while piloting. The barrels spin up, and each gun heats and locks at 100% until it cools to 35%.
   - Fire modes: **staggered** (default), **linked salvo**, **split** (LMB left gun, RMB right gun).
-- **The mech's own AI is held off** while piloting: senses and target tracking off, a relaxed state, and a hold order while it stands.
+- **The mech's own AI is held off** while piloting: its stimulus reactions (what made it turn and walk toward gunfire), senses and target tracking are off, its state is kept relaxed, and it has a hold order while it stands. All restored on disconnect.
 - **Hull:** the mech's health is multiplied while piloted (CONFIG > HULL, 4 by default), and a beep sounds when integrity is low.
-- **HUD:** the vanilla HUD fades out and a Militech overlay replaces it: reticle with per-gun markers and range, compass tape and heading, a weapons plate (heat, fire mode, missile), a chassis plate (integrity, signal, speed), and a warning plate.
+- **HUD:** the vanilla HUD fades out and a Militech overlay replaces it: reticle with per-gun markers and range, compass tape and heading, a weapons plate (heat, fire mode, missile), a chassis plate (integrity, signal, speed), and a warning plate. It is built from the game's own HUD art, referenced by path (the Basilisk tank HUD, the Militech turret HUD, the shadow and glitch atlases), laid out on a 2160-high design space and scaled to the screen height. Its motion (idle flicker, damage jolt, hot-gun pulse, warning sweep) is engine animations started on events.
 - **V:** V stays where they are, locked in place by the game's gameplay restrictions. A save lock is held while piloting.
 - **Disconnects:** you are disconnected when you press \\, the mech is destroyed, the signal drops (250 m), the link closes, or the session ends. Damage to V also disconnects you, like camera hacking; this can be turned off in CONFIG.
-- **CONFIG** (lengths in feet and inches; the rangefinder stays in metres): fire mode, kill credit, hull, disconnect-when-hit, mouse sensitivity, the view, the chase camera (distance, height, side offset, shoulder), the sensor mount, the palette, and diagnostics.
+- **CONFIG** (lengths in feet and inches; the rangefinder stays in metres): fire mode, kill credit, recoil, hull, disconnect-when-hit, mouse sensitivity, the view, the chase camera (distance, height, side offset, shoulder), the sensor mount, the palette, and diagnostics.
 - **Diagnostics** (CONFIG > DIAGNOSTICS, off by default): traces hits and session events to the game log, tag `ControllableMechs`.
 - **Test spawn:** the terminal's MOTOR POOL section spawns a Militech Minotaur (`Character.q003_militech_mech`) in front of V and links it. It is not saved.
 
@@ -40,7 +40,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
   - `Control/CMCUnit.reds`: what a pilotable unit must provide.
   - `Control/CMUMinotaur.reds`: the Minotaur: look-at aim, the fire gate, the chassis turn, walking, AI suppression, hull, audio and the missile.
   - `Control/CMCHits.reds`: the damage pipeline hook (V's credit, the hit marker, the diagnostics trace).
-  - `Pilot/CMPilotSystem.reds`: the saved settings (the name is kept from the alpha so saves carry over).
+  - `Pilot/CMPilotSystem.reds`: the settings. They are kept in `r6/storages/ControllableMechs/settings.txt`, not in the save, so loading an older save never changes them.
   - `Pilot/CMPilotRig.reds`: the weighted camera math (no game calls).
   - `Pilot/CMPilotGuns.reds`: the two HMGs: discovery, fire modes, cadence and heat.
   - `Pilot/CMPilotHud.reds`: the Militech overlay on the HUD layer.
@@ -55,7 +55,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 - **TerminalKit** (the standalone TerminalKIT mod, with TerminalKit Tools). This mod doesn't ship its own copy, so there is only ever one TerminalKit in the load order.
 - Codeware
 - TweakXL
-- RedFunctions (TerminalKit uses it)
+- RedFunctions (TerminalKit uses it, and the settings file is written through it)
 - Input Loader
 - Optional: Mod Settings, to rebind the keys.
 

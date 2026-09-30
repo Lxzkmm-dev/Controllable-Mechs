@@ -11,6 +11,10 @@ The control framework (`ControllableMechs.Control`) is now the mod's pilot mode.
 - **HUD:** a Militech overlay with the keys built in as tags.
 - **Terminal:** UNIT, CONFIG and TOOLS tabs with a military style, font and palette. CONFIG holds every setting, in feet and inches, including a CHASE CAMERA section (distance, height, side offset, shoulder).
 - **Removed:** the alpha's Pilot Mode and its settings (aim mode, traverse speed, arm tracking, MK.31 damage, debug readout), the SPIKES tab and all spike code. The hit trace stays behind CONFIG > DIAGNOSTICS, off by default; with it off the mod writes nothing to the game log.
+- **AI takeover fixed at the source:** the piloted mech kept waking up because gunfire, explosions and nearby hits are stimuli, and its reaction component put it in the Alerted state, where it turns to the noise and walks over. That component is now off while piloted, the threat list is cleared, and the state is checked ten times a second.
+- **Recoil:** a camera-only shake that never moves the aim, about a sixth of the old kick, capped at 1.5 degrees up. CONFIG > RECOIL, 0-200%.
+- **HUD art:** plates, frames, rulers and hatches from the game's own tank and turret HUD atlases; cell bars; a deeper phosphor green; idle flicker, a damage jolt with tearing lines, a pulsing warning panel. The HUD is scaled to the screen height (it drew 1.5 times too large on 1440-high screens).
+- **Settings moved out of the save** into `r6/storages/ControllableMechs/settings.txt`, so loading an older save no longer changes them. Values found in a save are copied over once.
 - **Needs** TweakXL for the missile's attack record.
 ## 0.1.0 Alpha
 
