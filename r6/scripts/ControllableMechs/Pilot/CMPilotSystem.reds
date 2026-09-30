@@ -65,6 +65,9 @@ public class CMPilotSystem extends ScriptableSystem {
   private let m_moveTarget: Vector4;
   private let m_moveSent: Float;
   private let m_moveRun: Bool;
+  private let m_moveYaw: Float;
+  private let m_aligned: Bool;      // the body (and its guns) faces the reticle closely enough to fire
+  private let m_unalignedHeld: Float;
   private let m_turnCmd: ref<AICommand>;
   private let m_turnSent: Float;
 
@@ -98,6 +101,7 @@ public class CMPilotSystem extends ScriptableSystem {
   private let MOUNT_UP_CM: Int32 = 230;
   private let MOUNT_FWD_CM: Int32 = 260;
   private let SPREAD_DEG: Float = 0.6;
+  private let ALIGN_DEG: Float = 15.0;   // how far the reticle may be off the body's facing and still fire
   private let SIGNAL_RANGE: Float = 250.0;
 
   public static func Get(game: GameInstance) -> ref<CMPilotSystem> {
@@ -524,9 +528,19 @@ public class CMPilotSystem extends ScriptableSystem {
     }
     this.ApplyCamera();
 
-    // triggers
-    let lmb = this.Key(CMPilotKey.Lmb());
-    let rmb = this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb());
+    // triggers: the MK.31s are fixed to the body, so they only fire once it faces the reticle
+    // (otherwise the flash leaves the barrels one way and the rounds go another)
+    this.m_aligned = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))) < this.ALIGN_DEG;
+    if !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
+      this.m_unalignedHeld += dt;
+      if this.m_unalignedHeld > 2.0 && this.m_unalignedHeld - dt <= 2.0 {
+        TKLog.Add("ControllableMechs", "pilot: trigger held 2 s but the chassis is still " + FloatToStringPrec(AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))), 0) + " deg off the reticle");
+      }
+    } else {
+      this.m_unalignedHeld = 0.0;
+    }
+    let lmb = this.m_aligned && this.Key(CMPilotKey.Lmb());
+    let rmb = this.m_aligned && this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb());
     if lmb || rmb {
       this.UpdateAim();
       let shots = this.m_guns.Update(mech, now, dt, lmb, rmb, this.m_fireMode, this.m_aim, this.SPREAD_DEG, this.m_rig.pos);
@@ -646,14 +660,23 @@ public class CMPilotSystem extends ScriptableSystem {
     let turned = !this.m_moving || Vector4.Dot(dir, this.m_moveDir) < 0.94;
     let close = Vector4.Distance(pos, this.m_moveTarget) < 4.0;
     let stale = now - this.m_moveSent > 1.5;
-    if turned || close || stale || NotEquals(run, this.m_moveRun) {
+    let swung = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - this.m_moveYaw)) > 12.0;
+    if turned || close || stale || swung || NotEquals(run, this.m_moveRun) {
       let target = pos + dir * 9.0;
       let world: WorldPosition;
       WorldPosition.SetVector4(world, target);
       let spec: AIPositionSpec;
       AIPositionSpec.SetWorldPosition(spec, world);
+      // keep the body (and the guns fixed to it) facing where the torso aims while walking
+      let face: WorldPosition;
+      WorldPosition.SetVector4(face, pos + CMPilotRig.Dir(this.m_rig.yaw, 0.0) * 30.0);
+      let faceSpec: AIPositionSpec;
+      AIPositionSpec.SetWorldPosition(faceSpec, face);
       let cmd = new AIMoveToCommand();
       cmd.movementTarget = spec;
+      cmd.facingTarget = faceSpec;
+      cmd.rotateEntityTowardsFacingTarget = true;
+      this.m_moveYaw = this.m_rig.yaw;
       cmd.movementType = run ? moveMovementType.Run : moveMovementType.Walk;
       cmd.ignoreNavigation = false;
       cmd.useStart = !this.m_moving;
@@ -669,10 +692,11 @@ public class CMPilotSystem extends ScriptableSystem {
     }
   }
 
-  // standing still: the body swings round when the torso is far off its facing
+  // standing still: the body keeps turning toward where the torso aims, at its own heavy pace
+  // (the MK.31s are fixed to the body, so this is what points the barrels)
   private func TurnToward(mech: ref<NPCPuppet>, now: Float) -> Void {
     let body = CMPilotRig.YawOf(mech.GetWorldForward());
-    if AbsF(CMPilotRig.Wrap(this.m_rig.yaw - body)) < 55.0 || now - this.m_turnSent < 1.5 {
+    if AbsF(CMPilotRig.Wrap(this.m_rig.yaw - body)) < 6.0 || now - this.m_turnSent < 0.35 {
       return;
     }
     let target = mech.GetWorldPosition() + CMPilotRig.Dir(this.m_rig.yaw, 0.0) * 20.0;
@@ -682,7 +706,7 @@ public class CMPilotSystem extends ScriptableSystem {
     AIPositionSpec.SetWorldPosition(spec, world);
     let cmd = new AIRotateToCommand();
     cmd.target = spec;
-    cmd.angleTolerance = 10.0;
+    cmd.angleTolerance = 3.0;
     this.Send(mech, cmd, false);
     this.m_turnSent = now;
   }
@@ -739,6 +763,10 @@ public class CMPilotSystem extends ScriptableSystem {
     } else {
       if s.signal < 0.2 {
         s.warning = "SIGNAL DEGRADED - RETURN TO OPERATOR";
+      } else {
+        if !this.m_aligned {
+          s.warning = "ALIGNING CHASSIS";
+        }
       }
     }
     if this.m_fireMode == CMFireMode.Split() {
