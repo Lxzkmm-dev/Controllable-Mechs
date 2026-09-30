@@ -26,6 +26,7 @@ public class CMPilotSystem extends ScriptableSystem {
   private persistent let m_chaseSideCm: Int32;   // chase view: off the centre line, toward the shoulder
   private persistent let m_shoulderLeft: Bool;   // chase view: over the left shoulder instead of the right
   private persistent let m_showDebug: Bool;      // diagnostics: the hit trace and the file log
+  private persistent let m_recoilPct: Int32;     // camera shake from the guns, % of the default
 
   private let MOUNT_UP_CM: Int32 = 230;
   private let MOUNT_FWD_CM: Int32 = 260;
@@ -42,6 +43,9 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SetStayWhenHit(stay: Bool) -> Void { this.m_stayWhenHit = stay; }
   public func SensPct() -> Int32 = this.m_sensPct > 0 ? this.m_sensPct - 1 : 100
   public func SetSensPct(v: Int32) -> Void { this.m_sensPct = Clamp(v, 25, 300) + 1; }
+
+  public func RecoilPct() -> Int32 = this.m_recoilPct > 0 ? this.m_recoilPct - 1 : 100
+  public func SetRecoilPct(v: Int32) -> Void { this.m_recoilPct = Clamp(v, 0, 200) + 1; }
 
   // ---- the sensor (sight view) mount ----
   public func CamUpCm() -> Int32 = this.m_camUpCm > 0 ? this.m_camUpCm - 1 : this.MOUNT_UP_CM

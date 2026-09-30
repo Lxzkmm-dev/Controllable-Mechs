@@ -231,6 +231,7 @@ public class CMPilotHud {
   // while its timer is running.
   private let m_tags: array<ref<inkText>>;
   private let m_tagT: array<Float>;
+  private let m_tagDim: array<Float>;   // each tag's resting opacity
   private let m_tagSplit: Bool;
   private let TAG_DIM: Float = 0.28;
   private let TAG_INTRO: Float = 7.0;    // seconds bright after the link comes up (boot included)
@@ -243,7 +244,7 @@ public class CMPilotHud {
   public static func TagView() -> Int32 = 4
   public static func TagExit() -> Int32 = 5
 
-  private func Tag(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, text: String, right: Bool) -> Void {
+  private func Tag(root: ref<inkCanvas>, anchor: inkEAnchor, x: Float, y: Float, text: String, right: Bool) -> ref<inkText> {
     let t = CMPilotHud.Label(root, anchor, x, y, text, 26, n"Semi-Bold", CMPilotHud.Caution());
     if right {
       t.SetAnchorPoint(Vector2(1.0, 0.0));
@@ -253,6 +254,8 @@ public class CMPilotHud {
     }
     ArrayPush(this.m_tags, t);
     ArrayPush(this.m_tagT, this.TAG_INTRO);
+    ArrayPush(this.m_tagDim, this.TAG_DIM);
+    return t;
   }
 
   public func TagFlash(i: Int32) -> Void {
@@ -268,7 +271,8 @@ public class CMPilotHud {
       if this.m_tagT[i] > 0.0 {
         this.m_tagT[i] -= dt;
         // the last half second fades down to the resting level
-        this.m_tags[i].SetOpacity(this.m_tagT[i] > 0.5 ? 1.0 : this.TAG_DIM + (1.0 - this.TAG_DIM) * MaxF(0.0, this.m_tagT[i]) / 0.5);
+        let dim = this.m_tagDim[i];
+        this.m_tags[i].SetOpacity(this.m_tagT[i] > 0.5 ? 1.0 : dim + (1.0 - dim) * MaxF(0.0, this.m_tagT[i]) / 0.5);
       }
       i += 1;
     }
@@ -305,7 +309,7 @@ public class CMPilotHud {
   }
 
   private func Corner(root: ref<inkCanvas>, anchor: inkEAnchor, sx: Float, sy: Float) -> Void {
-    let inset = 40.0;
+    let inset = 90.0;   // 4% of the screen height in from every edge
     let len = 170.0;
     let t = 10.0;
     let ax = sx > 0.0 ? 0.0 : 1.0;
@@ -370,7 +374,7 @@ public class CMPilotHud {
 
   private func BuildTop(root: ref<inkCanvas>) -> Void {
     // the unit, once, small, in the top-left corner
-    this.m_title = CMPilotHud.Label(root, inkEAnchor.TopLeft, 110.0, 84.0, "MILITECH MINOTAUR", 26, n"Semi-Bold", CMPilotHud.Dim());
+    this.m_title = CMPilotHud.Label(root, inkEAnchor.TopLeft, 200.0, 130.0, "MILITECH MINOTAUR", 26, n"Semi-Bold", CMPilotHud.Dim());
 
     // the compass tape: nine bearings 15 deg apart and a tick every 5, sliding under a
     // fixed index; SetAttitude moves it every frame (SPACING px per 15 deg)
@@ -492,7 +496,7 @@ public class CMPilotHud {
   // The chassis plate, bottom left: the hull as a ten-segment bar, the uplink and ground
   // speed on one small line, and the view and disconnect keys.
   private func BuildLeft(root: ref<inkCanvas>) -> Void {
-    let x = 140.0;
+    let x = 200.0;   // the plate's edge sits 160 px in from the screen edge
     this.Plate(root, inkEAnchor.BottomLeft, x - 40.0, 420.0, this.BAR_W + 80.0, 290.0);
     this.m_integrityText = CMPilotHud.Label(root, inkEAnchor.BottomLeft, x, 395.0, "HULL 100%", 38, n"Semi-Bold", CMPilotHud.Amber());
     CMPilotHud.Box(root, inkEAnchor.BottomLeft, x, 336.0, this.BAR_W, 28.0, CMPilotHud.Dim(), 0.35);
@@ -509,20 +513,21 @@ public class CMPilotHud {
   // The operator range and the old fire-control lines are folded into the two plates; the
   // widgets the refresh still writes to are kept, hidden.
   private func BuildRight(root: ref<inkCanvas>) -> Void {
-    this.m_link = CMPilotHud.Label(root, inkEAnchor.TopRight, 110.0, 84.0, "", 26, n"Semi-Bold", CMPilotHud.Dim());
+    this.m_link = CMPilotHud.Label(root, inkEAnchor.TopRight, 200.0, 130.0, "", 26, n"Semi-Bold", CMPilotHud.Dim());
     this.m_link.SetAnchorPoint(Vector2(1.0, 0.0));
   }
 
   // The weapons plate, bottom right: each MK.31's state and a ten-segment temperature bar,
   // the fire mode, the missile, and their keys.
   private func BuildGuns(root: ref<inkCanvas>) -> Void {
-    let x = 140.0;
-    let col = x + this.BAR_W - 60.0;   // the key column, left in the plate
+    let x = 200.0;
     this.Plate(root, inkEAnchor.BottomRight, x - 40.0, 520.0, this.BAR_W + 80.0, 390.0);
     // the four tags are pushed in index order: fire 0, mode 1, missile 2, zoom 3
     this.Tag(root, inkEAnchor.BottomRight, x, 226.0, "[LMB] FIRE", true);
-    this.Tag(root, inkEAnchor.BottomRight, col, 320.0, "[B]", true);
-    this.Tag(root, inkEAnchor.BottomRight, col, 272.0, "[G]", true);
+    // the fire mode and the missile are status lines with their key in front, so they stay
+    // readable at rest and only brighten when the key is used
+    this.m_mode = this.StatusTag(root, x, 324.0, "[B] MODE STAGGERED");
+    this.m_msl = this.StatusTag(root, x, 276.0, "[G] MSL READY");
     this.Tag(root, inkEAnchor.Centered, 0.0, 222.0, "[RMB] ZOOM", false);
 
     this.m_stateL = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, 495.0, "L  ARMED", 30, n"Semi-Bold", CMPilotHud.Pale());
@@ -541,10 +546,14 @@ public class CMPilotHud {
     this.m_heatR.SetAnchorPoint(Vector2(1.0, 0.0));
     this.Segments(root, inkEAnchor.BottomRight, x, 365.0, 24.0);
 
-    this.m_mode = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, 324.0, "STAGGERED", 30, n"Semi-Bold", CMPilotHud.Amber());
-    this.m_mode.SetAnchorPoint(Vector2(1.0, 0.0));
-    this.m_msl = CMPilotHud.Label(root, inkEAnchor.BottomRight, x, 276.0, "", 30, n"Semi-Bold", CMPilotHud.Amber());
-    this.m_msl.SetAnchorPoint(Vector2(1.0, 0.0));
+  }
+
+  private func StatusTag(root: ref<inkCanvas>, x: Float, y: Float, text: String) -> ref<inkText> {
+    let t = this.Tag(root, inkEAnchor.BottomRight, x, y, text, true);
+    t.SetFontSize(30);
+    t.SetTintColor(CMPilotHud.Amber());
+    this.m_tagDim[ArraySize(this.m_tagDim) - 1] = 0.85;
+    return t;
   }
 
   // the old hint line is replaced by the key tags; the widget stays for the refresh, hidden
@@ -772,7 +781,7 @@ public class CMPilotHud {
     this.m_signalText.SetTintColor(s.signal < 0.25 ? CMPilotHud.Red() : CMPilotHud.Pale());
     this.m_speed.SetText("GND " + FloatToStringPrec(s.speed, 1) + " M/S");
 
-    this.m_mode.SetText(CMFireMode.Name(s.fireMode));
+    this.m_mode.SetText("[B] MODE " + CMFireMode.Name(s.fireMode));
     let split = s.fireMode == CMFireMode.Split();
     if NotEquals(split, this.m_tagSplit) {
       this.m_tagSplit = split;
@@ -791,7 +800,7 @@ public class CMPilotHud {
     if warned {
       this.m_warnPlate.SetOpacity(this.m_flash ? 1.0 : 0.5);
     }
-    this.m_msl.SetText(s.missile);
+    this.m_msl.SetText(StrLen(s.missile) > 0 ? "[G] " + s.missile : "");
     this.m_msl.SetTintColor(StrContains(s.missile, "READY") ? CMPilotHud.Amber() : CMPilotHud.Caution());
     this.m_hints.SetText(s.hints);
     if StrLen(s.debug) > 0 {

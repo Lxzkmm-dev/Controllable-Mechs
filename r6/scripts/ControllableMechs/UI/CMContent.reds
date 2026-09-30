@@ -102,6 +102,9 @@ public class CMContent extends TKContent {
       case "creditv":
         session.SetCreditV(Equals(CMContent.Str(arg), "1"));
         break;
+      case "recoil":
+        cfg.SetRecoilPct(CMContent.Val(arg, cfg.RecoilPct()));
+        break;
       case "hull":
         session.SetHullMult(CMContent.Val(arg, 4));
         break;
@@ -202,6 +205,7 @@ public class CMContent extends TKContent {
       CMFireMode.Name(0) + "|" + CMFireMode.Name(1) + "|" + CMFireMode.Name(2), "0|1|2", "firemode", "");
     p.SetTip("STAGGERED: LMB fires both, barrels alternating. LINKED SALVO: LMB fires both at once. SPLIT: LMB left gun, RMB right gun, MMB optics.");
     p.Check("KILLS CREDITED TO V", "The mech's hits count as yours: kills, XP, NCPD heat, who enemies turn on", session.CreditV(), "creditv", "");
+    p.Slider("RECOIL", "How much the guns shake the view; it never moves the aim (from the next link-in)", "", "0|200|10|" + IntToString(cfg.RecoilPct()) + "|%", "recoil", "");
     p.Slider("HULL", "The mech's health while you pilot it, times its own (from the next link-in)", "", "1|10|1|" + IntToString(RoundF(session.HullMult())) + "|x", "hull", "");
 
     p.Heading("OPERATOR");

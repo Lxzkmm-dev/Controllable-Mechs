@@ -545,7 +545,7 @@ public class CMCSession extends ScriptableSystem {
       this.m_hud.Hit(kill);
     }
     if kill && IsDefined(this.rig) {
-      this.rig.Recoil(0.35);
+      this.rig.Recoil(0.3);
     }
   }
 
@@ -587,6 +587,7 @@ public class CMCSession extends ScriptableSystem {
     this.rig.SetWeight(this.LOOK_STIFFNESS, this.LOOK_DAMPING, this.LOOK_YAW_RATE * k, this.LOOK_PITCH_RATE * k, this.LOOK_LEAD * k);
     this.rig.SetZoomFov(this.OPTICS_FOV);
     this.rig.SetStepWeight(this.STOMP);
+    this.rig.SetRecoilScale(Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).RecoilPct()) / 100.0);
   }
 
   private func ApplyCamera() -> Void {
@@ -600,8 +601,8 @@ public class CMCSession extends ScriptableSystem {
     WorldTransform.SetOrientation(wt, CMCSession.Identity());
     this.m_camEntity.SetWorldTransform(wt);   // the entity stays unrotated,
     let e: EulerAngles;                       // the component carries the view
-    e.Yaw = this.rig.yaw;
-    e.Pitch = this.rig.pitch;
+    e.Yaw = this.rig.yaw + this.rig.kickYaw;       // recoil shakes the picture,
+    e.Pitch = this.rig.pitch + this.rig.kickPitch;   // not the aim
     e.Roll = this.rig.roll;
     this.m_cam.SetLocalOrientation(EulerAngles.ToQuat(e));
     if AbsF(this.rig.fov - this.m_lastFov) > 0.05 {

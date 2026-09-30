@@ -10,7 +10,7 @@
 //     'fwd' ahead along the VIEW's facing, not the chassis's (the chassis turns in
 //     jerky AI steps; tying the camera to it made the view lurch). The weight is
 //     added on top as small offsets that settle back: a bob and a jolt plus roll
-//     on every footfall, and a kick on every shot
+//     on every footfall; recoil is a separate shake of the view that never moves the aim
 // Angles are degrees in the game's convention: yaw 0 faces +Y, positive yaw
 // turns left, positive pitch looks up.
 // =============================================================================
@@ -78,6 +78,10 @@ public class CMPilotRig {
     this.m_yawVel = 0.0;
     this.m_pitchVel = 0.0;
     this.m_rollVel = 0.0;
+    this.kickYaw = 0.0;
+    this.kickPitch = 0.0;
+    this.m_kickYawVel = 0.0;
+    this.m_kickPitchVel = 0.0;
     this.m_jolt = 0.0;
     this.m_joltVel = 0.0;
     this.m_lastGround = ground;
@@ -155,11 +159,26 @@ public class CMPilotRig {
     }
   }
 
-  // a shot: `k` 0..1 scales the kick
-  public func Recoil(k: Float) -> Void {
-    this.m_pitchVel += 16.0 * k;
-    this.m_yawVel += RandRangeF(-7.0, 7.0) * k;
-    this.m_joltVel -= 0.4 * k;
+  // Recoil is a shake of the camera only: kickYaw / kickPitch are added to the view when
+  // it is drawn and never to where it aims, so the reticle point and the guns stay put.
+  // Each kick is a random shove with a slight upward lean on a stiff spring, so rapid fire
+  // shakes instead of climbing, and the offset is capped at 1.5 degrees up.
+  public let kickYaw: Float;
+  public let kickPitch: Float;
+  private let m_kickYawVel: Float;
+  private let m_kickPitchVel: Float;
+  private let m_kickScale: Float;   // the RECOIL setting + 1, so 0 means "not set" (100%)
+
+  public func SetRecoilScale(k: Float) -> Void {
+    this.m_kickScale = MaxF(0.0, k) + 1.0;
+  }
+
+  // a shot: `deg` is roughly how far this one kick throws the view, in degrees
+  public func Recoil(deg: Float) -> Void {
+    let v = deg * 33.0 * (this.m_kickScale > 0.0 ? this.m_kickScale - 1.0 : 1.0);
+    this.m_kickPitchVel += RandRangeF(-0.6, 1.0) * v;
+    this.m_kickYawVel += RandRangeF(-1.0, 1.0) * v;
+    this.m_joltVel -= 0.004 * v;
   }
 
   // `ground`: the mech's own position; `up` / `fwd`: the sensor's height and reach
@@ -228,6 +247,12 @@ public class CMPilotRig {
     this.m_pitchVel += (this.m_turnK * dp - this.m_turnDamp * this.m_pitchVel) * h;
     this.m_pitchVel = ClampF(this.m_pitchVel, -this.m_maxPitchRate, this.m_maxPitchRate);
     this.pitch = ClampF(this.pitch + this.m_pitchVel * h, this.m_pitchMin - 4.0, this.m_pitchMax + 4.0);
+
+    // the recoil shake: stiff and well damped, back to zero within a quarter second
+    this.m_kickPitchVel += (-220.0 * this.kickPitch - 22.0 * this.m_kickPitchVel) * h;
+    this.kickPitch = ClampF(this.kickPitch + this.m_kickPitchVel * h, -1.0, 1.5);
+    this.m_kickYawVel += (-220.0 * this.kickYaw - 22.0 * this.m_kickYawVel) * h;
+    this.kickYaw = ClampF(this.kickYaw + this.m_kickYawVel * h, -1.2, 1.2);
 
     // roll and the vertical jolt settle back to zero
     this.m_rollVel += (-40.0 * this.roll - 7.0 * this.m_rollVel) * h;

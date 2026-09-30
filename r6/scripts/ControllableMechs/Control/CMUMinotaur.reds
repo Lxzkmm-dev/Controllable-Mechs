@@ -67,7 +67,7 @@ public class CMUMinotaur extends CMCUnit {
   private let LOOKAT_BLEND: Float = 3.0;     // look-at blend-in speed
 
   private let ROUND_SPEED: Float = 4.0;      // x the MK.31's smart-round velocity while piloted
-  private let KICK: Float = 0.6;             // camera kick per round (alpha: 0.45)
+  private let KICK: Float = 0.1;             // degrees of camera shake per round (CONFIG > RECOIL scales it)
   private let SPIN_UP: Float = 0.5;          // seconds from still to full spin
   private let SPIN_DOWN: Float = 0.9;        // seconds from full spin to still
   private let SPIN_FIRE: Float = 0.3;        // spin fraction at which rounds start
@@ -484,14 +484,14 @@ public class CMUMinotaur extends CMCUnit {
       }
       AIWeapon.Fire(mech, launcher, EngineTime.ToFloat(GameInstance.GetSimTime(this.m_game)), 1.0, trigger, at);
       GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_wpn_missile_fire_single");
-      s.rig.Recoil(1.6);
+      s.rig.Recoil(0.9);
       CMCSession.Log("missile: REAL LAUNCHER " + TDBID.ToStringDEBUG(ItemID.GetTDBID(launcher.GetItemID())) + " fired at " + CMCHits.V(at));
       return;
     }
     CMCSession.Log("missile: no live launcher object, using the stand-in strike");
     let flight = ClampF(Vector4.Distance(mech.GetWorldPosition(), at) / this.MISSILE_SPEED, 0.25, 2.5);
     GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_wpn_missile_fire_single");
-    s.rig.Recoil(1.6);
+    s.rig.Recoil(0.9);
     let cb = new CMUMinotaurMissileCb();
     cb.unit = this;
     cb.at = at;
@@ -924,7 +924,7 @@ public class CMUMinotaur extends CMCUnit {
     st.hasR = this.m_guns.right.Ready();
     let wait = this.m_missileReady - s.Now();
     st.hints = st.hints + "   [G] MISSILE";
-    st.missile = wait > 0.0 ? "MSL  RELOADING  " + IntToString(CeilF(wait)) + "S" : "MSL  READY";
+    st.missile = wait > 0.0 ? "MSL RELOAD " + IntToString(CeilF(wait)) + "S" : "MSL READY";
     if st.integrity < 0.3 {
       st.warning = "HULL INTEGRITY LOW";
     } else {
