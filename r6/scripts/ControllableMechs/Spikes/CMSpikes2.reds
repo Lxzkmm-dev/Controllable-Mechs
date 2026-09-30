@@ -101,14 +101,14 @@ public class CMSpike2System extends ScriptableSystem {
     return best;
   }
 
-  private func Health(obj: ref<GameObject>) -> Float {
+  public static func Health(obj: ref<GameObject>) -> Float {
     if !IsDefined(obj) {
       return -1.0;
     }
-    return GameInstance.GetStatPoolsSystem(this.GetGameInstance()).GetStatPoolValue(Cast<StatsObjectID>(obj.GetEntityID()), gamedataStatPoolType.Health, false);
+    return GameInstance.GetStatPoolsSystem(obj.GetGame()).GetStatPoolValue(Cast<StatsObjectID>(obj.GetEntityID()), gamedataStatPoolType.Health, false);
   }
 
-  private func Describe(obj: ref<GameObject>) -> String {
+  public static func Describe(obj: ref<GameObject>) -> String {
     if !IsDefined(obj) {
       return "nothing (no object under the crosshair)";
     }
@@ -125,7 +125,7 @@ public class CMSpike2System extends ScriptableSystem {
   }
 
   // angle between a weapon's forward and the direction from it to a point
-  private static func AimError(weapon: ref<GameObject>, at: Vector4) -> Float {
+  public static func AimError(weapon: ref<GameObject>, at: Vector4) -> Float {
     if !IsDefined(weapon) {
       return -1.0;
     }
@@ -154,6 +154,9 @@ public class CMSpike2System extends ScriptableSystem {
       case 0: return "OWNER MECH";
       case 1: return "OWNER V + PLAYER ATTACK";
       case 2: return "OWNER V + NPC ATTACK";
+      case 4: return "S2c VANILLA TURRET CALL (V, ALONG THE BARREL)";
+      case 5: return "S2c VANILLA CALL + TARGET POINT";
+      case 6: return "S2c OWNER MECH, ALONG THE BARREL";
     }
     return "V TRACERS + V HIT";
   }
@@ -177,18 +180,35 @@ public class CMSpike2System extends ScriptableSystem {
     }
     let player = GetPlayer(game);
     this.m_target = GameInstance.GetTargetingSystem(game).GetLookAtObject(player);
-    this.m_targetHP = this.Health(this.m_target);
+    this.m_targetHP = CMSpike2System.Health(this.m_target);
     this.m_mode = mode;
     this.m_burst = 10;
     this.m_next = 0.0;
     let line = "S2b " + CMSpike2System.ModeName(mode) + (this.m_fromMarker ? ", from the marker point" : ", from the mech gun")
-      + ": target " + this.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1);
+      + ": target " + CMSpike2System.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1);
     if mode == 1 || mode == 2 {
       line += ", attack " + TDBID.ToStringDEBUG(CMSpike2System.AttackOf(weapon, mode == 1));
     }
     this.Log(line);
     this.EnsureTick();
     return "*FIRING: " + CMSpike2System.ModeName(mode);
+  }
+
+  // S2c: fire the way a V-controlled vanilla turret does (securityTurret.script,
+  // ShootAttachedWeapon: AIWeapon.Fire(player, weapon, simTime, 1.0, triggerMode)).
+  // The guns are first aimed at the crosshair with the S6 look-at (all four parts),
+  // and the burst starts 1.5 s later, once they have turned.
+  public func S2cBurst(mode: Int32) -> String {
+    let msg = this.S6LookAt(4);
+    if StrBeginsWith(msg, "!") {
+      return msg;
+    }
+    msg = this.S2bBurst(mode);
+    if StrBeginsWith(msg, "!") {
+      return msg;
+    }
+    this.m_next = EngineTime.ToFloat(GameInstance.GetEngineTime(this.GetGameInstance())) + 1.5;
+    return "*GUNS TURNING, THEN " + msg;
   }
 
   private static func AttackOf(weapon: ref<WeaponObject>, player: Bool) -> TweakDBID {
@@ -212,6 +232,25 @@ public class CMSpike2System extends ScriptableSystem {
     }
     let to = this.AimPoint();
     let now = EngineTime.ToFloat(GameInstance.GetSimTime(game));
+    if this.m_mode >= 4 {
+      let trigger = gamedataTriggerMode.FullAuto;
+      let rec = weapon.GetWeaponRecord();
+      if IsDefined(rec) && IsDefined(rec.PrimaryTriggerMode()) {
+        trigger = rec.PrimaryTriggerMode().Type();
+      }
+      switch this.m_mode {
+        case 4:
+          AIWeapon.Fire(player, weapon, now, 1.0, trigger);
+          break;
+        case 5:
+          AIWeapon.Fire(player, weapon, now, 1.0, trigger, to);
+          break;
+        default:
+          AIWeapon.Fire(mech, weapon, now, 1.0, trigger);
+          break;
+      }
+      return;
+    }
     let noTarget: ref<GameObject>;
     let attack: TweakDBID;
     if this.m_mode == 1 || this.m_mode == 2 {
@@ -279,8 +318,8 @@ public class CMSpike2System extends ScriptableSystem {
   }
 
   public func S2bReport() -> Void {
-    let hp = this.Health(this.m_target);
-    let line = "S2b " + CMSpike2System.ModeName(this.m_mode) + " result: target " + this.Describe(this.m_target);
+    let hp = CMSpike2System.Health(this.m_target);
+    let line = "S2b " + CMSpike2System.ModeName(this.m_mode) + " result: target " + CMSpike2System.Describe(this.m_target);
     if IsDefined(this.m_target) {
       line += ", health " + FloatToStringPrec(this.m_targetHP, 1) + " -> " + FloatToStringPrec(hp, 1) + " (" + FloatToStringPrec(this.m_targetHP - hp, 1) + " damage)";
       let puppet = this.m_target as ScriptedPuppet;
@@ -289,6 +328,9 @@ public class CMSpike2System extends ScriptableSystem {
       }
     }
     this.Log(line);
+    if this.m_mode >= 4 {
+      this.S6Clear();
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -352,7 +394,9 @@ public class CMSpike2System extends ScriptableSystem {
     if this.m_assembleOn {
       return;
     }
-    GameInstance.GetCallbackSystem().RegisterCallback(n"Entity/Assemble", this, n"OnMechAssemble").AddTarget(EntityTarget.RecordID(CMSpike2System.Minotaur()));
+    // no record filter: with one, the hook never fired for the spawned Minotaur (batch 2 log).
+    // Registered only until our mech spawns, and the handler checks the ID first.
+    GameInstance.GetCallbackSystem().RegisterCallback(n"Entity/Assemble", this, n"OnMechAssemble");
     this.m_assembleOn = true;
   }
 
@@ -686,6 +730,16 @@ public class CMSpike2System extends ScriptableSystem {
   // The page (above batch 1 on the SPIKES tab)
   // ---------------------------------------------------------------------------
   public func Page(p: ref<TKPage>) -> Void {
+    let pilot = CMPilotSystem.Get(this.GetGameInstance());
+    p.Heading("S7  PILOT WITH THE GUN LOOK-AT (BATCH 3)");
+    p.Item("GUN LOOK-AT WHILE PILOTING", "RightWeapon, LeftWeapon, Weapon and Chassis follow the reticle; the MK.31s fire along their barrels", "", pilot.S7On() ? "ON" : "OFF", "sp_b3_s7", pilot.S7On() ? "0" : "1", true);
+    p.Item("ROUNDS OWNED BY", "The mech (the alpha's way) or V (the call a V-controlled turret makes)", "", pilot.S7OwnerV() ? "V" : "MECH", "sp_b3_s7owner", pilot.S7OwnerV() ? "0" : "1", true);
+    p.ItemNote("Question: pilot the mech with this ON and shoot enemies while walking and turning, once with each owner. Do the flash, tracers and hits land on the reticle? Does damage land, and do enemies turn on V or on the mech?");
+
+    p.Heading("S2c  THE VANILLA TURRET'S FIRE CALL (LINK A MINOTAUR, SET IT TO HOLD)");
+    p.Buttons("Guns turn to your crosshair, then 10 rounds", "", "", "VANILLA CALL|+ TARGET POINT|OWNER MECH", "sp_b3_s2c|sp_b3_s2c|sp_b3_s2c", "4|5|6");
+    p.ItemNote("Question: aim at a standing enemy. Does each button deal damage, and who does the enemy turn on?");
+
     p.Heading("S2b  DAMAGE CREDITED TO V (LINK A MECH FIRST)");
     p.Item("ORIGIN OF THE TRACERS", "Mech gun, or a point 1.5 m right of and 2 m above V", "", this.m_fromMarker ? "MARKER POINT" : "MECH GUN", "sp_b2_origin", "", true);
     p.Buttons("10 rounds at your crosshair", "", "", "OWNER MECH|V + PLAYER ATTACK|V + NPC ATTACK", "sp_b2_fire|sp_b2_fire|sp_b2_fire", "0|1|2");
@@ -711,6 +765,9 @@ public class CMSpike2System extends ScriptableSystem {
   public func Act(p: ref<TKPage>, action: String, arg: String) -> Bool {
     let msg = "";
     switch action {
+      case "sp_b3_s7": CMPilotSystem.Get(this.GetGameInstance()).SetS7(Equals(arg, "1")); msg = Equals(arg, "1") ? "*S7 ON: PILOT THE MECH" : "S7 OFF"; break;
+      case "sp_b3_s7owner": CMPilotSystem.Get(this.GetGameInstance()).SetS7OwnerV(Equals(arg, "1")); msg = Equals(arg, "1") ? "*ROUNDS OWNED BY V" : "*ROUNDS OWNED BY THE MECH"; break;
+      case "sp_b3_s2c": msg = this.S2cBurst(StringToInt(arg, 4)); break;
       case "sp_b2_origin": msg = this.ToggleOrigin(); break;
       case "sp_b2_fire": msg = this.S2bBurst(StringToInt(arg, 0)); break;
       case "sp_b2_s5": msg = this.S5bSpawn(StringToInt(arg, 0)); break;
@@ -759,6 +816,15 @@ public class CMSpike2CheckCb extends DelayCallback {
   public func Call() -> Void {
     if IsDefined(this.system) {
       this.system.S5bCheck();
+    }
+  }
+}
+
+public class CMSpikeS7ReportCb extends DelayCallback {
+  public let system: wref<CMPilotSystem>;
+  public func Call() -> Void {
+    if IsDefined(this.system) {
+      this.system.S7Report();
     }
   }
 }

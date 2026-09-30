@@ -53,7 +53,8 @@ public class CMPilotGuns {
   private let m_cycle: Float;       // seconds between shots of one gun
   private let m_turnLeft: Bool;     // stagger: which barrel is next
   private let m_names: String;      // what was found, for the HUD / diagnostics
-  private let m_aimMode: Int32;     // CMAimMode: gimballed (default), to the reticle, along the barrels
+  public let ownerV: Bool;          // spike S7: fire with the vanilla turret call, V as owner
+  private let m_aimMode: Int32;    // CMAimMode: gimballed (default), to the reticle, along the barrels
 
   private let HEAT_PER_SHOT: Float = 0.022;
   private let GIMBAL_YAW: Float = 12.0;    // how far a gun can swing off its barrel, degrees
@@ -250,7 +251,13 @@ public class CMPilotGuns {
     let cone = Deg2Rad(spreadDeg * (1.0 + g.heat * 1.5));
     let r = dist * cone;
     let target = new Vector4(point.X + RandRangeF(-r, r), point.Y + RandRangeF(-r, r), point.Z + RandRangeF(-r, r) * 0.6, 1.0);
-    AIWeapon.Fire(mech, g.weapon, now, 0.0, gamedataTriggerMode.FullAuto, target);
+    if this.ownerV {
+      // spike S7: the call a V-controlled vanilla turret makes (V owns the round, charge 1,
+      // no target point: it leaves along the barrel)
+      AIWeapon.Fire(GetPlayer(mech.GetGame()), g.weapon, now, 1.0, gamedataTriggerMode.FullAuto);
+    } else {
+      AIWeapon.Fire(mech, g.weapon, now, 0.0, gamedataTriggerMode.FullAuto, target);
+    }
     g.nextShot = now + cycle;
     g.lastShot = now;
     g.flash = 0.06;

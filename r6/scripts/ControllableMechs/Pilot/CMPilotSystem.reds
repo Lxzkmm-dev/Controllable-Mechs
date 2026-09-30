@@ -111,6 +111,14 @@ public class CMPilotSystem extends ScriptableSystem {
   private let m_marker: wref<Entity>;
   private let m_lookAts: array<ref<LookAtAddEvent>>;
 
+  // spike S7 (dev, not saved): the gun-part look-ats (RightWeapon, LeftWeapon, Weapon,
+  // Chassis) follow the reticle, and the MK.31s fire along their barrels
+  private let m_s7: Bool;
+  private let m_s7OwnerV: Bool;
+  private let m_s7Target: wref<GameObject>;
+  private let m_s7HP: Float;
+  private let m_s7Next: Float;
+
   // sound state: the servo loop plays while the view traverses
   private let m_servoOn: Bool;
   private let m_servoHit: Float;
@@ -280,7 +288,8 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_rig.SetChase(this.IsChase());
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
-    this.m_guns.SetAimMode(this.m_aimMode);
+    this.m_guns.SetAimMode(this.GunAim());
+    this.m_guns.ownerV = this.m_s7 && this.m_s7OwnerV;
     TKLog.Add("ControllableMechs", "pilot: damage " + this.m_guns.Boost(this.GetGameInstance(), Cast<Float>(this.DamagePct()) / 100.0));
     this.m_rig.SetTraverse(Cast<Float>(this.Traverse()));
     this.m_servoOn = false;
@@ -568,7 +577,7 @@ public class CMPilotSystem extends ScriptableSystem {
     // triggers: the MK.31s are fixed to the body, so they only fire once it faces the reticle
     // (otherwise the flash leaves the barrels one way and the rounds go another)
     this.m_aligned = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))) < this.ALIGN_DEG;
-    if this.m_aimMode == CMAimMode.Reticle() && !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
+    if this.GunAim() == CMAimMode.Reticle() && !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
       this.m_unalignedHeld += dt;
       if this.m_unalignedHeld > 2.0 && this.m_unalignedHeld - dt <= 2.0 {
         TKLog.Add("ControllableMechs", "pilot: trigger held 2 s but the chassis is still " + FloatToStringPrec(AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))), 0) + " deg off the reticle");
@@ -577,13 +586,16 @@ public class CMPilotSystem extends ScriptableSystem {
       this.m_unalignedHeld = 0.0;
     }
     // along the barrels, the rounds always follow the muzzles, so there's nothing to wait for
-    let gate = this.m_aimMode != CMAimMode.Reticle() || this.m_aligned;
+    let gate = this.GunAim() != CMAimMode.Reticle() || this.m_aligned;
     let lmb = gate && this.Key(CMPilotKey.Lmb());
     let rmb = gate && this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb());
     let trigger = this.Key(CMPilotKey.Lmb()) || (this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb()));
     if trigger && !this.m_triggerWas {
       // where the barrels really point, once per trigger pull (TOOLS > LOG)
       TKLog.Add("ControllableMechs", "pilot: barrels vs view  L " + this.m_guns.BarrelOffset(this.m_guns.left, this.m_rig.yaw, this.m_rig.pitch) + "  R " + this.m_guns.BarrelOffset(this.m_guns.right, this.m_rig.yaw, this.m_rig.pitch) + "  chassis " + FloatToStringPrec(CMPilotRig.Wrap(CMPilotRig.YawOf(mech.GetWorldForward()) - this.m_rig.yaw), 1));
+    }
+    if this.m_s7 {
+      this.S7Log(mech, trigger, now);
     }
     this.m_triggerWas = trigger;
     if lmb || rmb {
@@ -912,7 +924,7 @@ public class CMPilotSystem extends ScriptableSystem {
       if s.signal < 0.2 {
         s.warning = "SIGNAL DEGRADED - RETURN TO OPERATOR";
       } else {
-        if this.m_aimMode == CMAimMode.Reticle() && !this.m_aligned {
+        if this.GunAim() == CMAimMode.Reticle() && !this.m_aligned {
           s.warning = "ALIGNING CHASSIS";
         }
       }
@@ -1218,7 +1230,7 @@ public class CMPilotSystem extends ScriptableSystem {
 
   // ten times a second: send the look-ats once the marker has attached
   private func ArmTrack(mech: ref<NPCPuppet>) -> Void {
-    if this.m_armTrackOff || ArraySize(this.m_lookAts) > 0 || !EntityID.IsDefined(this.m_markerID) {
+    if (this.m_armTrackOff && !this.m_s7) || ArraySize(this.m_lookAts) > 0 || !EntityID.IsDefined(this.m_markerID) {
       return;
     }
     if !IsDefined(this.m_marker) {
@@ -1227,7 +1239,11 @@ public class CMPilotSystem extends ScriptableSystem {
         return;
       }
     }
-    for part in [n"RightHand", n"LeftHand", n"Chest"] {
+    let parts = [n"RightHand", n"LeftHand", n"Chest"];
+    if this.m_s7 {
+      parts = [n"RightWeapon", n"LeftWeapon", n"Weapon", n"Chassis"];
+    }
+    for part in parts {
       let ev = new LookAtAddEvent();
       ev.SetEntityTarget(this.m_marker, n"", new Vector4(0.0, 0.0, 0.0, 0.0));
       ev.bodyPart = part;
@@ -1236,7 +1252,7 @@ public class CMPilotSystem extends ScriptableSystem {
       mech.QueueEvent(ev);
       ArrayPush(this.m_lookAts, ev);
     }
-    TKLog.Add("ControllableMechs", "pilot: arm tracking look-ats sent (RightHand, LeftHand, Chest)");
+    TKLog.Add("ControllableMechs", "pilot: look-ats sent (" + (this.m_s7 ? "S7: RightWeapon, LeftWeapon, Weapon, Chassis" : "RightHand, LeftHand, Chest") + ")");
   }
 
   private func RemoveLookAts(mech: ref<NPCPuppet>) -> Void {
@@ -1296,8 +1312,64 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SetAimMode(mode: Int32) -> Void {
     this.m_aimMode = Clamp(mode, 0, 2);
     if IsDefined(this.m_guns) {
-      this.m_guns.SetAimMode(this.m_aimMode);
+      this.m_guns.SetAimMode(this.GunAim());
     }
+  }
+
+  // the aim mode the guns use: spike S7 fires along the barrels, the look-ats aim them
+  private func GunAim() -> Int32 = this.m_s7 ? CMAimMode.Barrels() : this.m_aimMode
+
+  // ---- spike S7 (dev) ----
+  public func S7On() -> Bool = this.m_s7
+  public func S7OwnerV() -> Bool = this.m_s7OwnerV
+
+  public func SetS7(on: Bool) -> Void {
+    this.m_s7 = on;
+    if IsDefined(this.m_guns) {
+      this.m_guns.SetAimMode(this.GunAim());
+      this.m_guns.ownerV = this.m_s7 && this.m_s7OwnerV;
+    }
+    // the look-ats are re-sent with the new parts on the next slow tick
+    let mech = GameInstance.FindEntityByID(this.GetGameInstance(), this.m_mechID) as NPCPuppet;
+    if IsDefined(mech) {
+      this.RemoveLookAts(mech);
+    }
+    CMSpikeSystem.Log("S7: gun-part look-ats while piloting " + (on ? "ON" : "off"));
+  }
+
+  public func SetS7OwnerV(on: Bool) -> Void {
+    this.m_s7OwnerV = on;
+    if IsDefined(this.m_guns) {
+      this.m_guns.ownerV = this.m_s7 && this.m_s7OwnerV;
+    }
+    CMSpikeSystem.Log("S7: rounds owned by " + (on ? "V (the vanilla turret call)" : "the mech"));
+  }
+
+  // on trigger: the target and its health; while held, each gun's aim error once a second;
+  // 1 s after release, the target's health again
+  private func S7Log(mech: ref<NPCPuppet>, trigger: Bool, now: Float) -> Void {
+    let game = this.GetGameInstance();
+    if trigger && !this.m_triggerWas {
+      this.m_s7Target = GameInstance.GetTargetingSystem(game).GetLookAtObject(GetPlayer(game));
+      this.m_s7HP = CMSpike2System.Health(this.m_s7Target);
+      this.m_s7Next = now;
+      CMSpikeSystem.Log("S7 fire (" + (this.m_s7OwnerV ? "owner V" : "owner mech") + "): target " + CMSpike2System.Describe(this.m_s7Target) + ", health " + FloatToStringPrec(this.m_s7HP, 1));
+    }
+    if trigger && now >= this.m_s7Next {
+      this.m_s7Next = now + 1.0;
+      CMSpikeSystem.Log("S7 aim error to the reticle: right " + FloatToStringPrec(CMSpike2System.AimError(ScriptedPuppet.GetWeaponRight(mech), this.m_aim), 1)
+        + " deg, left " + FloatToStringPrec(CMSpike2System.AimError(ScriptedPuppet.GetWeaponLeft(mech), this.m_aim), 1) + " deg, reticle " + FloatToStringPrec(Vector4.Distance(this.m_rig.pos, this.m_aim), 0) + " m out");
+    }
+    if !trigger && this.m_triggerWas {
+      let cb = new CMSpikeS7ReportCb();
+      cb.system = this;
+      GameInstance.GetDelaySystem(game).DelayCallback(cb, 1.0, false);
+    }
+  }
+
+  public func S7Report() -> Void {
+    let hp = CMSpike2System.Health(this.m_s7Target);
+    CMSpikeSystem.Log("S7 result: target " + CMSpike2System.Describe(this.m_s7Target) + (IsDefined(this.m_s7Target) ? ", health " + FloatToStringPrec(this.m_s7HP, 1) + " -> " + FloatToStringPrec(hp, 1) + " (" + FloatToStringPrec(this.m_s7HP - hp, 1) + " damage)" : ""));
   }
   public func Traverse() -> Int32 = this.m_traverse > 0 ? this.m_traverse - 1 : 40
   public func SetTraverse(v: Int32) -> Void {
