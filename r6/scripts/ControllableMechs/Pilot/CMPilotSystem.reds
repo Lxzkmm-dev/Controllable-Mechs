@@ -181,6 +181,10 @@ public class CMPilotSystem extends ScriptableSystem {
   public func RecoilPct() -> Int32 = this.Int("recoilPct", 100)
   public func SetRecoilPct(v: Int32) -> Void { this.PutInt("recoilPct", Clamp(v, 0, 200)); }
 
+  // how fast the view traverses and the chassis turns, % of the heavy baseline
+  public func TurnPct() -> Int32 = this.Int("turnPct", 175)
+  public func SetTurnPct(v: Int32) -> Void { this.PutInt("turnPct", Clamp(v, 50, 300)); }
+
   // ---- the sensor (sight view) mount ----
   public func CamUpCm() -> Int32 = this.Int("camUpCm", this.MOUNT_UP_CM)
   public func CamFwdCm() -> Int32 = this.Int("camFwdCm", this.MOUNT_FWD_CM)

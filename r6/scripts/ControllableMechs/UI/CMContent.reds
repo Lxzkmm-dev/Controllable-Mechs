@@ -105,6 +105,9 @@ public class CMContent extends TKContent {
       case "recoil":
         cfg.SetRecoilPct(CMContent.Val(arg, cfg.RecoilPct()));
         break;
+      case "turn":
+        cfg.SetTurnPct(CMContent.Val(arg, cfg.TurnPct()));
+        break;
       case "hull":
         session.SetHullMult(CMContent.Val(arg, 4));
         break;
@@ -207,6 +210,9 @@ public class CMContent extends TKContent {
     p.Check("KILLS CREDITED TO V", "The mech's hits count as yours: kills, XP, NCPD heat, who enemies turn on", session.CreditV(), "creditv", "");
     p.Slider("RECOIL", "How much the guns shake the view; it never moves the aim (from the next link-in)", "", "0|200|10|" + IntToString(cfg.RecoilPct()) + "|%", "recoil", "");
     p.Slider("HULL", "The mech's health while you pilot it, times its own (from the next link-in)", "", "1|10|1|" + IntToString(RoundF(session.HullMult())) + "|x", "hull", "");
+
+    p.Heading("CHASSIS");
+    p.Slider("TURN SPEED", "How fast the view traverses and the chassis turns; 100% is the heavy baseline (from the next link-in)", "", "50|300|25|" + IntToString(cfg.TurnPct()) + "|%", "turn", "");
 
     p.Heading("OPERATOR");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !cfg.StayWhenHit(), "dropwhenhit", "");

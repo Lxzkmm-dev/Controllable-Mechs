@@ -624,7 +624,9 @@ public class CMCSession extends ScriptableSystem {
 
   private func ApplyWeight() -> Void {
     let k = this.zoom ? this.OPTICS_RATE : 1.0;
-    this.rig.SetWeight(this.LOOK_STIFFNESS, this.LOOK_DAMPING, this.LOOK_YAW_RATE * k, this.LOOK_PITCH_RATE * k, this.LOOK_LEAD * k);
+    // CONFIG > CHASSIS > TURN SPEED scales the traverse (and the unit scales its chassis turn)
+    let t = Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).TurnPct()) / 100.0;
+    this.rig.SetWeight(this.LOOK_STIFFNESS * t, this.LOOK_DAMPING * SqrtF(t), this.LOOK_YAW_RATE * k * t, this.LOOK_PITCH_RATE * k * t, this.LOOK_LEAD * k);
     this.rig.SetZoomFov(this.OPTICS_FOV);
     this.rig.SetStepWeight(this.STOMP);
     this.rig.SetRecoilScale(Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).RecoilPct()) / 100.0);

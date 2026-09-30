@@ -15,6 +15,9 @@ The control framework (`ControllableMechs.Control`) is now the mod's pilot mode.
 - **Recoil:** a camera-only shake that never moves the aim, about a sixth of the old kick, capped at 1.5 degrees up. CONFIG > RECOIL, 0-200%.
 - **HUD art:** plates, frames, rulers and hatches from the game's own tank and turret HUD atlases; cell bars; a deeper phosphor green; idle flicker, a damage jolt with tearing lines, a pulsing warning panel. The HUD is scaled to the screen height (it drew 1.5 times too large on 1440-high screens).
 - **Settings moved out of the save** into `r6/storages/ControllableMechs/settings.txt`, so loading an older save no longer changes them. Values found in a save are copied over once.
+- **Chassis turn:** the standing turn owns the body's heading every frame: a jump back to an old heading is undone the same frame, so it no longer needs the AI's stepped turn. No hold order any more. CONFIG > CHASSIS > TURN SPEED (50-300%, 175% by default) scales the view's traverse and the chassis turn.
+- **Threats:** the game's threat functions skip the piloted mech, its weak spots take no damage while piloted, and a lost gun is looked up again.
+- **Test spawn** lands on the ground, on the navigation mesh where it can.
 - **Needs** TweakXL for the missile's attack record.
 ## 0.1.0 Alpha
 

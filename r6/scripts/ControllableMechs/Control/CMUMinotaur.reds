@@ -33,10 +33,6 @@ public class CMUMinotaur extends CMCUnit {
   private let m_moveTarget: Vector4;
   private let m_moveSent: Float;
   private let m_moveYaw: Float;
-  // standing still: a hold order keeps the mech's own AI from walking or turning it
-  // (it has no order otherwise, and its combat behaviour takes over)
-  private let m_holdCmd: ref<AICommand>;
-  private let m_holdSent: Float;
   private let m_calmResets: Int32;
   private let m_threatClears: Int32;
   private let m_gunsLost: Bool;
@@ -66,8 +62,10 @@ public class CMUMinotaur extends CMCUnit {
   private let m_lookMiss: Int32;      // slow ticks the guns have been off with the body on
   private let m_lookSent: Float;
   private let m_turning: Bool;
-  private let TURN_RATE: Float = 35.0;       // deg/s, top speed
-  private let TURN_ACCEL: Float = 60.0;      // deg/s², how hard it spins up and brakes
+  private let TURN_RATE: Float = 35.0;       // deg/s, top speed at TURN SPEED 100% (the setting scales it)
+  private let TURN_ACCEL: Float = 60.0;      // deg/s², how hard it spins up and brakes, likewise
+  private let m_turnRate: Float;
+  private let m_turnAccel: Float;
   private let TURN_K: Float = 2.5;           // wanted speed per degree still to go
   private let TURN_START_DEG: Float = 20.0;  // the view may be this far off before the body follows
   private let TURN_START_SWEEP_DEG: Float = 8.0;  // ... or this far while the view is still swinging
@@ -145,6 +143,9 @@ public class CMUMinotaur extends CMCUnit {
     this.m_turnMiss = 0.0;
     this.m_turnByOrder = false;
     this.m_turnOrders = 0;
+    let turn = Cast<Float>(CMPilotSystem.Get(this.m_game).TurnPct()) / 100.0;
+    this.m_turnRate = this.TURN_RATE * turn;
+    this.m_turnAccel = this.TURN_ACCEL * turn;
     this.m_stoodPos = mech.GetWorldPosition();
     this.m_lookMiss = 0;
     ArrayClear(this.m_lookAts);
@@ -319,7 +320,6 @@ public class CMUMinotaur extends CMCUnit {
     if IsDefined(mech) {
       this.CancelCmd(mech, this.m_moveCmd);
       this.CancelCmd(mech, this.m_turnCmd);
-      this.CancelCmd(mech, this.m_holdCmd);
       for ev in this.m_lookAts {
         let r = new LookAtRemoveEvent();
         r.lookAtRef = ev.outLookAtRef;
@@ -329,7 +329,6 @@ public class CMUMinotaur extends CMCUnit {
     ArrayClear(this.m_lookAts);
     this.m_moveCmd = null;
     this.m_turnCmd = null;
-    this.m_holdCmd = null;
     this.m_marker = null;
     if EntityID.IsDefined(this.m_markerID) {
       GameInstance.GetStaticEntitySystem().DespawnEntity(this.m_markerID);
@@ -450,18 +449,22 @@ public class CMUMinotaur extends CMCUnit {
     CMCSession.Log("result: target " + CMCHits.Describe(this.m_target) + ", health " + FloatToStringPrec(this.m_targetHP, 1) + " -> " + FloatToStringPrec(hp, 1));
   }
 
-  // standing still: the body swings round toward the view with weight (a rate cap, spin-up
-  // and braking), one rotation-only teleport a frame and only while it turns. Walking hands
-  // the facing back to the walk orders, which already face the view.
+  // Standing still, the chassis heading is ours: the body swings round toward the view
+  // with weight (a rate cap, spin-up and braking), by one rotation-only teleport a frame
+  // while it turns. Walking hands the facing back to the walk orders, which face the view.
   //
-  // The game does not always take the rotation (the log showed whole turns that left the
-  // body where it was, so the guns sat 20-30 deg off the reticle). Each frame of a turn the
-  // body's real heading is checked against where the last frame put it; if it has not
-  // followed for a third of a second, the rest of the session turns the body with the AI's
-  // own turn order instead (its turn-in-place animation, in steps).
+  // The game sometimes puts the body back on an old heading (the log showed it snapping
+  // tens of degrees back to where it stood when the session began). So every frame the
+  // body's real heading is compared with where we last put it:
+  //   - a jump that brings it nearer the view is taken as it is
+  //   - a jump away from the view is put back the same frame
+  // Only if the body does not follow at all for 2 s does the rest of the session fall back
+  // to the AI's own turn order, which turns in steps.
   private func TurnChassis(s: ref<CMCSession>, mech: ref<NPCPuppet>, dt: Float) -> Void {
     let real = CMPilotRig.YawOf(mech.GetWorldForward());
-    if this.m_moving {
+    let now = s.Now();
+    if this.m_moving || now - this.m_stoodAt < 0.8 {
+      // walking, or settling out of a walk: the walk order owns the facing
       this.m_bodyYaw = real;
       this.m_turnVel = 0.0;
       this.m_turning = false;
@@ -472,45 +475,46 @@ public class CMUMinotaur extends CMCUnit {
       this.TurnByOrder(s, mech, real);
       return;
     }
-    if this.m_turning {
-      if AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw)) > 6.0 {
-        this.m_turnMiss += dt;
-      } else {
-        this.m_turnMiss = 0.0;
-      }
-      if this.m_turnMiss > 0.35 {
-        CMCSession.Log("chassis: the rotation is not taking (body at " + FloatToStringPrec(real, 1) + " deg, put at " + FloatToStringPrec(this.m_bodyYaw, 1) + "), hold order " + (IsDefined(this.m_holdCmd) ? "active" : "none") + ", state " + CMUMinotaur.StateName(mech) + ": turning by turn orders from here");
-        this.m_turnByOrder = true;
-        this.m_turning = false;
-        this.m_turnVel = 0.0;
-        this.m_turnMiss = 0.0;
-        this.m_bodyYaw = real;
-        return;
-      }
-    }
-    if !this.m_turning {
-      // between turns, take the body's real heading: never teleport it back against a
-      // rotation something else made (that was a source of the fight-back)
-      let strayed = AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw));
-      if strayed > 3.0 && s.Now() - this.m_stoodAt > 1.5 && s.Now() - this.m_strayYawAt > 1.0 && this.m_strayLogs < 20 {
-        this.m_strayYawAt = s.Now();
+    let lag = CMPilotRig.Wrap(real - this.m_bodyYaw);
+    if AbsF(lag) > 2.0 + AbsF(this.m_turnVel) * dt * 3.0 {
+      let nearer = AbsF(CMPilotRig.Wrap(s.rig.yaw - real)) < AbsF(CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw));
+      this.m_turnMiss += dt;
+      if AbsF(lag) > 8.0 && now - this.m_strayYawAt > 0.5 && this.m_strayLogs < 30 {
+        this.m_strayYawAt = now;
         this.m_strayLogs += 1;
-        CMCSession.Log("NOT OURS: the chassis turned " + FloatToStringPrec(strayed, 1) + " deg in a frame while standing, state " + CMUMinotaur.StateName(mech));
+        CMCSession.Log("chassis: the body jumped " + FloatToStringPrec(lag, 1) + " deg on its own to " + FloatToStringPrec(real, 1) + (nearer ? " (nearer the view: kept)" : " (away from the view: put back)") + ", state " + CMUMinotaur.StateName(mech) + (this.m_turning ? ", mid-turn" : ", between turns"));
       }
+      if nearer {
+        this.m_bodyYaw = real;
+      }
+    } else {
+      this.m_turnMiss = 0.0;
+    }
+    if this.m_turnMiss > 2.0 {
+      CMCSession.Log("CHASSIS: THE BODY HAS NOT FOLLOWED OUR ROTATION FOR 2 S (body at " + FloatToStringPrec(real, 1) + " deg, put at " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": falling back to AI turn orders, which turn in steps");
+      this.m_turnByOrder = true;
+      this.m_turning = false;
+      this.m_turnVel = 0.0;
+      this.m_turnMiss = 0.0;
       this.m_bodyYaw = real;
+      return;
     }
     let off = CMPilotRig.Wrap(s.rig.yaw - this.m_bodyYaw);
     if !this.m_turning {
       // the chassis leads a sweep: it starts sooner while the view is moving
       let start = AbsF(s.rig.YawRate()) > 15.0 ? this.TURN_START_SWEEP_DEG : this.TURN_START_DEG;
       if AbsF(off) < start {
+        // at rest: hold the heading against anything that moved it
+        if AbsF(CMPilotRig.Wrap(real - this.m_bodyYaw)) > 0.5 {
+          this.Face(mech, this.m_bodyYaw);
+        }
         return;
       }
       this.m_turning = true;
       GameObject.PlaySoundEvent(mech, AbsF(off) > 120.0 ? n"enm_mech_minotaur_loco_idle_to_idle_180_l" : n"enm_mech_minotaur_loco_idle_to_idle_90");
     }
-    let want = ClampF(off * this.TURN_K, -this.TURN_RATE, this.TURN_RATE);
-    let step = this.TURN_ACCEL * dt;
+    let want = ClampF(off * this.TURN_K, -this.m_turnRate, this.m_turnRate);
+    let step = this.m_turnAccel * dt;
     this.m_turnVel += ClampF(want - this.m_turnVel, -step, step);
     if AbsF(off) < 1.0 && AbsF(this.m_turnVel) < 3.0 {
       this.m_turnVel = 0.0;
@@ -518,11 +522,14 @@ public class CMUMinotaur extends CMCUnit {
       return;
     }
     this.m_bodyYaw = CMPilotRig.Wrap(this.m_bodyYaw + this.m_turnVel * dt);
-    let e: EulerAngles;
-    e.Yaw = this.m_bodyYaw;
-    GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, mech.GetWorldPosition(), e);
+    this.Face(mech, this.m_bodyYaw);
   }
 
+  private func Face(mech: ref<NPCPuppet>, yaw: Float) -> Void {
+    let e: EulerAngles;
+    e.Yaw = yaw;
+    GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, mech.GetWorldPosition(), e);
+  }
   // the fallback: the AI's own turn order toward the view, when the body is more than a
   // few degrees off (tighter with the trigger held), at most one order every 0.6 s
   private func TurnByOrder(s: ref<CMCSession>, mech: ref<NPCPuppet>, real: Float) -> Void {
@@ -924,8 +931,8 @@ public class CMUMinotaur extends CMCUnit {
 
   // The game can drop or override our look-ats (its AI briefly entering combat aims the
   // arms at its own target). Ten times a second: if both guns have been well off the
-  // reticle for most of a second while the body faces it, the look-ats are taken off and
-  // sent again, at most once every 2 s.
+  // reticle for a second and a half while the body faces it, the look-ats are taken off
+  // and sent again, at most once every 5 s.
   private func WatchLookAts(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
     if ArraySize(this.m_lookAts) == 0 || !this.m_guns.left.Ready() || !this.m_guns.right.Ready() {
       return;
@@ -933,12 +940,13 @@ public class CMUMinotaur extends CMCUnit {
     let body = AbsF(CMPilotRig.Wrap(s.rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward())));
     let errL = CMCSession.AimError(this.m_guns.left.weapon, s.aim);
     let errR = CMCSession.AimError(this.m_guns.right.weapon, s.aim);
-    if body < 35.0 && errL > 12.0 && errR > 12.0 {
+    // (a reticle point close by puts the barrels off by parallax alone, so only past 15 m)
+    if body < 35.0 && errL > 12.0 && errR > 12.0 && s.aimDist > 15.0 {
       this.m_lookMiss += 1;
     } else {
       this.m_lookMiss = 0;
     }
-    if this.m_lookMiss >= 8 && now - this.m_lookSent > 2.0 {
+    if this.m_lookMiss >= 15 && now - this.m_lookSent > 5.0 {
       CMCSession.Log("look-ats: the guns were " + FloatToStringPrec(errR, 1) + " (R) and " + FloatToStringPrec(errL, 1) + " (L) deg off with the body " + FloatToStringPrec(body, 1) + " deg off, state " + CMUMinotaur.StateName(mech) + ": sending them again");
       this.ResendLookAts(mech, now);
     }
@@ -970,8 +978,7 @@ public class CMUMinotaur extends CMCUnit {
         CMCSession.Log("walk: stop (keys released)");
         s.rig.Nudge(this.STOP_ROCK, -0.25);   // the body rocks back as it plants
       }
-      this.Hold(mech, now);
-      return;   // standing: TurnChassis turns the body, every frame
+      return;   // standing: TurnChassis turns the body and holds its heading, every frame
     }
     dir = Vector4.Normalize(dir);
     let turned = !this.m_moving || Vector4.Dot(dir, this.m_moveDir) < 0.94;
@@ -996,7 +1003,6 @@ public class CMUMinotaur extends CMCUnit {
         this.m_moving = false;
         CMCSession.Log("walk: stop (wall ahead)");
       }
-      this.Hold(mech, now);
       return;
     }
     if !this.m_moving {
@@ -1030,26 +1036,6 @@ public class CMUMinotaur extends CMCUnit {
     this.m_moveSent = now;
   }
 
-  // a hold order while standing, renewed every 5 s (one command, not per frame)
-  private func Hold(mech: ref<NPCPuppet>, now: Float) -> Void {
-    if IsDefined(this.m_holdCmd) && now - this.m_holdSent < 5.0 {
-      return;
-    }
-    if now - this.m_turnSent < 2.0 {
-      return;   // a turn order is running: a hold order would cut it short
-    }
-    let ai = mech.GetAIControllerComponent();
-    if !IsDefined(ai) {
-      return;
-    }
-    this.CancelCmd(mech, this.m_holdCmd);
-    let cmd = new AIHoldPositionCommand();
-    cmd.duration = 10.0;
-    ai.SendCommand(cmd);
-    this.m_holdCmd = cmd;
-    this.m_holdSent = now;
-  }
-
   private func Send(mech: ref<NPCPuppet>, cmd: ref<AICommand>, move: Bool) -> Void {
     let ai = mech.GetAIControllerComponent();
     if !IsDefined(ai) {
@@ -1057,10 +1043,8 @@ public class CMUMinotaur extends CMCUnit {
     }
     this.CancelCmd(mech, this.m_moveCmd);
     this.CancelCmd(mech, this.m_turnCmd);
-    this.CancelCmd(mech, this.m_holdCmd);
     this.m_moveCmd = null;
     this.m_turnCmd = null;
-    this.m_holdCmd = null;
     ai.SendCommand(cmd);
     if move {
       this.m_moveCmd = cmd;
