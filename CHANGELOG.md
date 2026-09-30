@@ -22,7 +22,8 @@ The first playable build: the proof of concept works in game.
 - **Diagnostics:** an optional DBG readout on the pilot HUD (SETTINGS > DEBUG READOUT). Log lines, including a note when the mech jumps more than 3 m in one frame, go to TOOLS > LOG.
 
 ### Since the first alpha build
-- **Aim along the barrels (new default):** each round now flies along its own MK.31 barrel, so the rounds always leave the way the muzzle flash does. Two diamond pips on the HUD show where the barrels point. SETTINGS > AIM MODE can switch back to aiming at the reticle, where the guns wait for the chassis to line up.
+- **Gimballed aim (new default):** rounds go to what the reticle is on, including characters and vehicles (the reticle raycast now checks dynamic objects as well as world geometry), within each gun's travel around its mount: 12 degrees side to side, 40 down and 25 up. You can shoot down at targets again. Beyond that travel, a round stops at the edge of the cone. The HUD pips show where each gun's rounds will land.
+- **Aim along the barrels (now an option):** each round now flies along its own MK.31 barrel, so the rounds always leave the way the muzzle flash does. Two diamond pips on the HUD show where the barrels point. SETTINGS > AIM MODE: GIMBALLED, TO THE RETICLE (the guns wait for the chassis to line up) or ALONG THE BARRELS.
 - **Traverse:** the torso turns slower and heavier by default, 40 deg/s with a softer start. There's a TRAVERSE SPEED slider in SETTINGS.
 - **Sound:**
   - the game's own sensor-camera servo loops while the view traverses;

@@ -27,7 +27,7 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
   - Height, forward offset and mouse sensitivity are sliders in SETTINGS and apply live.
   - **Views:** the sensor view (first person) and a chase view (third person), behind and above the mech with its own distance and height sliders. V switches between them.
   - **No clipping:** in both views, the camera pulls in when a wall, pole or container is between the mech and the camera. It uses one static raycast per frame, only while piloting.
-- **Guns:** both MK.31s fire through the game's NPC firing call (`AIWeapon.Fire`) at the point under the reticle, so rounds leave the real muzzles.
+- **Guns:** both MK.31s fire through the game's NPC firing call (`AIWeapon.Fire`), so rounds leave the real muzzles. By default they're gimballed: rounds go to what the reticle is on (world geometry, characters, vehicles) within each gun's travel around its mount, and two HUD pips show where they'll land.
   - Fire modes (terminal Settings, or B):
     - **staggered** (default): LMB fires both, barrels alternating;
     - **linked salvo**: LMB fires both at once;

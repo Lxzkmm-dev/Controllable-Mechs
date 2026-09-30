@@ -30,6 +30,12 @@ public abstract class CMFireMode {
   public static func Next(mode: Int32) -> Int32 = (mode + 1) % 3
 }
 
+public abstract class CMAimMode {
+  public static func Gimballed() -> Int32 = 0
+  public static func Reticle() -> Int32 = 1
+  public static func Barrels() -> Int32 = 2
+}
+
 public class CMGun {
   public let weapon: wref<WeaponObject>;
   public let heat: Float;          // 0..1
@@ -47,9 +53,12 @@ public class CMPilotGuns {
   private let m_cycle: Float;       // seconds between shots of one gun
   private let m_turnLeft: Bool;     // stagger: which barrel is next
   private let m_names: String;      // what was found, for the HUD / diagnostics
-  private let m_barrel: Bool;       // aim mode: along the barrels (true) or to the reticle point
+  private let m_aimMode: Int32;     // CMAimMode: gimballed (default), to the reticle, along the barrels
 
   private let HEAT_PER_SHOT: Float = 0.022;
+  private let GIMBAL_YAW: Float = 12.0;    // how far a gun can swing off its barrel, degrees
+  private let GIMBAL_UP: Float = 25.0;
+  private let GIMBAL_DOWN: Float = 40.0;
   private let COOL_RATE: Float = 0.30;   // per second
   private let COOL_DELAY: Float = 0.35;  // seconds after the last shot
   private let UNLOCK_AT: Float = 0.35;
@@ -130,10 +139,37 @@ public class CMPilotGuns {
     return 0;
   }
 
-  // Aim mode. Barrel (default): each round flies along its own barrel, so it always
-  // leaves the way the muzzle flash does, and the HUD's pips show where the barrels
-  // point. Reticle: rounds go to the point under the reticle, whatever the barrels do.
-  public func SetBarrelMode(on: Bool) -> Void { this.m_barrel = on; }
+  public func SetAimMode(mode: Int32) -> Void { this.m_aimMode = mode; }
+
+  // Where gun g's round goes when the reticle is on im, dist metres out (also where
+  // its HUD pip sits):
+  //   gimballed: at the reticle point, within the gun's travel around its barrel (the
+  //              MK.31s can't aim far off their mounts, so beyond that the round stops at
+  //              the edge of the cone and the pip shows it)
+  //   reticle:   straight at the reticle point
+  //   barrels:   straight along the barrel
+  public func PointFor(g: ref<CMGun>, aim: Vector4, dist: Float) -> Vector4 {
+    if this.m_aimMode == CMAimMode.Reticle() {
+      return aim;
+    }
+    if this.m_aimMode == CMAimMode.Barrels() || !g.Ready() {
+      return this.BarrelPoint(g, dist);
+    }
+    let o = g.weapon.GetWorldPosition();
+    let f = g.weapon.GetWorldForward();
+    let want = aim - o;
+    let flat = SqrtF(want.X * want.X + want.Y * want.Y);
+    let reach = Vector4.Length(want);
+    if reach < 1.0 {
+      return aim;
+    }
+    let barrelYaw = CMPilotRig.YawOf(f);
+    let barrelPitch = Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0)));
+    let dy = ClampF(CMPilotRig.Wrap(CMPilotRig.YawOf(want) - barrelYaw), -this.GIMBAL_YAW, this.GIMBAL_YAW);
+    let dp = ClampF(Rad2Deg(AtanF(want.Z, flat)) - barrelPitch, -this.GIMBAL_DOWN, this.GIMBAL_UP);
+    let d = CMPilotRig.Dir(barrelYaw + dy, barrelPitch + dp);
+    return new Vector4(o.X + d.X * reach, o.Y + d.Y * reach, o.Z + d.Z * reach, 1.0);
+  }
 
   // where gun `g`'s barrel points, `dist` metres out
   public func BarrelPoint(g: ref<CMGun>, dist: Float) -> Vector4 {
@@ -167,7 +203,7 @@ public class CMPilotGuns {
     }
     // spread grows with heat: a cone around the point
     let dist = Vector4.Distance(camPos, aim);
-    let point = this.m_barrel ? this.BarrelPoint(g, dist) : aim;
+    let point = this.PointFor(g, aim, dist);
     let cone = Deg2Rad(spreadDeg * (1.0 + g.heat * 1.5));
     let r = dist * cone;
     let target = new Vector4(point.X + RandRangeF(-r, r), point.Y + RandRangeF(-r, r), point.Z + RandRangeF(-r, r) * 0.6, 1.0);

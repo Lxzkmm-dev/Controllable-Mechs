@@ -95,7 +95,7 @@ public class CMPilotSystem extends ScriptableSystem {
   private persistent let m_camFwdCm: Int32;
   private persistent let m_sensPct: Int32;
   private persistent let m_showDebug: Bool;
-  private persistent let m_aimMode: Int32;      // 0 = along the barrels (default), 1 = to the reticle point
+  private persistent let m_aimMode: Int32;      // CMAimMode: 0 gimballed (default), 1 to the reticle, 2 along the barrels
   private persistent let m_traverse: Int32;     // torso traverse deg/s, stored +1 (0 = default)
   private persistent let m_camMode: Int32;      // 0 = sensor view (default), 1 = third-person chase view
   private persistent let m_chaseDistCm: Int32;  // chase view: how far behind the mech's centre, stored +1
@@ -272,7 +272,7 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_clip = 999.0;
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
-    this.m_guns.SetBarrelMode(this.m_aimMode == 0);
+    this.m_guns.SetAimMode(this.m_aimMode);
     this.m_rig.SetTraverse(Cast<Float>(this.Traverse()));
     this.m_servoOn = false;
     this.m_servoHit = 0.0;
@@ -553,7 +553,7 @@ public class CMPilotSystem extends ScriptableSystem {
     // triggers: the MK.31s are fixed to the body, so they only fire once it faces the reticle
     // (otherwise the flash leaves the barrels one way and the rounds go another)
     this.m_aligned = AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))) < this.ALIGN_DEG;
-    if this.m_aimMode == 1 && !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
+    if this.m_aimMode == CMAimMode.Reticle() && !this.m_aligned && (this.Key(CMPilotKey.Lmb()) || this.Key(CMPilotKey.Rmb())) {
       this.m_unalignedHeld += dt;
       if this.m_unalignedHeld > 2.0 && this.m_unalignedHeld - dt <= 2.0 {
         TKLog.Add("ControllableMechs", "pilot: trigger held 2 s but the chassis is still " + FloatToStringPrec(AbsF(CMPilotRig.Wrap(this.m_rig.yaw - CMPilotRig.YawOf(mech.GetWorldForward()))), 0) + " deg off the reticle");
@@ -562,7 +562,7 @@ public class CMPilotSystem extends ScriptableSystem {
       this.m_unalignedHeld = 0.0;
     }
     // along the barrels, the rounds always follow the muzzles, so there's nothing to wait for
-    let gate = this.m_aimMode == 0 || this.m_aligned;
+    let gate = this.m_aimMode != CMAimMode.Reticle() || this.m_aligned;
     let lmb = gate && this.Key(CMPilotKey.Lmb());
     let rmb = gate && this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb());
     let trigger = this.Key(CMPilotKey.Lmb()) || (this.m_fireMode == CMFireMode.Split() && this.Key(CMPilotKey.Rmb()));
@@ -594,14 +594,14 @@ public class CMPilotSystem extends ScriptableSystem {
     this.ScheduleFrame();
   }
 
-  // The barrel pips: where each MK.31 points, at the reticle's range, drawn on the HUD.
+  // The gun pips: where each MK.31's rounds will go (see CMPilotGuns.PointFor), drawn on the HUD.
   // Screen offset from the view's angles: tan(angle) / tan(fov / 2) x half the 4K height
   // (the camera's FOV is taken as vertical; unverified, the pips may need a scale fix).
   private func PlacePips() -> Void {
     let range = this.m_aimDist > 1.0 ? this.m_aimDist : 150.0;
     let scale = 1080.0 / TanF(Deg2Rad(this.m_rig.fov * 0.5));
-    let l = this.PipOffset(this.m_guns.BarrelPoint(this.m_guns.left, range), scale);
-    let r = this.PipOffset(this.m_guns.BarrelPoint(this.m_guns.right, range), scale);
+    let l = this.PipOffset(this.m_guns.PointFor(this.m_guns.left, this.m_aim, range), scale);
+    let r = this.PipOffset(this.m_guns.PointFor(this.m_guns.right, this.m_aim, range), scale);
     let lOn = this.m_guns.left.Ready() && AbsF(l.X) < 1900.0 && AbsF(l.Y) < 1050.0;
     let rOn = this.m_guns.right.Ready() && AbsF(r.X) < 1900.0 && AbsF(r.Y) < 1050.0;
     this.m_hud.SetPips(l.X, l.Y, lOn, r.X, r.Y, rOn);
@@ -669,19 +669,33 @@ public class CMPilotSystem extends ScriptableSystem {
     }
   }
 
-  // what the reticle is on: first static hit along the view, else far away
+  // what the reticle is on: the nearest hit on world geometry or on anything dynamic
+  // (characters, vehicles, props) along the view, else a point far away. Both presets are
+  // the ones Time Dilation Overhaul checks line of sight with.
   private func UpdateAim() -> Void {
     let fwd = this.m_rig.Forward();
     let from = this.m_rig.pos + fwd * (4.5 + (this.IsChase() ? this.ChaseDist() : 0.0));   // clear of the mech's own body
     let to = this.m_rig.pos + fwd * 600.0;
+    let sq = GameInstance.GetSpatialQueriesSystem(this.GetGameInstance());
+    let best = 0.0;
     let hit: TraceResult;
-    if GameInstance.GetSpatialQueriesSystem(this.GetGameInstance()).SyncRaycastByCollisionGroup(from, to, n"Static", hit, true, false) {
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hit, true) {
       this.m_aim = Cast<Vector4>(hit.position);
-      this.m_aimDist = Vector4.Distance(this.m_rig.pos, this.m_aim);
-    } else {
-      this.m_aim = to;
-      this.m_aimDist = 0.0;
+      best = Vector4.Distance(this.m_rig.pos, this.m_aim);
     }
+    let dyn: TraceResult;
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Dynamic", dyn, true) {
+      let p = Cast<Vector4>(dyn.position);
+      let d = Vector4.Distance(this.m_rig.pos, p);
+      if best <= 0.0 || d < best {
+        this.m_aim = p;
+        best = d;
+      }
+    }
+    if best <= 0.0 {
+      this.m_aim = to;
+    }
+    this.m_aimDist = best;
   }
 
   // ---------------------------------------------------------------------------
@@ -874,7 +888,7 @@ public class CMPilotSystem extends ScriptableSystem {
       if s.signal < 0.2 {
         s.warning = "SIGNAL DEGRADED - RETURN TO OPERATOR";
       } else {
-        if this.m_aimMode == 1 && !this.m_aligned {
+        if this.m_aimMode == CMAimMode.Reticle() && !this.m_aligned {
           s.warning = "ALIGNING CHASSIS";
         }
       }
@@ -1160,9 +1174,9 @@ public class CMPilotSystem extends ScriptableSystem {
 
   public func AimMode() -> Int32 = this.m_aimMode
   public func SetAimMode(mode: Int32) -> Void {
-    this.m_aimMode = Clamp(mode, 0, 1);
+    this.m_aimMode = Clamp(mode, 0, 2);
     if IsDefined(this.m_guns) {
-      this.m_guns.SetBarrelMode(this.m_aimMode == 0);
+      this.m_guns.SetAimMode(this.m_aimMode);
     }
   }
   public func Traverse() -> Int32 = this.m_traverse > 0 ? this.m_traverse - 1 : 40

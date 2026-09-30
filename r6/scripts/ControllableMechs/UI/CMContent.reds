@@ -165,8 +165,8 @@ public class CMContent extends TKContent {
       IntToString(pilot.FireMode()),
       CMFireMode.Name(0) + "|" + CMFireMode.Name(1) + "|" + CMFireMode.Name(2), "0|1|2", "firemode", "");
     p.SetTip("STAGGERED: LMB fires both, barrels alternating. LINKED SALVO: LMB fires both at once. SPLIT: LMB left gun, RMB right gun, MMB optics.");
-    p.Dropdown("AIM MODE", "Where the rounds go", IntToString(pilot.AimMode()), "ALONG THE BARRELS|TO THE RETICLE", "0|1", "aimmode", "");
-    p.SetTip("ALONG THE BARRELS: rounds follow each MK.31's real barrel (muzzle flash and rounds agree); two pips on the HUD show where the barrels point. TO THE RETICLE: rounds go to the point under the reticle; the guns wait for the chassis to line up.");
+    p.Dropdown("AIM MODE", "Where the rounds go", IntToString(pilot.AimMode()), "GIMBALLED|TO THE RETICLE|ALONG THE BARRELS", "0|1|2", "aimmode", "");
+    p.SetTip("GIMBALLED: rounds go to what the reticle is on, within each gun's travel around its mount (12 deg side to side, 40 down, 25 up); the pips show where they'll land. TO THE RETICLE: always at the reticle; the guns wait for the chassis to line up. ALONG THE BARRELS: straight out of the muzzles.");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
     p.Heading("CAMERA VIEW");
     p.Dropdown("VIEW", "V switches it while piloting", IntToString(pilot.CamMode()), "SENSOR (FIRST PERSON)|CHASE (THIRD PERSON)", "0|1", "cammode", "");
