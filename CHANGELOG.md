@@ -26,3 +26,6 @@ Known issues:
 - **Jump key:** Space can still make V jump if the game's NoJump restriction doesn't hold.
 - **Guns:** they fire in game. Whether the flash and the rounds now line up is still to be confirmed.
 - **Gamepad:** not supported yet.
+- **Backing up (S):** on builds before 4e54241 the camera followed the chassis's facing, so when the Minotaur turned round to back up, the view ended up behind and in front of it. The camera now follows the view's facing; still to confirm in game.
+
+Planned: a third-person chase camera (see the README roadmap).

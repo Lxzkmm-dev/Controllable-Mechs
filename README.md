@@ -79,5 +79,6 @@ A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game
 
 1. **Command mode:** link a robot, then order it to follow, hold or move to a target.
 2. **Pilot Mode (first build, Minotaur):** direct control with the weighted camera, HUD and both HMGs.
-3. **Attack orders:** send the robot after the target you look at.
-4. **Your own mech:** spawn one, persist it in the save, and call it in.
+3. **Third-person camera (requested):** a chase view behind and above the mech, toggled while piloting. It would reuse the same rig at a negative reach and aim through the mech.
+4. **Attack orders:** send the robot after the target you look at.
+5. **Your own mech:** spawn one, persist it in the save, and call it in.
