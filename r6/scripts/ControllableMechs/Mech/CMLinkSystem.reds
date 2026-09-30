@@ -482,9 +482,16 @@ public class CMLinkSystem extends ScriptableSystem {
     this.m_airChecks = 0;
     let ground = Cast<Vector4>(hit.position);
     ground.W = 1.0;
-    let e: EulerAngles;
-    e.Yaw = CMPilotRig.YawOf(mech.GetWorldForward());
-    GameInstance.GetTeleportationFacility(this.GetGameInstance()).Teleport(mech, ground, e);
+    // the AI's own teleport order (the teleport facility's moves don't land on this mech)
+    let ai = mech.GetAIControllerComponent();
+    if !IsDefined(ai) {
+      return;
+    }
+    let cmd = new AITeleportCommand();
+    cmd.position = ground;
+    cmd.rotation = CMPilotRig.YawOf(mech.GetWorldForward());
+    cmd.doNavTest = false;
+    ai.SendCommand(cmd);
     GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
     CMCSession.Log("AIRBORNE (linked, not piloted): hanging " + FloatToStringPrec(gap, 1) + " m up for 2 s, set down on the ground below");
   }

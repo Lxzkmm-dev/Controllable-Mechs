@@ -61,6 +61,7 @@ public class CMUMinotaur extends CMCUnit {
   private let m_lookAtsFrom: Float;   // not before this time (after an AI restart)
   private let m_combatWatchAt: Float;
   private let m_airTime: Float;
+  private let m_airLogs: Int32;
   private let m_sentOpen: Bool;       // a rotation request is out and has not landed yet
   private let m_sentYaw: Float;
   private let m_sentAt: Float;
@@ -1100,10 +1101,17 @@ public class CMUMinotaur extends CMCUnit {
     if this.m_airTime >= 0.5 && gap < 60.0 {
       let ground = Cast<Vector4>(hit.position);
       ground.W = 1.0;
-      let e: EulerAngles;
-      e.Yaw = CMPilotRig.YawOf(mech.GetWorldForward());
-      GameInstance.GetTeleportationFacility(this.m_game).Teleport(mech, ground, e);
-      CMCSession.Log("AIRBORNE: still hanging after " + FloatToStringPrec(this.m_airTime, 1) + " s, set down " + FloatToStringPrec(gap, 1) + " m below");
+      // the AI's own teleport order: the teleport facility's moves don't land on this mech
+      // (the log showed it set down every half second and never moving)
+      let cmd = new AITeleportCommand();
+      cmd.position = ground;
+      cmd.rotation = CMPilotRig.YawOf(mech.GetWorldForward());
+      cmd.doNavTest = false;
+      this.Send(mech, cmd, false);
+      this.m_airLogs += 1;
+      if this.m_airLogs <= 6 {
+        CMCSession.Log("AIRBORNE: still hanging after " + FloatToStringPrec(this.m_airTime, 1) + " s, teleport order to the ground " + FloatToStringPrec(gap, 1) + " m below");
+      }
       s.rig.Nudge(12.0, -1.2);   // the landing, felt
       GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
       this.m_airTime = 0.0;
