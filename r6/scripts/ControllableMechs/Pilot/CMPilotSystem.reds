@@ -735,6 +735,26 @@ public class CMPilotSystem extends ScriptableSystem {
           this.m_rig.Look(0.0, value / 45.0 * (this.m_zoom ? 0.5 : 1.0));
         }
         break;
+      // V's own actions: swallowed while piloting, even if a restriction didn't take
+      case n"Jump":
+      case n"ToggleCrouch":
+      case n"Crouch":
+      case n"Dodge":
+      case n"DodgeForward":
+      case n"DodgeBackward":
+      case n"DodgeLeft":
+      case n"DodgeRight":
+      case n"Reload":
+      case n"SwitchItem":
+      case n"SelectWeapon":
+      case n"NextWeapon":
+      case n"PreviousWeapon":
+      case n"QuickMelee":
+      case n"UseConsumable":
+      case n"UseCombatGadget":
+      case n"MeleeAttack":
+      case n"Choice1":
+        break;
       default:
         used = false;
         break;
@@ -845,14 +865,34 @@ public class CMPilotSystem extends ScriptableSystem {
       t"GameplayRestriction.NoPhotoMode",
       t"GameplayRestriction.VehicleNoSummoning"
     ];
+    let missing = "";
     for id in list {
       if on {
+        if !IsDefined(TweakDBInterface.GetStatusEffectRecord(id)) {
+          missing += " " + TDBID.ToStringDEBUG(id);
+        }
         ss.ApplyStatusEffect(pid, id, rid, pid);
       } else {
         ss.RemoveStatusEffect(pid, id);
       }
     }
+    if on {
+      TKLog.Add("ControllableMechs", "pilot: restrictions applied" + (StrLen(missing) > 0 ? ", records missing:" + missing : ", all records found"));
+    }
     this.m_restricted = on;
+  }
+
+  // live check for the DBG line: do V's movement and jump locks hold?
+  private func RestrictState() -> String {
+    let player = GetPlayer(this.GetGameInstance());
+    if !IsDefined(player) {
+      return "?";
+    }
+    let ss = GameInstance.GetStatusEffectSystem(this.GetGameInstance());
+    let pid = player.GetEntityID();
+    let move = ss.HasStatusEffect(pid, t"GameplayRestriction.NoMovement");
+    let jump = ss.HasStatusEffect(pid, t"GameplayRestriction.NoJump");
+    return "MOVE-LOCK " + (move ? "Y" : "N") + "  JUMP-LOCK " + (jump ? "Y" : "N");
   }
 
   // ---------------------------------------------------------------------------
@@ -881,7 +921,7 @@ public class CMPilotSystem extends ScriptableSystem {
   }
 
   public func DebugLine() -> String {
-    return "DBG  FRAMES " + IntToString(this.m_dbgFrames) + "  KEYS " + IntToString(this.m_dbgKeys) + "  MOUSE " + IntToString(this.m_dbgAxis) + "  ACTIONS " + IntToString(this.m_dbgActions) + "  PAUSED " + (GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() ? "Y" : "N");
+    return "DBG  FRAMES " + IntToString(this.m_dbgFrames) + "  KEYS " + IntToString(this.m_dbgKeys) + "  MOUSE " + IntToString(this.m_dbgAxis) + "  ACTIONS " + IntToString(this.m_dbgActions) + "  PAUSED " + (GameInstance.GetTimeSystem(this.GetGameInstance()).IsPausedState() ? "Y" : "N") + "  " + this.RestrictState();
   }
 
   // a default Quaternion is all zeros, not identity
