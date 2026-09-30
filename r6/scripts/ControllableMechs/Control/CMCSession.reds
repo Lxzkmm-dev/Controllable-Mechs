@@ -168,7 +168,7 @@ public class CMCSession extends ScriptableSystem {
     this.m_fireMode = Clamp(cfg.Int("fireMode", 0), 0, 2);
     this.m_chase = cfg.Flag("chaseView", false);
     this.m_creditVOff = !cfg.Flag("creditV", true);
-    this.m_hullX = Clamp(cfg.Int("hullMult", 4), 1, 10) + 1;
+    this.m_hullX = Clamp(cfg.Int("hullMult", 10), 1, 50) + 1;
   }
 
   public func IsActive() -> Bool = this.m_state != 0
@@ -201,14 +201,14 @@ public class CMCSession extends ScriptableSystem {
     }
     return "";
   }
-  // how much tougher the mech is while piloted: x its health, 4 by default (stored +1)
+  // how much tougher the mech is while piloted: x its health, 10 by default (stored +1)
   public func HullMult() -> Float {
     this.Sync();
-    return this.m_hullX > 0 ? Cast<Float>(this.m_hullX - 1) : 4.0;
+    return this.m_hullX > 0 ? Cast<Float>(this.m_hullX - 1) : 10.0;
   }
   public func SetHullMult(x: Int32) -> Void {
     this.Sync();
-    this.m_hullX = Clamp(x, 1, 10) + 1;
+    this.m_hullX = Clamp(x, 1, 50) + 1;
     CMPilotSystem.Get(this.GetGameInstance()).PutInt("hullMult", this.m_hullX - 1);
     CMCSession.Log("hull multiplier x" + IntToString(x) + " (applies on the next link)");
   }

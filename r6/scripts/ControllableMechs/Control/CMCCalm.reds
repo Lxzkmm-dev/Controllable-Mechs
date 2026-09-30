@@ -38,6 +38,10 @@ public final static func OnHit(ownerPuppet: wref<ScriptedPuppet>, evt: ref<gameH
       evt.attackData.SetInstigator(unit);
       wrappedMethod(ownerPuppet, evt);
       evt.attackData.SetInstigator(credited);
+      // and V, named as the attacker by the credit, comes off its threat list
+      if credited.IsPlayer() && !evt.attackData.HasFlag(hitFlag.WasKillingBlow) {
+        TargetTrackingExtension.RemoveThreat(ownerPuppet, credited);
+      }
       CMCCalm.Drew(ownerPuppet, unit);
       return;
     }

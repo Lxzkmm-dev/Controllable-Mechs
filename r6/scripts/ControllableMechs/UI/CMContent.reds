@@ -216,7 +216,7 @@ public class CMContent extends TKContent {
     p.Check("KILLS CREDITED TO V", "The mech's hits count as yours: kills, XP, NCPD heat, who enemies turn on", session.CreditV(), "creditv", "");
     p.Check("HOLD FIRE UNTIL ON TARGET", "On: each gun waits until its barrel has swung onto the reticle. Off: the guns fire while they traverse; rounds go to the reticle either way (from the next link-in)", cfg.FireGate(), "gate", "");
     p.Slider("RECOIL", "How much the guns shake the view; it never moves the aim (from the next link-in)", "", "0|200|10|" + IntToString(cfg.RecoilPct()) + "|%", "recoil", "");
-    p.Slider("HULL", "The mech's health while you pilot it, times its own (from the next link-in)", "", "1|10|1|" + IntToString(RoundF(session.HullMult())) + "|x", "hull", "");
+    p.Slider("HULL", "The mech's health while you pilot it, times its own (the Minotaur has about 1,000 on its own; from the next link-in)", "", "1|50|1|" + IntToString(RoundF(session.HullMult())) + "|x", "hull", "");
 
     p.Heading("CHASSIS");
     p.Slider("TURN SPEED", "How fast the view traverses and the chassis turns; 100% is the heavy baseline (from the next link-in)", "", "50|300|25|" + IntToString(cfg.TurnPct()) + "|%", "turn", "");

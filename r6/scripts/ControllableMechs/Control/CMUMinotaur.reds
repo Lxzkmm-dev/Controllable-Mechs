@@ -146,7 +146,7 @@ public class CMUMinotaur extends CMCUnit {
     this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
     this.m_turnVel = 0.0;
     this.m_turning = false;
-    this.m_turnByOrder = false;
+    this.m_turnByOrder = true;   // turn orders first: they landed 58 of 60, teleports 2 of 18
     this.m_sentOpen = false;
     this.m_landedAt = 0.0;
     this.m_sent = 0;
@@ -473,9 +473,10 @@ public class CMUMinotaur extends CMCUnit {
   // went out each frame, as if each one cancelled the one before it.
   //
   // Two ways of rotating, tried in this order for the session:
-  //   1. a rotation-only teleport
-  //   2. the AI's own turn order, aimed at the heading we want (a small step each time)
-  // If nothing has landed for 2 s while the body is still off, the next way is used, and
+  //   1. the AI's own turn order, aimed at the heading we want (a small step each time):
+  //      in the log they landed 58 of 60 times, within a frame
+  //   2. a rotation-only teleport (2 of 18 landed)
+  // If nothing has landed for 2 s while the body is still off, the other way is used, and
   // the log says so. Walking hands the facing back to the walk orders.
   private func TurnChassis(s: ref<CMCSession>, mech: ref<NPCPuppet>, dt: Float) -> Void {
     let real = CMPilotRig.YawOf(mech.GetWorldForward());
@@ -536,9 +537,9 @@ public class CMUMinotaur extends CMCUnit {
       this.TurnReport(real);
       if !this.m_turnByOrder {
         this.m_turnByOrder = true;
-        CMCSession.Log("CHASSIS: NO TELEPORT ROTATION HAS LANDED FOR 2 S (body at " + FloatToStringPrec(real, 1) + " deg, wanted " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": rotating with AI turn orders from here");
+        CMCSession.Log("CHASSIS: NO TELEPORT ROTATION HAS LANDED FOR 2 S (body at " + FloatToStringPrec(real, 1) + " deg, wanted " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": back to AI turn orders");
       } else {
-        CMCSession.Log("CHASSIS: NO TURN ORDER HAS LANDED FOR 2 S EITHER (body at " + FloatToStringPrec(real, 1) + " deg, wanted " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": back to teleports");
+        CMCSession.Log("CHASSIS: NO TURN ORDER HAS LANDED FOR 2 S (body at " + FloatToStringPrec(real, 1) + " deg, wanted " + FloatToStringPrec(this.m_bodyYaw, 1) + "), state " + CMUMinotaur.StateName(mech) + ": trying teleports");
         this.m_turnByOrder = false;
       }
     }
