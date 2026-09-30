@@ -40,6 +40,8 @@ public class CMUDrone extends CMCUnit {
   private let m_stalls: Int32;         // frames the drone didn't move though it was sent on
   private let m_last: Vector4;         // where it was the frame before
   private let m_dt: Float;             // the last frame's length (the teleport leads by one)
+  private let m_gait: CName;           // the drone locomotion wrapper on (Walk, Run, Sprint)
+  private let m_lastYaw: Float;
   private let m_ground: Float;         // metres above the ground, last measured
 
   private let RADIUS: Float = 0.45;    // m, the collision sphere around the drone
@@ -74,6 +76,8 @@ public class CMUDrone extends CMCUnit {
     this.m_stalls = 0;
     this.m_last = drone.GetWorldPosition();
     this.m_dt = 0.016;
+    this.m_gait = n"";
+    this.m_lastYaw = this.m_flight.yaw;
     this.Pacify(drone, true);
     if this.m_method == 3 {
       let ai = drone.GetAIControllerComponent();
@@ -90,6 +94,7 @@ public class CMUDrone extends CMCUnit {
     let drone = this.m_drone;
     if IsDefined(drone) {
       this.Cancel(drone);
+      this.SetGait(drone, n"Walk");   // the drone's own default
       if this.m_method == 3 {
         let ai = drone.GetAIControllerComponent();
         if IsDefined(ai) {
@@ -167,6 +172,7 @@ public class CMUDrone extends CMCUnit {
     }
     this.Collide(drone, from);
     this.Place(drone, now);
+    this.Lean(drone, dt);
     if now >= this.m_logAt {
       this.m_logAt = now + 1.0;
       this.Report(drone);
@@ -288,6 +294,36 @@ public class CMUDrone extends CMCUnit {
     this.m_cmd = null;
   }
 
+  // The body's lean. The game won't take a pitch or roll for a drone, but its animation
+  // graph (drone_humanoid) leans and tilts it procedurally from its locomotion: speed,
+  // turn speed and which movement set is on (DroneComponent sets the walk, run or sprint
+  // wrapper; the tilt coefficients come from its record). Our flight feeds those, since
+  // the teleports leave the drone's own movement at a standstill.
+  private func Lean(drone: ref<NPCPuppet>, dt: Float) -> Void {
+    let fl = this.m_flight;
+    let flat = SqrtF(fl.vel.X * fl.vel.X + fl.vel.Y * fl.vel.Y);
+    let turn = CMPilotRig.Wrap(fl.yaw - this.m_lastYaw) / MaxF(0.001, dt);
+    this.m_lastYaw = fl.yaw;
+    let loco = new AnimFeature_DroneLocomotion();
+    loco.speed = flat;
+    loco.desiredSpeed = flat;
+    loco.angularSpeed = turn;
+    loco.lookAtAngle = 0.0;
+    loco.pathCurvative = 0.0;
+    AnimationControllerComponent.ApplyFeature(drone, n"DroneLocomotion", loco);
+    this.SetGait(drone, flat < 4.0 ? n"Walk" : (flat < 9.0 ? n"Run" : n"Sprint"));
+  }
+
+  private func SetGait(drone: ref<NPCPuppet>, gait: CName) -> Void {
+    if Equals(gait, this.m_gait) {
+      return;
+    }
+    this.m_gait = gait;
+    AnimationControllerComponent.SetAnimWrapperWeight(drone, n"DroneLocomotion_Walk", Equals(gait, n"Walk") ? 1.0 : 0.0);
+    AnimationControllerComponent.SetAnimWrapperWeight(drone, n"DroneLocomotion_Run", Equals(gait, n"Run") ? 1.0 : 0.0);
+    AnimationControllerComponent.SetAnimWrapperWeight(drone, n"DroneLocomotion_Sprint", Equals(gait, n"Sprint") ? 1.0 : 0.0);
+  }
+
   // once a second (diagnostics)
   private func Report(drone: ref<NPCPuppet>) -> Void {
     let fl = this.m_flight;
@@ -298,7 +334,8 @@ public class CMUDrone extends CMCUnit {
       + (this.m_method == 2 ? "" : ", off by " + FloatToStringPrec(avg, 2) + " m avg / " + FloatToStringPrec(this.m_errMax, 2) + " m max, " + IntToString(stalls) + " stalled frames")
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
-      + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up");
+      + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
+      + ", gait " + NameToString(this.m_gait));
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
     this.m_errN = 0;
