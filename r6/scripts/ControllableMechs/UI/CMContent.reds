@@ -9,6 +9,7 @@ module ControllableMechs
 
 import TerminalKit.*
 import TerminalKit.Tools.*
+import ControllableMechs.Control.*
 
 public class CMContent extends TKContent {
   public let game: GameInstance;
