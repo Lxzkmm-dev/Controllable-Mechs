@@ -476,10 +476,12 @@ public class CMLinkSystem extends ScriptableSystem {
       return;
     }
     this.m_airChecks += 1;
-    if this.m_airChecks < 2 || gap >= 60.0 {
+    // three checks (3 s) first, so the game's own settling from a small height isn't cut
+    // short, then one try every 5 s while it stays up
+    if this.m_airChecks < 3 || gap >= 60.0 {
       return;
     }
-    this.m_airChecks = 0;
+    this.m_airChecks = -2;
     let ground = Cast<Vector4>(hit.position);
     ground.W = 1.0;
     // the AI's own teleport order (the teleport facility's moves don't land on this mech)
@@ -493,7 +495,7 @@ public class CMLinkSystem extends ScriptableSystem {
     cmd.doNavTest = false;
     ai.SendCommand(cmd);
     GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
-    CMCSession.Log("AIRBORNE (linked, not piloted): hanging " + FloatToStringPrec(gap, 1) + " m up for 2 s, set down on the ground below");
+    CMCSession.Log("AIRBORNE (linked, not piloted): hanging " + FloatToStringPrec(gap, 1) + " m up for 3 s, teleport order to the ground below");
   }
 
   private func Drop(player: ref<PlayerPuppet>, why: String) -> Void {

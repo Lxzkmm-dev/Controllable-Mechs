@@ -1098,7 +1098,9 @@ public class CMUMinotaur extends CMCUnit {
       this.m_moving = false;
     }
     this.m_airTime += 0.1;
-    if this.m_airTime >= 0.5 && gap < 60.0 {
+    // wait a second and a half first: from a small height the game settles it by itself,
+    // and acting sooner (every half second) stopped even that; then one try every 3 s
+    if this.m_airTime >= 1.5 && gap < 60.0 {
       let ground = Cast<Vector4>(hit.position);
       ground.W = 1.0;
       // the AI's own teleport order: the teleport facility's moves don't land on this mech
@@ -1114,7 +1116,7 @@ public class CMUMinotaur extends CMCUnit {
       }
       s.rig.Nudge(12.0, -1.2);   // the landing, felt
       GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
-      this.m_airTime = 0.0;
+      this.m_airTime = -1.5;   // the next try 3 s from now if it is still up
     }
     return true;
   }
