@@ -87,10 +87,16 @@ public class CMPilotSystem extends ScriptableSystem {
   private persistent let m_fireMode: Int32;
   private persistent let m_stayWhenHit: Bool;
   private persistent let m_themeIdx: Int32;   // 0 = militech (default), else 1 + index into TKTheme.Ids()
+  // camera tuning from the terminal, stored +1 so 0 means "default"
+  private persistent let m_camUpCm: Int32;
+  private persistent let m_camFwdCm: Int32;
+  private persistent let m_sensPct: Int32;
+  private persistent let m_showDebug: Bool;
 
   // where the sensor sits on the mech (forward, up; metres)
-  private let MOUNT_FORWARD: Float = 1.7;
-  private let MOUNT_UP: Float = 3.0;
+  // defaults for where the sensor sits on the mech (tunable in SETTINGS)
+  private let MOUNT_UP_CM: Int32 = 230;
+  private let MOUNT_FWD_CM: Int32 = 260;
   private let SPREAD_DEG: Float = 0.6;
   private let SIGNAL_RANGE: Float = 250.0;
 
@@ -245,7 +251,7 @@ public class CMPilotSystem extends ScriptableSystem {
     link.SetOrder(CMOrder.Pilot());
 
     this.m_rig = new CMPilotRig();
-    this.m_rig.Init(this.Mount(mech), CMPilotRig.YawOf(mech.GetWorldForward()));
+    this.m_rig.Init(this.Mount(mech), mech.GetWorldPosition(), CMPilotRig.YawOf(mech.GetWorldForward()));
     this.m_guns = new CMPilotGuns();
     this.m_guns.Init(mech);
     this.m_hudState = new CMPilotHudState();
@@ -337,6 +343,7 @@ public class CMPilotSystem extends ScriptableSystem {
     this.m_slow = 1.0;   // refresh the HUD on the first frame
     this.m_timerLoop = false;
     this.m_watchFrames = 0;
+    this.m_hud.ShowDebug(this.m_showDebug);
     this.m_hud.SetDebug("DBG  LOOP SCHEDULED, WAITING FOR FIRST FRAME");
     this.ScheduleFrame();
     this.ScheduleWatchdog();
@@ -492,7 +499,7 @@ public class CMPilotSystem extends ScriptableSystem {
       return;
     }
     this.m_dbgFrames += 1;
-    if this.m_dbgFrames % 10 == 1 && IsDefined(this.m_hud) {
+    if this.m_showDebug && this.m_dbgFrames % 10 == 1 && IsDefined(this.m_hud) {
       this.m_hud.SetDebug(this.DebugLine());
     }
     let game = this.GetGameInstance();
@@ -511,7 +518,10 @@ public class CMPilotSystem extends ScriptableSystem {
 
     let rmbZoom = this.m_fireMode == CMFireMode.Split() ? this.Key(CMPilotKey.Mmb()) : this.Key(CMPilotKey.Rmb());
     this.m_zoom = rmbZoom;
-    this.m_rig.Update(dt, this.Mount(mech), this.m_zoom);
+    this.m_rig.Update(dt, this.Mount(mech), mech.GetWorldPosition(), this.m_zoom);
+    if this.m_rig.jumped > 0.0 {
+      TKLog.Add("ControllableMechs", "pilot: the mech jumped " + FloatToStringPrec(this.m_rig.jumped, 1) + " m in one frame (moving " + (this.m_moving ? "yes" : "no") + ")");
+    }
     this.ApplyCamera();
 
     // triggers
@@ -736,7 +746,9 @@ public class CMPilotSystem extends ScriptableSystem {
     } else {
       s.hints = "[WASD] WALK   [SHIFT] RUN   [LMB] FIRE   [RMB] OPTICS   [B] FIRE MODE   [L] DISCONNECT";
     }
-    s.debug = this.DebugLine();
+    if this.m_showDebug {
+      s.debug = this.DebugLine();
+    }
     this.m_hud.Refresh(s);
   }
 
@@ -889,6 +901,9 @@ public class CMPilotSystem extends ScriptableSystem {
     if IsDefined(y) && y.GetValue() > 0.0 {
       this.m_sensY = y.GetValue() / 100.0;
     }
+    let k = Cast<Float>(this.SensPct()) / 100.0;
+    this.m_sensX *= k;
+    this.m_sensY *= k;
   }
 
   // ---------------------------------------------------------------------------
@@ -949,7 +964,39 @@ public class CMPilotSystem extends ScriptableSystem {
   private func Mount(mech: ref<NPCPuppet>) -> Vector4 {
     let p = mech.GetWorldPosition();
     let f = mech.GetWorldForward();
-    return new Vector4(p.X + f.X * this.MOUNT_FORWARD, p.Y + f.Y * this.MOUNT_FORWARD, p.Z + this.MOUNT_UP, 1.0);
+    let fwd = Cast<Float>(this.CamFwdCm()) / 100.0;
+    let up = Cast<Float>(this.CamUpCm()) / 100.0;
+    return new Vector4(p.X + f.X * fwd, p.Y + f.Y * fwd, p.Z + up, 1.0);
+  }
+
+  // ---- camera tuning (SETTINGS sliders; applied live) ----
+  public func CamUpCm() -> Int32 = this.m_camUpCm > 0 ? this.m_camUpCm - 1 : this.MOUNT_UP_CM
+  public func CamFwdCm() -> Int32 = this.m_camFwdCm > 0 ? this.m_camFwdCm - 1 : this.MOUNT_FWD_CM
+  public func SensPct() -> Int32 = this.m_sensPct > 0 ? this.m_sensPct - 1 : 100
+  public func ShowDebug() -> Bool = this.m_showDebug
+
+  public func SetCamUpCm(v: Int32) -> Void { this.m_camUpCm = Clamp(v, 100, 450) + 1; }
+  public func SetCamFwdCm(v: Int32) -> Void { this.m_camFwdCm = Clamp(v, 0, 500) + 1; }
+  public func SetSensPct(v: Int32) -> Void {
+    this.m_sensPct = Clamp(v, 25, 300) + 1;
+    if this.m_state == 2 {
+      this.CacheSensitivity();
+    }
+  }
+  public func SetShowDebug(on: Bool) -> Void {
+    this.m_showDebug = on;
+    if IsDefined(this.m_hud) {
+      this.m_hud.ShowDebug(on);
+    }
+  }
+
+  public func ResetCamera() -> Void {
+    this.m_camUpCm = 0;
+    this.m_camFwdCm = 0;
+    this.m_sensPct = 0;
+    if this.m_state == 2 {
+      this.CacheSensitivity();
+    }
   }
 
   private func PlayerHealth(player: ref<PlayerPuppet>) -> Float {

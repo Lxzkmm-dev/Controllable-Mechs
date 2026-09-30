@@ -2,15 +2,14 @@
 // CONTROLLABLE MECHS - PILOT CAMERA RIG (the weight)
 //
 // Pure math, no game calls. Each frame it takes where the pilot wants to look
-// (aim yaw/pitch from the mouse) and where the sensor mount is on the mech, and
-// returns where the virtual camera actually is:
+// (aim yaw/pitch from the mouse), where the sensor mount is on the mech and the
+// mech's ground position, and returns where the virtual camera is:
 //   - turning is a spring with mass: it accelerates, is capped at the torso's
 //     traverse rate, overshoots a little and settles
-//   - the camera position hangs off the mount on a stiff spring, so starts and
-//     stops lag and then catch up
-//   - the mech's speed drives a stride: a vertical bob plus a jolt and a small
-//     roll on every footfall
-//   - each shot kicks the view (recoil)
+//   - the position is pinned to the mount (no lag: a lagging camera drifts off
+//     the mech and shakes against its steps); the weight is added on top as
+//     small offsets that settle back: a bob and a jolt plus roll on every
+//     footfall, and a kick on every shot
 // Angles are degrees in the game's convention: yaw 0 faces +Y, positive yaw
 // turns left, positive pitch looks up.
 // =============================================================================
@@ -27,12 +26,14 @@ public class CMPilotRig {
   public let pos: Vector4;
   public let fov: Float;
   public let speed: Float;          // mech ground speed, m/s (smoothed)
+  public let jumped: Float;         // metres the mech moved in one frame, when it's a jump (for the log)
 
   private let m_yawVel: Float;
   private let m_pitchVel: Float;
   private let m_rollVel: Float;
-  private let m_posVel: Vector4;
-  private let m_lastMount: Vector4;
+  private let m_jolt: Float;        // vertical offset from footfalls and recoil, settles to 0
+  private let m_joltVel: Float;
+  private let m_lastGround: Vector4;
   private let m_phase: Float;
   private let m_step: Int32;
   private let m_side: Float;
@@ -45,24 +46,20 @@ public class CMPilotRig {
   private let m_turnDamp: Float;
   private let m_maxYawRate: Float;
   private let m_maxPitchRate: Float;
-  private let m_posK: Float;
-  private let m_posDamp: Float;
   private let m_stride: Float;
   private let m_bobAmp: Float;
   private let m_fovBase: Float;
   private let m_fovZoom: Float;
 
-  public func Init(mount: Vector4, facingYaw: Float) -> Void {
+  public func Init(mount: Vector4, ground: Vector4, facingYaw: Float) -> Void {
     this.m_pitchMin = -35.0;
     this.m_pitchMax = 30.0;
     this.m_turnK = 26.0;        // stiffness of the torso turn
     this.m_turnDamp = 6.0;      // < 2*sqrt(K) ~ 10.2: underdamped, a slight overshoot
     this.m_maxYawRate = 80.0;   // deg/s: the torso can't whip around
     this.m_maxPitchRate = 55.0;
-    this.m_posK = 90.0;
-    this.m_posDamp = 15.0;
     this.m_stride = 2.4;        // metres per footfall
-    this.m_bobAmp = 0.10;
+    this.m_bobAmp = 0.08;
     this.m_fovBase = 68.0;
     this.m_fovZoom = 34.0;
 
@@ -74,11 +71,13 @@ public class CMPilotRig {
     this.pos = mount;
     this.fov = this.m_fovBase;
     this.speed = 0.0;
+    this.jumped = 0.0;
     this.m_yawVel = 0.0;
     this.m_pitchVel = 0.0;
     this.m_rollVel = 0.0;
-    this.m_posVel = new Vector4(0.0, 0.0, 0.0, 0.0);
-    this.m_lastMount = mount;
+    this.m_jolt = 0.0;
+    this.m_joltVel = 0.0;
+    this.m_lastGround = ground;
     this.m_phase = 0.0;
     this.m_step = 0;
     this.m_side = 1.0;
@@ -95,33 +94,37 @@ public class CMPilotRig {
   public func Recoil(k: Float) -> Void {
     this.m_pitchVel += 16.0 * k;
     this.m_yawVel += RandRangeF(-7.0, 7.0) * k;
-    this.m_posVel.X += RandRangeF(-0.15, 0.15) * k;
-    this.m_posVel.Y += RandRangeF(-0.15, 0.15) * k;
+    this.m_joltVel -= 0.4 * k;
   }
 
-  public func Update(dt: Float, mount: Vector4, zoom: Bool) -> Void {
+  // `mount`: where the sensor is this frame; `ground`: the mech's own position
+  public func Update(dt: Float, mount: Vector4, ground: Vector4, zoom: Bool) -> Void {
     if !this.m_ready {
       return;
     }
+    // speed from the mech itself (the mount swings when the body turns)
+    let d = ground - this.m_lastGround;
+    d.Z = 0.0;
+    let moved = Vector4.Length(d);
+    this.m_lastGround = ground;
+    this.jumped = 0.0;
+    let v = dt > 0.0 ? moved / dt : 0.0;
+    if moved > 3.0 {
+      this.jumped = moved;   // the mech was moved by the game, not by walking
+      v = this.speed;
+    }
+    this.speed += (v - this.speed) * MinF(1.0, dt * 4.0);
+
     // two substeps keep the springs stable on a slow frame
     let steps = dt > 0.02 ? 2 : 1;
     let h = dt / Cast<Float>(steps);
     let i = 0;
     while i < steps {
-      this.Step(h, mount);
+      this.Step(h);
       i += 1;
     }
-    // speed from how far the mount moved (smoothed)
-    let d = mount - this.m_lastMount;
-    d.Z = 0.0;
-    let v = dt > 0.0 ? Vector4.Length(d) / dt : 0.0;
-    if v > 30.0 {
-      v = 0.0;   // a teleport, not a stride
-    }
-    this.speed += (v - this.speed) * MinF(1.0, dt * 4.0);
-    this.m_lastMount = mount;
 
-    // stride: bob and a jolt on each footfall
+    // stride: a jolt and a little roll on each footfall
     let walk = ClampF(this.speed / 3.0, 0.0, 1.0);
     if walk > 0.05 {
       this.m_phase += dt * this.speed / this.m_stride * Pi();
@@ -129,18 +132,21 @@ public class CMPilotRig {
       if step != this.m_step {
         this.m_step = step;
         this.m_side = -this.m_side;
-        this.m_posVel.Z -= 1.4 * walk;
-        this.m_pitchVel -= 6.0 * walk;
-        this.m_rollVel += 9.0 * walk * this.m_side;
+        this.m_joltVel -= 0.9 * walk;
+        this.m_pitchVel -= 5.0 * walk;
+        this.m_rollVel += 8.0 * walk * this.m_side;
       }
     }
 
-    // zoom
+    // pinned to the mount, weight on top
+    let bob = -this.m_bobAmp * walk * AbsF(SinF(this.m_phase));
+    this.pos = new Vector4(mount.X, mount.Y, mount.Z + bob + this.m_jolt, 1.0);
+
     let target = zoom ? this.m_fovZoom : this.m_fovBase;
     this.fov += (target - this.fov) * MinF(1.0, dt * 7.0);
   }
 
-  private func Step(h: Float, mount: Vector4) -> Void {
+  private func Step(h: Float) -> Void {
     // torso yaw: spring toward the aim, rate-capped
     let dy = CMPilotRig.Wrap(this.aimYaw - this.yaw);
     this.m_yawVel += (this.m_turnK * dy - this.m_turnDamp * this.m_yawVel) * h;
@@ -152,30 +158,11 @@ public class CMPilotRig {
     this.m_pitchVel = ClampF(this.m_pitchVel, -this.m_maxPitchRate, this.m_maxPitchRate);
     this.pitch = ClampF(this.pitch + this.m_pitchVel * h, this.m_pitchMin - 4.0, this.m_pitchMax + 4.0);
 
-    // roll settles back to level
+    // roll and the vertical jolt settle back to zero
     this.m_rollVel += (-40.0 * this.roll - 7.0 * this.m_rollVel) * h;
     this.roll += this.m_rollVel * h;
-
-    // position hangs off the mount; a big jump (teleport) snaps
-    let bob = this.walkBob();
-    let goal = new Vector4(mount.X, mount.Y, mount.Z + bob, 1.0);
-    let off = goal - this.pos;
-    if Vector4.Length(off) > 8.0 {
-      this.pos = goal;
-      this.m_posVel = new Vector4(0.0, 0.0, 0.0, 0.0);
-      return;
-    }
-    this.m_posVel.X += (this.m_posK * off.X - this.m_posDamp * this.m_posVel.X) * h;
-    this.m_posVel.Y += (this.m_posK * off.Y - this.m_posDamp * this.m_posVel.Y) * h;
-    this.m_posVel.Z += (this.m_posK * off.Z - this.m_posDamp * this.m_posVel.Z) * h;
-    this.pos.X += this.m_posVel.X * h;
-    this.pos.Y += this.m_posVel.Y * h;
-    this.pos.Z += this.m_posVel.Z * h;
-  }
-
-  private func walkBob() -> Float {
-    let walk = ClampF(this.speed / 3.0, 0.0, 1.0);
-    return -this.m_bobAmp * walk * AbsF(SinF(this.m_phase));
+    this.m_joltVel += (-120.0 * this.m_jolt - 14.0 * this.m_joltVel) * h;
+    this.m_jolt = ClampF(this.m_jolt + this.m_joltVel * h, -0.25, 0.15);
   }
 
   // where the reticle points

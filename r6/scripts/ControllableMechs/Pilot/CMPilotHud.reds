@@ -249,6 +249,12 @@ public class CMPilotHud {
     }
   }
 
+  public func ShowDebug(on: Bool) -> Void {
+    if IsDefined(this.m_debug) {
+      this.m_debug.SetVisible(on);
+    }
+  }
+
   public func SetDebug(text: String) -> Void {
     if IsDefined(this.m_debug) {
       this.m_debug.SetText(text);
@@ -281,7 +287,9 @@ public class CMPilotHud {
 
     this.m_warn.SetText(s.warning);
     this.m_hints.SetText(s.hints);
-    this.m_debug.SetText(s.debug);
+    if StrLen(s.debug) > 0 {
+      this.m_debug.SetText(s.debug);
+    }
   }
 
   private func Gun(bar: ref<inkRectangle>, state: ref<inkText>, heat: Float, locked: Bool, has: Bool) -> Void {

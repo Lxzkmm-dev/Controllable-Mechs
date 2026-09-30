@@ -78,6 +78,22 @@ public class CMContent extends TKContent {
       case "dropwhenhit":
         pilot.SetStayWhenHit(!Equals(arg, "1"));
         break;
+      case "camup":
+        pilot.SetCamUpCm(StringToInt(arg, pilot.CamUpCm()));
+        break;
+      case "camfwd":
+        pilot.SetCamFwdCm(StringToInt(arg, pilot.CamFwdCm()));
+        break;
+      case "sens":
+        pilot.SetSensPct(StringToInt(arg, pilot.SensPct()));
+        break;
+      case "camreset":
+        pilot.ResetCamera();
+        p.SetMessage("*CAMERA SETTINGS RESET");
+        break;
+      case "debug":
+        pilot.SetShowDebug(Equals(arg, "1"));
+        break;
       case "theme":
         pilot.SetTheme(arg);
         p.SetTheme(arg);
@@ -135,6 +151,13 @@ public class CMContent extends TKContent {
       CMFireMode.Name(0) + "|" + CMFireMode.Name(1) + "|" + CMFireMode.Name(2), "0|1|2", "firemode", "");
     p.SetTip("STAGGERED: LMB fires both, barrels alternating. LINKED SALVO: LMB fires both at once. SPLIT: LMB left gun, RMB right gun, MMB optics.");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
+    p.Heading("SENSOR CAMERA");
+    p.Slider("HEIGHT", "Above the mech's feet", "", "100|450|5|" + IntToString(pilot.CamUpCm()) + "| cm", "camup", "");
+    p.SetTip("Applies live: change it, then press L to check the view.");
+    p.Slider("FORWARD", "Ahead of the mech's centre", "", "0|500|5|" + IntToString(pilot.CamFwdCm()) + "| cm", "camfwd", "");
+    p.Slider("MOUSE SENSITIVITY", "On top of the game's own mouse setting", "", "25|300|5|" + IntToString(pilot.SensPct()) + "|%", "sens", "");
+    p.Item("DEFAULTS", "Height 230 cm, forward 260 cm, sensitivity 100%", "", "RESET", "camreset", "", true);
+    p.Check("DEBUG READOUT", "A diagnostic line on the pilot HUD (frames, inputs, locks)", pilot.ShowDebug(), "debug", "");
     p.Heading("PALETTE");
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", pilot.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
   }

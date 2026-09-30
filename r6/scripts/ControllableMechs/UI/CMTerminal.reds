@@ -18,7 +18,7 @@ public class CMTerminal extends TKPopup {
   public func Tabs() -> array<String> = ["LINK|link", "SETTINGS|settings", "TOOLS|tk_tools"]
   public func Brand() -> String = "MILITECH"
   public func Name() -> String = "ROBOT LINK"
-  public func Status() -> String = "NEURAL UPLINK // K TO CLOSE"
+  public func Status() -> String = "NEURAL UPLINK // v" + CMVersion.Text() + " // K TO CLOSE"
   public func BootText() -> String = "ESTABLISHING UPLINK..."
   public func StartPage() -> String = "link"
 

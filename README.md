@@ -2,7 +2,7 @@
 
 A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game's robotic NPCs (mechs, androids, drones and spiderbots) through a Robot Link terminal built on TerminalKit, and pilot a Militech Minotaur directly: its sensor feed, its legs and both MK.31 HMGs. Quest NPCs are refused so a link can't break a story scene.
 
-Early build. It compiles against the game; Pilot Mode has not been tested in game yet.
+**Version 0.1.0 Alpha.** Linking and Pilot Mode work in game; see CHANGELOG.md for what's in it and the known issues.
 
 ## Keys
 
@@ -19,11 +19,11 @@ Early build. It compiles against the game; Pilot Mode has not been tested in gam
 ## Pilot Mode
 
 - **View:** the game's own free camera entity (`base\entities\cameras\simple_free_camera.ent`) sits on the mech's sensor mount and takes over the view.
-- **Weight:** the camera follows your mouse through a spring with mass:
+- **Weight:** the camera position is pinned to the sensor mount, and the weight is in how it turns and shakes:
   - the torso turn speeds up, is capped at a traverse rate, overshoots a little and settles;
-  - the camera lags the mech's movement and catches up;
   - every footfall jolts and rolls the view;
   - each shot kicks it.
+  - Height, forward offset and mouse sensitivity are sliders in SETTINGS and apply live.
 - **Guns:** both MK.31s fire through the game's NPC firing call (`AIWeapon.Fire`) at the point under the reticle, so rounds leave the real muzzles.
   - Fire modes (terminal Settings, or B):
     - **staggered** (default): LMB fires both, barrels alternating;
