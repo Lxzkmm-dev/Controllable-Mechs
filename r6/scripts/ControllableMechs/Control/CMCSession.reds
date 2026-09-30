@@ -83,7 +83,8 @@ public class CMCSession extends ScriptableSystem {
   private let m_lastExit: Float;
 
   // settings, kept in the save
-  private persistent let m_armed: Bool;       // M1 preview: the Pilot key starts the framework
+  private persistent let m_armed: Bool;       // (unused since M1 became the default; kept so old saves load cleanly)
+  private persistent let m_useAlpha: Bool;    // true = the Pilot key starts the alpha's Pilot Mode instead of the framework
   private persistent let m_fireCall: Int32;   // CMFireCall
   private persistent let m_fireMode: Int32;   // CMFireMode
   private persistent let m_chase: Bool;
@@ -139,10 +140,12 @@ public class CMCSession extends ScriptableSystem {
   }
 
   public func IsActive() -> Bool = this.m_state != 0
-  public func Armed() -> Bool = this.m_armed
+  // The framework is the default. It used to be a switch kept in the save, so loading an
+  // older save silently put the Pilot key back on the alpha (no missile, old HUD state).
+  public func Armed() -> Bool = !this.m_useAlpha
   public func SetArmed(on: Bool) -> Void {
-    this.m_armed = on;
-    CMCSession.Log("M1 preview " + (on ? "ON: the Pilot key starts the framework" : "off: the Pilot key starts the alpha's Pilot Mode"));
+    this.m_useAlpha = !on;
+    CMCSession.Log("pilot mode: " + (on ? "framework (M1)" : "the alpha's Pilot Mode"));
   }
   public func FireCall() -> Int32 = this.m_fireCall
   public func SetFireCall(call: Int32) -> Void {
@@ -440,7 +443,7 @@ public class CMCSession extends ScriptableSystem {
       dt = 0.016;
     }
     if !this.m_unit.IsAlive() {
-      this.End("!UNIT LOST", false);
+      this.End(this.m_unit.LostReason(), false);
       return;
     }
     let optics = this.m_fireMode == CMFireMode.Split() ? this.Key(CMCKey.Mmb()) : this.Key(CMCKey.Rmb());

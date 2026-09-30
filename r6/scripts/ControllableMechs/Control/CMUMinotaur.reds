@@ -93,6 +93,7 @@ public class CMUMinotaur extends CMCUnit {
   private let SIGNAL_RANGE: Float = 250.0;
 
   public func Name() -> String = "MILITECH MINOTAUR"
+  public func LostReason() -> String = "!MECH DESTROYED"
 
   private func Mech() -> ref<NPCPuppet> = GameInstance.FindEntityByID(this.m_game, this.m_mechID) as NPCPuppet
 

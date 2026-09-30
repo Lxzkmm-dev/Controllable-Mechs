@@ -23,6 +23,8 @@ public class CMTerminal extends TKPopup {
   public func BootLines() -> array<String> = ["MILITECH FIELD TERMINAL // COLD START", "OPERATOR AUTHENTICATED", "SECURE CHANNEL 07 ........ UP", "UNIT BUS ................. OK", "FIRE CONTROL ............. STANDBY"]
   public func BootSeconds() -> Float = 1.6
   public func StartPage() -> String = "link"
+  // the kit's own sizes and texts, whatever another mod's UI tuner plugged into the shared slot
+  public func ScaleSource() -> ref<TKScaleSource> = new TKScaleDefaults()
 
   // the rugged military look (TerminalKit's style hooks): an armoured frame with rivets
   // and hazard blocks, headings on plates, ten-cell bars, faint scanlines

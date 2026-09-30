@@ -11,11 +11,16 @@ import TerminalKit.*
 import TerminalKit.Tools.*
 import ControllableMechs.Control.*
 
+public class CMToolsHost extends TKToolsHost {
+  public func Storage() -> String = "ControllableMechs"
+}
+
 public class CMContent extends TKContent {
   public let game: GameInstance;
 
   public func Request(p: ref<TKPage>, page: String, arg: String) -> Void {
     p.SetTheme(CMPilotSystem.Get(this.game).Theme());
+    this.UseTools();
     if TKTools.Request(p, page, arg) {
       p.SetSection("tk_tools");
       return;
@@ -33,7 +38,19 @@ public class CMContent extends TKContent {
     }
   }
 
+  // TerminalKit Tools keep one host at a time; ours stores under r6/storages/ControllableMechs
+  // (UseFor only switches when another mod's host was last in)
+  private let m_tools: ref<CMToolsHost>;
+
+  private func UseTools() -> Void {
+    if !IsDefined(this.m_tools) {
+      this.m_tools = new CMToolsHost();
+    }
+    TKTools.UseFor(this.m_tools);
+  }
+
   public func Act(p: ref<TKPage>, action: String, arg: String) -> Void {
+    this.UseTools();
     if TKTools.Act(p, action, arg) {
       return;
     }

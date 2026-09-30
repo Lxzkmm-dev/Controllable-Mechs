@@ -14,8 +14,9 @@ public abstract class CMCUnit extends IScriptable {
   public func Begin(s: ref<CMCSession>) -> String = "!NO UNIT"
   // undo everything Begin made; `hard` = the game session is ending, no blends
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {}
-  // false ends the session ("UNIT LOST")
+  // false ends the session, with LostReason()
   public func IsAlive() -> Bool = false
+  public func LostReason() -> String = "!UNIT LOST"
 
   // where the camera ring sits: the body's ground position and facing, and the
   // sensor's height and reach for the sight view
