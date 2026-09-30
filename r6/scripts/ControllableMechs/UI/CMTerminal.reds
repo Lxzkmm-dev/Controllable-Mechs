@@ -15,11 +15,11 @@ public class CMTerminal extends TKPopup {
     c.game = this.GetGame();
     return c;
   }
-  public func Tabs() -> array<String> = ["LINK|link", "SETTINGS|settings", "SPIKES|spikes", "TOOLS|tk_tools"]
+  public func Tabs() -> array<String> = ["UNIT|link", "CONFIG|settings", "SPIKES|spikes", "TOOLS|tk_tools"]
   public func Brand() -> String = "MILITECH"
   public func Name() -> String = "ROBOT LINK"
-  public func Status() -> String = "NEURAL UPLINK // v" + CMVersion.Text() + " // ] TO CLOSE"
-  public func BootText() -> String = "ESTABLISHING UPLINK..."
+  public func Status() -> String = "MT-FCS FIELD TERMINAL // SECURE CH 07 // v" + CMVersion.Text() + " // ] CLOSE"
+  public func BootText() -> String = "MILITECH FIELD TERMINAL // AUTHENTICATING OPERATOR..."
   public func StartPage() -> String = "link"
 
   // Forget the open terminal as it closes. Closing() runs before the popup is torn

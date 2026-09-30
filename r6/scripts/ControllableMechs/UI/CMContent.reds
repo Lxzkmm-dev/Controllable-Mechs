@@ -47,7 +47,7 @@ public class CMContent extends TKContent {
         break;
       case "unlink":
         link.Unlink();
-        p.SetMessage("LINK CLOSED");
+        p.SetMessage("UPLINK CLOSED");
         break;
       case "follow":
         link.Follow();
@@ -69,7 +69,12 @@ public class CMContent extends TKContent {
         }
         // the terminal has to close before the view can switch
         CMTerminal.CloseOpen(this.game);
-        pilot.RequestEnter(0.4);
+        // the framework (M1) while its preview is on, else the alpha's Pilot Mode
+        if CMCSession.Get(this.game).Armed() {
+          CMCSession.Get(this.game).RequestBegin(0.4);
+        } else {
+          pilot.RequestEnter(0.4);
+        }
         break;
       case "spawntest":
         p.SetMessage(link.SpawnTestMech());
@@ -131,10 +136,10 @@ public class CMContent extends TKContent {
   // ---- LINK: status, direct control, orders ----
   private func Link(p: ref<TKPage>) -> Void {
     let link = CMLinkSystem.Get(this.game);
-    p.SetTitle("ROBOT LINK", "REMOTE OPERATION // NEURAL UPLINK");
+    p.SetTitle("UNIT CONTROL", "MT-FCS FIELD TERMINAL // REMOTE OPERATION");
     p.SetSection("link");
     if !link.IsLinked() {
-      p.Dossier("NO UNIT LINKED", "Look at a mech, android, drone or spiderbot within 200 ft and press [, or link it from here.", "OFFLINE", "red");
+      p.Dossier("NO UNIT ON UPLINK", "Look at a mech, android, drone or spiderbot within 200 ft and press [, or link it from here.", "OFFLINE", "red");
       p.Gap();
       p.Button("LINK LOOKED-AT ROBOT", "link", "", true);
       this.Test(p, link);
@@ -142,14 +147,14 @@ public class CMContent extends TKContent {
     }
     p.Dossier(link.UnitName(), "Linked " + StrLower(link.UnitKind()), "ONLINE", "green");
     let hp = link.HealthFraction();
-    p.Stat("INTEGRITY", IntToString(RoundF(hp * 100.0)) + "%", hp < 0.3 ? "!CRITICAL" : "*NOMINAL", hp);
-    p.Stat("SIGNAL", IntToString(RoundF(link.Distance() * 3.28084)) + " ft", "", link.SignalFraction());
+    p.Stat("HULL", IntToString(RoundF(hp * 100.0)) + "%", hp < 0.3 ? "!CRITICAL" : "*NOMINAL", hp);
+    p.Stat("UPLINK", IntToString(RoundF(link.Distance() * 3.28084)) + " ft", "", link.SignalFraction());
     p.Stat("ORDER", CMContent.OrderName(link.Order()), "", -1.0);
     if Equals(link.UnitKind(), "MECH") {
-      p.Heading("DIRECT CONTROL");
+      p.Heading("PILOT INTERFACE");
       p.Item("PILOT THE MECH", "Take its sensor feed: WASD walks, the mouse turns the torso, LMB fires the MK.31s, \\ disconnects.", "", "PILOT  [\\]", "pilot", "", true);
     }
-    p.Heading("ORDERS");
+    p.Heading("UNIT ORDERS");
     p.Buttons("Command the linked unit", "", "", "FOLLOW|HOLD|MOVE TO TARGET", "follow|hold|move", "||");
     p.SetTip("MOVE TO TARGET sends the unit to what you look at when you press it, or 50 ft ahead of you.");
     p.Gap();
@@ -159,7 +164,7 @@ public class CMContent extends TKContent {
 
   // ---- test tools: a Minotaur on demand ----
   private func Test(p: ref<TKPage>, link: ref<CMLinkSystem>) -> Void {
-    p.Heading("TEST");
+    p.Heading("MOTOR POOL // TEST");
     if link.HasTestMech() {
       p.Item("TEST MINOTAUR", "Spawned for testing; not kept in the save.", "", "REMOVE", "despawntest", "", true);
     } else {
@@ -170,9 +175,9 @@ public class CMContent extends TKContent {
   // ---- SETTINGS: pilot and palette ----
   private func Settings(p: ref<TKPage>) -> Void {
     let pilot = CMPilotSystem.Get(this.game);
-    p.SetTitle("SETTINGS", "PILOT AND DISPLAY");
+    p.SetTitle("CONFIGURATION", "FIRE CONTROL, OPTICS AND DISPLAY");
     p.SetSection("settings");
-    p.Heading("PILOT");
+    p.Heading("FIRE CONTROL");
     p.Dropdown("FIRE MODE", "How LMB / RMB fire the two MK.31s (B cycles it while piloting)",
       IntToString(pilot.FireMode()),
       CMFireMode.Name(0) + "|" + CMFireMode.Name(1) + "|" + CMFireMode.Name(2), "0|1|2", "firemode", "");
@@ -182,12 +187,12 @@ public class CMContent extends TKContent {
     p.Check("ARM TRACKING (EXPERIMENTAL)", "The mech's arms turn toward the aim point, so the barrel effects follow the rounds", pilot.ArmTrackOn(), "armtrack", "");
     p.Slider("MK.31 DAMAGE", "Damage of the two HMGs while you pilot", "", "100|300|10|" + IntToString(pilot.DamagePct()) + "|%", "damage", "");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !pilot.StayWhenHit(), "dropwhenhit", "");
-    p.Heading("CAMERA VIEW");
+    p.Heading("OPTICS // VIEW");
     p.Dropdown("VIEW", "V switches it while piloting", IntToString(pilot.CamMode()), "SENSOR (FIRST PERSON)|CHASE (THIRD PERSON)", "0|1", "cammode", "");
     p.Slider("CHASE DISTANCE", "Chase view: behind the mech's centre", "", "13|52|1|" + IntToString(CMContent.CmToFt(pilot.ChaseDistCm())) + "| ft", "chasedist", "");
     p.Slider("CHASE HEIGHT", "Chase view: above the mech's feet", "", "79|354|2|" + IntToString(CMContent.CmToIn(pilot.ChaseUpCm())) + "| in", "chaseup", "");
     p.SetTip("Both views pull in when a wall, pole or container is between the mech and the camera.");
-    p.Heading("SENSOR CAMERA");
+    p.Heading("OPTICS // SENSOR MOUNT");
     p.Slider("HEIGHT", "Above the mech's feet", "", "40|177|1|" + IntToString(CMContent.CmToIn(pilot.CamUpCm())) + "| in", "camup", "");
     p.SetTip("Applies live: change it, then press \\ to check the view.");
     p.Slider("FORWARD", "Ahead of the mech's centre", "", "0|196|1|" + IntToString(CMContent.CmToIn(pilot.CamFwdCm())) + "| in", "camfwd", "");
@@ -195,7 +200,7 @@ public class CMContent extends TKContent {
     p.Slider("MOUSE SENSITIVITY", "On top of the game's own mouse setting", "", "25|300|5|" + IntToString(pilot.SensPct()) + "|%", "sens", "");
     p.Item("DEFAULTS", "Height 7 ft 7 in, forward 8 ft 6 in, traverse 40 deg/s, sensitivity 100%", "", "RESET", "camreset", "", true);
     p.Check("DEBUG READOUT", "A diagnostic line on the pilot HUD (frames, inputs, locks)", pilot.ShowDebug(), "debug", "");
-    p.Heading("PALETTE");
+    p.Heading("DISPLAY");
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", pilot.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
   }
 
