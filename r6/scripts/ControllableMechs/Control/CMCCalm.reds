@@ -27,6 +27,7 @@ public final static func OnHit(ownerPuppet: wref<ScriptedPuppet>, evt: ref<gameH
   if IsDefined(ownerPuppet) && ownerPuppet.m_cmPiloted {
     let shooter = evt.attackData.GetInstigator();
     CMCCalm.Note(ownerPuppet, shooter, "a hit");
+    CMCSession.Get(ownerPuppet.GetGame()).UnitHit(evt);   // part damage
     // where it came from, for the pilot's HUD (not the mech's own rounds, credited to V)
     if IsDefined(shooter) && !shooter.IsPlayer() {
       CMCSession.Get(ownerPuppet.GetGame()).HitFrom(shooter.GetWorldPosition());

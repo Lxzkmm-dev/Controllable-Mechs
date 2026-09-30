@@ -39,10 +39,11 @@ public class CMGun {
   public let lastShot: Float;      // sim time
   public let flash: Float;         // seconds of muzzle-flash on the HUD marker
   public let offAim: Bool;         // the barrel is too far off the reticle to fire (the unit's fire gate)
+  public let destroyed: Bool;      // shot off the mech (part damage): stays offline
   public let ownTarget: Bool;      // this round goes to `target` (what the barrel points at), not the reticle point
   public let target: Vector4;
 
-  public func Ready() -> Bool = IsDefined(this.weapon)
+  public func Ready() -> Bool = IsDefined(this.weapon) && !this.destroyed
 }
 
 public class CMPilotGuns {
@@ -79,8 +80,9 @@ public class CMPilotGuns {
 
   // A gun whose weapon object has gone (the game removed or re-created the item): look the
   // slots up again, keeping each gun's heat. True when a gun got its weapon back.
+  // A gun shot off (destroyed) is never looked for again.
   public func Refresh(mech: ref<NPCPuppet>) -> Bool {
-    if this.left.Ready() && this.right.Ready() {
+    if (this.left.Ready() || this.left.destroyed) && (this.right.Ready() || this.right.destroyed) {
       return false;
     }
     let ts = GameInstance.GetTransactionSystem(mech.GetGame());
@@ -93,20 +95,20 @@ public class CMPilotGuns {
       l = ts.GetItemInSlot(mech, t"AttachmentSlots.WeaponLeft") as WeaponObject;
     }
     let back = false;
-    if !this.right.Ready() && IsDefined(r) {
+    if !this.right.Ready() && !this.right.destroyed && IsDefined(r) {
       this.right.weapon = r;
       back = true;
     }
-    if !this.left.Ready() && IsDefined(l) {
+    if !this.left.Ready() && !this.left.destroyed && IsDefined(l) {
       this.left.weapon = l;
       back = true;
     }
-    // one weapon left: both triggers drive it
-    if !this.left.Ready() && this.right.Ready() {
+    // one weapon object left: both triggers drive it
+    if !this.left.Ready() && !this.left.destroyed && this.right.Ready() {
       this.left.weapon = this.right.weapon;
       back = true;
     }
-    if !this.right.Ready() && this.left.Ready() {
+    if !this.right.Ready() && !this.right.destroyed && this.left.Ready() {
       this.right.weapon = this.left.weapon;
       back = true;
     }

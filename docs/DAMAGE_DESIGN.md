@@ -1,6 +1,14 @@
 # Mechs of Night City: part damage and the HUD damage schematic
 
-Status: draft for review (2026-09-30). Not built yet. Items marked **[spike]** are unknowns that a small test build settles before anything depends on them.
+Status: first build on branch 0.6.0-alpha (2026-09-30). Items marked **[spike]** are unknowns that the first test session settles.
+
+Omar's decisions:
+
+- A gun shot off stays gone until repaired. Repair is a planned mechanic; a dev tool restores parts for now.
+- With both guns and pods gone, the pilot keeps walking.
+- Seven parts is the right count.
+
+Built so far: all five build steps, except the zone effects and knocked-off small parts (3.2 items 2 and 3). The spikes (S1-S3) run together with the full feature. With DIAGNOSTICS on, the log traces each hit's zone and position, and each weak spot kill.
 
 ## 1. What Omar asked for
 

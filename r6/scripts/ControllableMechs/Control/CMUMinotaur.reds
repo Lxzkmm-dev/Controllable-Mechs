@@ -38,6 +38,12 @@ public class CMUMinotaur extends CMCUnit {
   private let m_gunsLost: Bool;
   private let m_stoodAt: Float;       // the last slow tick it was walking: the turn waits for it to settle
   private let m_triggerWas: Bool;     // for the FIRE tag, on each pull
+  // part damage (CMCParts): this mech's seven parts, and a message about one that just broke
+  private let m_parts: ref<CMPartState>;
+  private let m_partsOn: Bool;
+  private let m_hullMax: Float;
+  private let m_partNote: String;
+  private let m_partNoteUntil: Float;
   private let m_mech: wref<NPCPuppet>;
   private let m_sensorUp: Float;      // the sensor mount, read once per session
   private let m_sensorFwd: Float;
@@ -177,6 +183,11 @@ public class CMUMinotaur extends CMCUnit {
     this.m_hull = -1.0;
     this.Armour(mech, s.HullMult());
     this.ReadHull(mech);
+    this.m_hullMax = GameInstance.GetStatPoolsSystem(this.m_game).GetStatPoolMaxPointValue(Cast<StatsObjectID>(mech.GetEntityID()), gamedataStatPoolType.Health);
+    this.m_partsOn = cfg.PartDamage();
+    this.m_parts = CMCParts.Get(this.m_game).State(mech.GetEntityID());
+    this.m_partNote = "";
+    this.ApplyParts(s, mech);
     CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
     return "";
   }
@@ -306,7 +317,8 @@ public class CMUMinotaur extends CMCUnit {
   // ten times a second: a gun whose weapon object has gone is looked up again; the log
   // says when one is lost and what the mech still carries, and when it comes back
   private func WatchGuns(s: ref<CMCSession>, mech: ref<NPCPuppet>) -> Void {
-    let ready = (this.m_guns.left.Ready() ? 1 : 0) + (this.m_guns.right.Ready() ? 1 : 0);
+    // (a gun shot off is gone for good, not lost: nothing to look for)
+    let ready = (this.m_guns.left.Ready() || this.m_guns.left.destroyed ? 1 : 0) + (this.m_guns.right.Ready() || this.m_guns.right.destroyed ? 1 : 0);
     if ready == 2 {
       this.m_gunsLost = false;
       return;
@@ -575,11 +587,12 @@ public class CMUMinotaur extends CMCUnit {
     if !IsDefined(mech) {
       return;
     }
-    if now < this.m_missileReady {
+    if now < this.m_missileReady || this.PartHp(CMPart.Pods()) <= 0.0 {
       GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_hacking_press_fail");
       return;
     }
-    this.m_missileReady = now + this.MISSILE_COOLDOWN;
+    // damaged pods reload half as fast again
+    this.m_missileReady = now + this.MISSILE_COOLDOWN * (this.PartHp(CMPart.Pods()) < 0.5 ? 1.5 : 1.0);
     let at = s.aim;
     // (the Minotaur's own launchers are in its inventory but never out as weapon objects,
     // so there is nothing to fire them with: the strike is ours)
@@ -1060,6 +1073,122 @@ public class CMUMinotaur extends CMCUnit {
   // ---------------------------------------------------------------------------
   // HUD
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Part damage (docs/DAMAGE_DESIGN.md; the state lives in CMCParts)
+  // ---------------------------------------------------------------------------
+  private func PartHp(i: Int32) -> Float = this.m_partsOn && IsDefined(this.m_parts) ? this.m_parts.hp[i] : 1.0
+
+  public func OpticsOnline() -> Bool = this.PartHp(CMPart.Sensor()) > 0.0
+
+  // What is already broken on this mech (from an earlier session, or the dev tools), put
+  // on the model and the guns. Also called with no hit when parts were restored or broken
+  // from the terminal.
+  private func ApplyParts(s: ref<CMCSession>, mech: ref<NPCPuppet>) -> Void {
+    let armL = this.PartHp(CMPart.ArmL()) <= 0.0;
+    let armR = this.PartHp(CMPart.ArmR()) <= 0.0;
+    this.m_guns.left.destroyed = armL;
+    this.m_guns.right.destroyed = armR;
+    CMCParts.ShowGun(mech, true, !armL);
+    CMCParts.ShowGun(mech, false, !armR);
+    CMCParts.Cripple(mech, true, this.PartHp(CMPart.LegL()) <= 0.0);
+    CMCParts.Cripple(mech, false, this.PartHp(CMPart.LegR()) <= 0.0);
+    if !this.OpticsOnline() {
+      s.OpticsLost();
+    }
+  }
+
+  // A hit the mech took: which part it landed on, and how much of that part it took.
+  // The body zone the game reports decides when it names a limb or the head; otherwise
+  // where the hit landed on the body does (height, side, front or back).
+  public func TakeHit(s: ref<CMCSession>, hit: ref<gameHitEvent>) -> Void {
+    let mech = this.Mech();
+    if !IsDefined(mech) || !IsDefined(this.m_parts) {
+      return;
+    }
+    if !IsDefined(hit) {
+      this.ApplyParts(s, mech);   // restored or broken from the terminal
+      return;
+    }
+    if !this.m_partsOn || !IsDefined(hit.attackData) || hit.attackData.HasFlag(hitFlag.DealNoDamage) {
+      return;
+    }
+    let dmg = hit.attackComputed.GetTotalAttackValue(gamedataStatPoolType.Health);
+    if dmg <= 0.0 {
+      return;
+    }
+    // where on the body, in the mech's own frame
+    let d = hit.hitPosition - mech.GetWorldPosition();
+    let fwd = mech.GetWorldForward();
+    let right = CMPilotRig.Dir(CMPilotRig.YawOf(fwd) - 90.0, 0.0);
+    let up = d.Z;
+    let side = Vector4.Dot(d, right);
+    let back = -(d.X * fwd.X + d.Y * fwd.Y);
+    let zone = EHitReactionZone.Special;
+    if ArraySize(hit.hitRepresentationResult.hitShapes) > 0 {
+      zone = HitShapeUserDataBase.GetHitReactionZone(hit.hitRepresentationResult.hitShapes[0].userData as HitShapeUserDataBase);
+    }
+    let part = CMUMinotaur.PartAt(zone, up, side, back);
+    if CMPilotSystem.Get(this.m_game).ShowDebug() {
+      CMCHits.Trace(this.m_game, "part hit: zone " + EnumValueToString("EHitReactionZone", Cast<Int64>(EnumInt(zone))) + ", " + FloatToStringPrec(up, 1) + " m up, " + FloatToStringPrec(side, 1) + " m right, " + FloatToStringPrec(back, 1) + " m back -> " + CMPart.Name(part) + ", " + FloatToStringPrec(dmg, 0) + " damage");
+    }
+    let hud = s.Hud();
+    if IsDefined(hud) {
+      hud.PartHit(part);
+    }
+    if part == CMPart.Torso() {
+      return;   // the torso is the hull
+    }
+    let before = this.m_parts.hp[part];
+    if before <= 0.0 {
+      return;
+    }
+    let after = MaxF(0.0, before - dmg / MaxF(1.0, this.m_hullMax * CMPart.Share(part)));
+    this.m_parts.hp[part] = after;
+    if after <= 0.0 {
+      this.BreakPart(s, mech, part);
+    }
+  }
+
+  // The Minotaur's body, from the zone the game names or where the hit landed.
+  // Heights are metres above its feet; its arms and guns stand out about 1.3 m either side.
+  public static func PartAt(zone: EHitReactionZone, up: Float, side: Float, back: Float) -> Int32 {
+    switch zone {
+      case EHitReactionZone.Head: return CMPart.Sensor();
+      case EHitReactionZone.ArmLeft: return CMPart.ArmL();
+      case EHitReactionZone.HandLeft: return CMPart.ArmL();
+      case EHitReactionZone.ArmRight: return CMPart.ArmR();
+      case EHitReactionZone.HandRight: return CMPart.ArmR();
+      case EHitReactionZone.LegLeft: return CMPart.LegL();
+      case EHitReactionZone.LegRight: return CMPart.LegR();
+    }
+    if up < 2.0 {
+      return side < 0.0 ? CMPart.LegL() : CMPart.LegR();
+    }
+    if AbsF(side) > 1.3 {
+      return side < 0.0 ? CMPart.ArmL() : CMPart.ArmR();
+    }
+    if back > 0.8 && up > 2.6 {
+      return CMPart.Pods();
+    }
+    if up > 3.4 && back < 0.3 {
+      return CMPart.Sensor();
+    }
+    return CMPart.Torso();
+  }
+
+  // A part has just broken: on the model, in how the mech works, and on the HUD.
+  private func BreakPart(s: ref<CMCSession>, mech: ref<NPCPuppet>, part: Int32) -> Void {
+    if part == CMPart.ArmL() || part == CMPart.ArmR() {
+      let left = part == CMPart.ArmL();
+      CMCParts.BreakWeakspot(mech, left);
+    }
+    this.ApplyParts(s, mech);
+    this.m_partNote = CMPart.Name(part) + (part == CMPart.Sensor() ? " DESTROYED - OPTICS OFFLINE" : (part == CMPart.LegL() || part == CMPart.LegR() ? " CRIPPLED" : " DESTROYED"));
+    this.m_partNoteUntil = s.Now() + 3.0;
+    GameObject.PlaySoundEvent(mech, n"dev_alarm_02");
+    CMCSession.Log("parts: " + CMPart.Name(part) + " broken");
+  }
+
   public func Hud(s: ref<CMCSession>, st: ref<CMPilotHudState>) -> Void {
     let link = CMLinkSystem.Get(this.m_game);
     let name = link.UnitName();
@@ -1076,8 +1205,25 @@ public class CMUMinotaur extends CMCUnit {
     st.hasL = this.m_guns.left.Ready();
     st.hasR = this.m_guns.right.Ready();
     let wait = this.m_missileReady - s.Now();
-    st.missile = wait > 0.0 ? "MSL RELOAD " + IntToString(CeilF(wait)) + "S" : "MSL READY";
-    if !st.hasL && !st.hasR {
+    st.missile = this.PartHp(CMPart.Pods()) <= 0.0 ? "MSL OFFLINE" : (wait > 0.0 ? "MSL RELOAD " + IntToString(CeilF(wait)) + "S" : "MSL READY");
+    // part damage: the schematic, the sensor's rangefinder, and a part that just broke
+    if ArraySize(st.parts) != CMPart.Count() {
+      ArrayResize(st.parts, CMPart.Count());
+    }
+    let i = 0;
+    while i < CMPart.Count() {
+      st.parts[i] = i == CMPart.Torso() ? this.m_hull : this.PartHp(i);
+      i += 1;
+    }
+    st.lostL = this.m_guns.left.destroyed;
+    st.lostR = this.m_guns.right.destroyed;
+    let sensor = this.PartHp(CMPart.Sensor());
+    if sensor <= 0.0 || (sensor < 0.5 && RandF() < (0.5 - sensor) * 1.4) {
+      st.range = -1.0;   // the rangefinder drops out, always once the sensor is gone
+    }
+    if StrLen(this.m_partNote) > 0 && s.Now() < this.m_partNoteUntil {
+      st.warning = this.m_partNote;
+    } else if !st.hasL && !st.hasR {
       st.warning = "NO WEAPONS - MK.31 OFFLINE";
     } else if st.integrity < 0.3 {
       st.warning = "HULL INTEGRITY LOW";

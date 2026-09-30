@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.0 Alpha (branch 0.6.0-alpha)
+
+Part damage, per docs/DAMAGE_DESIGN.md. Untested in game.
+
+- **Seven parts** on top of the hull:
+  - sensor head;
+  - torso (this is the hull);
+  - MK.31 left and right arms;
+  - left and right legs;
+  - missile pods.
+- **How a hit lands.** A hit on the piloted mech wears down the part it lands on. The game's hit zone decides the part when it names a limb or the head. Otherwise the part is worked out from where the hit landed on the body. A part breaks once the hits on it add up to its share of the hull (sensor 30%, arms 35%, legs 40%, pods 30%).
+- **What a broken part does:**
+  - **MK.31 arm:** that gun is shot off (the vanilla weak spot destroyed, gun mesh hidden) and goes offline. The fire modes use the other gun. With both guns gone you keep walking.
+  - **Sensor:** optics (RMB zoom) and the rangefinder go offline. Below 50% the rangefinder drops out now and then.
+  - **Legs:** the game's crippled-leg effect.
+  - **Pods:** missiles offline. Below 50%, the reload is 1.5x slower.
+- **Broken parts stay broken** for the game session until repaired. Repair is a planned mechanic.
+- **HUD damage schematic** above the chassis plate:
+  - each part is green, amber (below 70%) or red (below 35%);
+  - a broken part is dark with a red cross and blinks as it breaks;
+  - the part just hit flashes;
+  - a broken gun reads "MK.31 OFFLINE", and a warning names the part that broke.
+- **CONFIG > CHASSIS > PART DAMAGE** switch, on by default.
+- **Dev tools** (MOTOR POOL, with DIAGNOSTICS on and a mech linked): RESTORE MECH PARTS, and BREAK A PART (TEST).
+- With DIAGNOSTICS on, every hit logs its zone, its position on the body and the part it was given, so the mapping can be tuned.
 ## 0.5.0 Beta
 
 The mod is now **Mechs of Night City** (MNC). The folder, the redscript modules and the settings file keep the old name, so nothing needs reinstalling.

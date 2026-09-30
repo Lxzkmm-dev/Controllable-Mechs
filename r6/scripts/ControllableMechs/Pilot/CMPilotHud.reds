@@ -136,6 +136,7 @@ public class CMPilotHud {
   private let TAPE_SPACING: Float = 165.0;   // px per 15 deg
   private let PITCH_PX: Float = 6.0;         // px per degree on the elevation ladder
   private let m_hitBars: array<ref<inkRectangle>>;
+  private let m_parts: array<ref<CMHudPart>>;     // the damage schematic, one per CMPart
   private let m_hitT: Float;
 
   private let BAR_W: Float = 415.0;          // 20 cells of 16 with 5 between
@@ -206,6 +207,7 @@ public class CMPilotHud {
     this.BuildTop(face);
     this.BuildGuns(face, root);    // first: its key tags take indices 0-3, the chassis plate's 4-5
     this.BuildLeft(face);
+    this.BuildParts(face);
     this.BuildRight(face);
     this.BuildEffects(root);
     this.Flicker();
@@ -732,6 +734,101 @@ public class CMPilotHud {
     this.Tag(root, inkEAnchor.BottomLeft, x + 190.0, top - 218.0, "[\\] DISCONNECT", false);   // tag 5
   }
 
+  // The damage schematic, above the chassis plate: the Minotaur seen from behind (its left
+  // on the left) in plain blocks, one colour per part (CMPart). Built once; a part is only
+  // touched when its value changes (SetPart) or it is hit (PartHit).
+  private func BuildParts(root: ref<inkCanvas>) -> Void {
+    ArrayClear(this.m_parts);
+    let top = this.PLATE_GAP + 300.0 + 300.0;   // above the chassis plate
+    let x = this.PLATE_X + 60.0;
+    let box = new inkCanvas();
+    box.SetAnchor(inkEAnchor.BottomLeft);
+    box.SetMargin(CMPilotHud.Edge(inkEAnchor.BottomLeft, x, top));
+    box.SetSize(Vector2(200.0, 240.0));
+    box.SetInteractive(false);
+    box.Reparent(root);
+    this.Glow(root, inkEAnchor.BottomLeft, x - 40.0, top + 20.0, 280.0, 280.0, CMPilotHud.Black());
+    CMPilotHud.Label(root, inkEAnchor.BottomLeft, x + 215.0, top - 4.0, "CHASSIS", 22, n"Medium", CMPilotHud.Dim());
+    // in CMPart order: sensor, torso, arm L (with its gun), arm R, leg L, leg R, pods
+    this.PartBlocks(box, 80.0, 0.0, 40.0, 28.0, 0.0, 0.0, 0.0, 0.0);
+    this.PartBlocks(box, 60.0, 58.0, 80.0, 82.0, 0.0, 0.0, 0.0, 0.0);
+    this.PartBlocks(box, 10.0, 58.0, 42.0, 62.0, 14.0, 124.0, 34.0, 44.0);
+    this.PartBlocks(box, 148.0, 58.0, 42.0, 62.0, 152.0, 124.0, 34.0, 44.0);
+    this.PartBlocks(box, 62.0, 146.0, 32.0, 92.0, 0.0, 0.0, 0.0, 0.0);
+    this.PartBlocks(box, 106.0, 146.0, 32.0, 92.0, 0.0, 0.0, 0.0, 0.0);
+    this.PartBlocks(box, 48.0, 34.0, 104.0, 18.0, 0.0, 0.0, 0.0, 0.0);
+  }
+
+  // one part: one or two blocks (w2 > 0 adds the second), and a red cross shown once it breaks
+  private func PartBlocks(box: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, x2: Float, y2: Float, w2: Float, h2: Float) -> Void {
+    let p = new CMHudPart();
+    p.hp = -1.0;
+    p.canvas = new inkCanvas();
+    p.canvas.SetSize(Vector2(200.0, 240.0));
+    p.canvas.SetInteractive(false);
+    p.canvas.Reparent(box);
+    ArrayPush(p.blocks, CMPilotHud.Bar(p.canvas, x, y, w, h, CMPilotHud.Amber(), 0.75));
+    if w2 > 0.0 {
+      ArrayPush(p.blocks, CMPilotHud.Bar(p.canvas, x2, y2, w2, h2, CMPilotHud.Amber(), 0.75));
+    }
+    // the cross over the whole part
+    let right = w2 > 0.0 ? MaxF(x + w, x2 + w2) : x + w;
+    let bottom = w2 > 0.0 ? MaxF(y + h, y2 + h2) : y + h;
+    let cx = (x + right) * 0.5;
+    let cy = (y + bottom) * 0.5;
+    let len = SqrtF((right - x) * (right - x) + (bottom - y) * (bottom - y));
+    let angle = Rad2Deg(AtanF(bottom - y, right - x));
+    p.cross = new inkCanvas();
+    p.cross.SetInteractive(false);
+    p.cross.Reparent(p.canvas);
+    let a = CMPilotHud.Bar(p.cross, cx - len * 0.5, cy - 3.0, len, 6.0, CMPilotHud.Red(), 1.0);
+    a.SetRotation(angle);
+    let b = CMPilotHud.Bar(p.cross, cx - len * 0.5, cy - 3.0, len, 6.0, CMPilotHud.Red(), 1.0);
+    b.SetRotation(-angle);
+    p.cross.SetVisible(false);
+    ArrayPush(this.m_parts, p);
+  }
+
+  // A part's integrity (0-1): green, amber below 70%, red below 35%, and dark with the
+  // cross once broken, blinking for two seconds as it goes.
+  private func SetPart(i: Int32, hp: Float) -> Void {
+    if i >= ArraySize(this.m_parts) {
+      return;
+    }
+    let p = this.m_parts[i];
+    if AbsF(hp - p.hp) < 0.01 {
+      return;
+    }
+    let broke = hp <= 0.0 && p.hp > 0.0;
+    p.hp = hp;
+    let color = hp <= 0.0 ? CMPilotHud.Dim() : (hp < 0.35 ? CMPilotHud.Red() : (hp < 0.7 ? CMPilotHud.Caution() : CMPilotHud.Amber()));
+    for r in p.blocks {
+      r.SetTintColor(color);
+      r.SetOpacity(hp <= 0.0 ? 0.35 : 0.75);
+    }
+    p.cross.SetVisible(hp <= 0.0);
+    if broke {
+      let blink = new inkAnimDef();
+      let t = 0.0;
+      while t < 2.0 {
+        blink.AddInterpolator(CMPilotHud.Fade(1.0, 0.2, 0.2, t));
+        blink.AddInterpolator(CMPilotHud.Fade(0.2, 1.0, 0.2, t + 0.2));
+        t += 0.4;
+      }
+      p.canvas.PlayAnimation(blink);
+    }
+  }
+
+  // a part that just took a hit flashes, so you can see what is being hit
+  public func PartHit(i: Int32) -> Void {
+    if !IsDefined(this.m_root) || i < 0 || i >= ArraySize(this.m_parts) {
+      return;
+    }
+    let flash = new inkAnimDef();
+    flash.AddInterpolator(CMPilotHud.Fade(0.2, 1.0, 0.3, 0.0));
+    this.m_parts[i].canvas.PlayAnimation(flash);
+  }
+
   // the operator's range, small, in the top-right corner
   private func BuildRight(root: ref<inkCanvas>) -> Void {
     this.m_link = CMPilotHud.Label(root, inkEAnchor.TopRight, 200.0, 110.0, "", 26, n"Semi-Bold", CMPilotHud.Dim());
@@ -976,8 +1073,13 @@ public class CMPilotHud {
     }
     this.m_link.SetText("OPERATOR " + IntToString(RoundF(s.distance)) + " M");
 
-    this.Gun(this.m_heatL, this.m_stateL, "L  ", s.heatL, s.lockedL, s.hasL);
-    this.Gun(this.m_heatR, this.m_stateR, "R  ", s.heatR, s.lockedR, s.hasR);
+    this.Gun(this.m_heatL, this.m_stateL, "L  ", s.heatL, s.lockedL, s.hasL, s.lostL);
+    this.Gun(this.m_heatR, this.m_stateR, "R  ", s.heatR, s.lockedR, s.hasR, s.lostR);
+    let i = 0;
+    while i < ArraySize(s.parts) {
+      this.SetPart(i, s.parts[i]);
+      i += 1;
+    }
 
     this.m_warn.SetText(s.warning);
     this.Warn(StrLen(s.warning) > 0);
@@ -1021,10 +1123,10 @@ public class CMPilotHud {
 
   // ten times a second: a gun's state line, and its bar throbbing while it is near or past
   // overheat (the cells themselves are set every frame by SetGunState)
-  private func Gun(bar: ref<CMHudCells>, state: ref<inkText>, side: String, heat: Float, locked: Bool, has: Bool) -> Void {
+  private func Gun(bar: ref<CMHudCells>, state: ref<inkText>, side: String, heat: Float, locked: Bool, has: Bool, lost: Bool) -> Void {
     bar.Pulse(locked || heat > 0.8);
     if !has {
-      state.SetText(side + "NO WEAPON");
+      state.SetText(side + (lost ? "MK.31 OFFLINE" : "NO WEAPON"));
       state.SetTintColor(CMPilotHud.Red());
     } else {
       if locked {
@@ -1175,5 +1277,16 @@ public class CMPilotHudState {
   public let lockedR: Bool;
   public let hasL: Bool;
   public let hasR: Bool;
+  public let lostL: Bool;         // shot off (part damage)
+  public let lostR: Bool;
+  public let parts: array<Float>; // each CMPart's integrity, 0-1 (the torso is the hull)
   public let warning: String;
+}
+
+// one part on the damage schematic
+public class CMHudPart {
+  public let canvas: ref<inkCanvas>;
+  public let blocks: array<ref<inkRectangle>>;
+  public let cross: ref<inkCanvas>;
+  public let hp: Float;
 }

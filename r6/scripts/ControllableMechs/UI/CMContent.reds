@@ -155,6 +155,25 @@ public class CMContent extends TKContent {
       case "debug":
         cfg.SetShowDebug(Equals(CMContent.Str(arg), "1"));
         break;
+      case "parts":
+        cfg.SetPartDamage(Equals(CMContent.Str(arg), "1"));
+        break;
+      case "restoreparts":
+        if !IsDefined(link.Unit()) {
+          p.SetMessage("!NO UNIT ON UPLINK");
+          break;
+        }
+        CMCParts.Get(this.game).Restore(link.Unit());
+        p.SetMessage("*ALL PARTS RESTORED");
+        break;
+      case "breakpart":
+        if !IsDefined(link.Unit()) {
+          p.SetMessage("!NO UNIT ON UPLINK");
+          break;
+        }
+        CMCParts.Get(this.game).Break(link.Unit(), CMContent.Val(arg, -1));
+        p.SetMessage("*" + CMPart.Name(CMContent.Val(arg, -1)) + " BROKEN (TEST)");
+        break;
       case "theme":
         cfg.SetTheme(CMContent.Str(arg));
         p.SetTheme(CMContent.Str(arg));
@@ -199,6 +218,11 @@ public class CMContent extends TKContent {
     } else {
       p.Item("MILITECH MINOTAUR", "Spawns one 46 ft in front of you and links it.", "", "SPAWN", "spawntest", "", true);
     }
+    // dev tools for part damage, while DIAGNOSTICS is on (repairs are a planned mechanic)
+    if CMPilotSystem.Get(this.game).ShowDebug() && link.IsLinked() && Equals(link.UnitKind(), "MECH") {
+      p.Item("RESTORE MECH PARTS", "Dev tool: every part of the linked mech whole again, guns back on.", "", "RESTORE", "restoreparts", "", true);
+      p.Buttons("BREAK A PART (TEST)", "", "", "MK.31 L|MK.31 R|SENSOR|LEG L|PODS", "breakpart|breakpart|breakpart|breakpart|breakpart", "2|3|0|4|6");
+    }
   }
 
   // ---- CONFIG ----
@@ -220,6 +244,7 @@ public class CMContent extends TKContent {
 
     p.Heading("CHASSIS");
     p.Slider("TURN SPEED", "How fast the view traverses and the chassis turns; 100% is the heavy baseline (from the next link-in)", "", "50|300|25|" + IntToString(cfg.TurnPct()) + "|%", "turn", "");
+    p.Check("PART DAMAGE", "Hits wear down the part they land on: guns can be shot off, the sensor, legs and missile pods knocked out. Off: only the hull (from the next link-in)", cfg.PartDamage(), "parts", "");
 
     p.Heading("OPERATOR");
     p.Check("DISCONNECT WHEN V IS HIT", "Like hacking a camera: damage to V pulls you out of the mech", !cfg.StayWhenHit(), "dropwhenhit", "");

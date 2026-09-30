@@ -93,6 +93,7 @@ public class CMCSession extends ScriptableSystem {
   private let m_chaseUp: Float;
   private let m_chaseDist: Float;
   private let m_chaseSide: Float;
+  private let m_opticsHeld: Bool;   // the optics key as last seen (with the sensor out, it no longer follows zoom)
 
   // the view's weight: moving a hulking piece of equipment (both views)
   private let LOOK_STIFFNESS: Float = 7.0;    // spring toward where the mouse points
@@ -297,6 +298,7 @@ public class CMCSession extends ScriptableSystem {
     this.aim = this.rig.pos + this.rig.Forward() * 100.0;
     this.aimDist = 0.0;
     this.zoom = false;
+    this.m_opticsHeld = false;
     ArrayClear(this.m_keys);
     ArrayResize(this.m_keys, CMCKey.Count());
     this.m_axisSeen = 0;
@@ -511,7 +513,8 @@ public class CMCSession extends ScriptableSystem {
       return;
     }
     let optics = this.m_fireMode == CMFireMode.Split() ? this.Key(CMCKey.Mmb()) : this.Key(CMCKey.Rmb());
-    if NotEquals(optics, this.zoom) {
+    if NotEquals(optics, this.m_opticsHeld) {
+      this.m_opticsHeld = optics;
       this.SetOptics(optics);
     }
     this.rig.Update(dt, this.m_unit.Ground(), this.CamUp(), this.CamFwd(), this.zoom);
@@ -582,6 +585,27 @@ public class CMCSession extends ScriptableSystem {
     this.m_hud.Refresh(s);
   }
 
+  // the unit's sensor was shot out: out of the optics if it was in them
+  public func OpticsLost() -> Void {
+    if this.zoom {
+      this.SetOptics(false);
+    }
+  }
+
+  // a hit the unit took (the hit-to-threat hook, after the damage pipeline): its parts
+  public func UnitHit(hit: ref<gameHitEvent>) -> Void {
+    if this.m_state == 2 && IsDefined(this.m_unit) {
+      this.m_unit.TakeHit(this, hit);
+    }
+  }
+
+  // CONFIG > DIAGNOSTICS > RESTORE PARTS: the unit takes its parts' state again
+  public func PartsRestored() -> Void {
+    if this.m_state == 2 && IsDefined(this.m_unit) {
+      this.m_unit.TakeHit(this, null);
+    }
+  }
+
   // a hit on the unit from a shooter at `from`: the HUD's direction marker, placed by where
   // the shooter stands relative to the view
   public func HitFrom(from: Vector4) -> Void {
@@ -627,6 +651,10 @@ public class CMCSession extends ScriptableSystem {
   // optics on or off (held RMB, or MMB in split fire mode): tight field of view, slower
   // traverse, the sight view even from the chase view, and the optics frame on the HUD
   private func SetOptics(on: Bool) -> Void {
+    if on && IsDefined(this.m_unit) && !this.m_unit.OpticsOnline() {
+      GameObject.PlaySoundEvent(GetPlayer(this.GetGameInstance()), n"ui_hacking_press_fail");   // the sensor is shot out
+      return;
+    }
     this.zoom = on;
     this.m_clip = 999.0;
     this.rig.SetChase(this.ChaseNow());

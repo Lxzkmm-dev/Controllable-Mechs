@@ -1,7 +1,6 @@
 // =============================================================================
 // CONTROLLABLE MECHS - CONTROL FRAMEWORK: THE UNIT CONTRACT
-// A unit is anything the session can control (the Minotaur now, the emplacement
-// next). The session owns the when: the frame loop, the camera, input, V's locks
+// A unit is anything the session can control (the Minotaur now, more mechs later). The session owns the when: the frame loop, the camera, input, V's locks
 // and every exit. A unit owns the what: its body, its guns, how it moves.
 // A unit never starts its own loops; everything it does runs from these calls.
 // =============================================================================
@@ -36,6 +35,11 @@ public abstract class CMCUnit extends IScriptable {
 
   // the secondary weapon key (G) was pressed
   public func Secondary(s: ref<CMCSession>) -> Void {}
+
+  // a hit the unit took (after the damage pipeline): where it landed, for part damage
+  public func TakeHit(s: ref<CMCSession>, hit: ref<gameHitEvent>) -> Void {}
+  // false while the unit's optics are knocked out (the optics key does nothing)
+  public func OpticsOnline() -> Bool = true
 
   public func Name() -> String = "UNIT"
 }
