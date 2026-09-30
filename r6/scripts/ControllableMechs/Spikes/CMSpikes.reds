@@ -31,6 +31,7 @@ public class CMSpikeSystem extends ScriptableSystem {
   // S0
   private let m_turretID: EntityID;
   private let m_takeMode: Int32;
+  private let m_turretName: String;
   // S1
   private let m_maxtacID: EntityID;
   private let m_s1HostID: EntityID;
@@ -82,8 +83,11 @@ public class CMSpikeSystem extends ScriptableSystem {
     this.HookOff();
   }
 
+  // TOOLS > LOG in game, and the redscript log on disk (r6/logs) for the dev side
   public static func Log(text: String) -> Void {
     TKLog.Add("CM-SPIKE", text);
+    let line = "CM-SPIKE " + text;
+    ModLog(n"ControllableMechs", line);
   }
 
   // ---------------------------------------------------------------------------
@@ -243,13 +247,37 @@ public class CMSpikeSystem extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   // S0: vanilla turret takeover
   // ---------------------------------------------------------------------------
-  public func S0Spawn() -> String {
+  // S0b: the other turret templates to try the takeover on
+  public static func TurretName(which: Int32) -> String {
+    switch which {
+      case 1: return "SECURITY TURRET 2";
+      case 2: return "BIG TURRET";
+      case 3: return "ARASAKA FLOOR TURRET";
+      case 4: return "VEHICLE TURRET";
+      case 5: return "CAR-MOUNTED TURRET";
+    }
+    return "SECURITY TURRET 1";
+  }
+
+  public static func TurretPath(which: Int32) -> ResRef {
+    switch which {
+      case 1: return r"base\\gameplay\\devices\\security_systems\\security_turret\\security_turret_2.ent";
+      case 2: return r"base\\gameplay\\devices\\security_systems\\security_turret\\special\\big_turret_1.ent";
+      case 3: return r"base\\gameplay\\devices\\security_systems\\security_turret\\special\\arasaka_ceo_floor_turret.ent";
+      case 4: return r"base\\gameplay\\devices\\security_systems\\security_turret\\special\\vehicle_turret.ent";
+      case 5: return r"base\\gameplay\\devices\\security_systems\\security_turret\\special\\turret_car_attach.ent";
+    }
+    return r"base\\gameplay\\devices\\security_systems\\security_turret\\security_turret_1.ent";
+  }
+
+  public func S0Spawn(which: Int32) -> String {
     if EntityID.IsDefined(this.m_turretID) {
-      return "!A TEST TURRET IS ALREADY OUT";
+      return "!REMOVE THE TEST TURRET FIRST";
     }
     this.Listen();
+    this.m_turretName = CMSpikeSystem.TurretName(which);
     let spec = new DynamicEntitySpec();
-    spec.templatePath = r"base\\gameplay\\devices\\security_systems\\security_turret\\security_turret_1.ent";
+    spec.templatePath = CMSpikeSystem.TurretPath(which);
     spec.position = this.Ground(4.0, 0.0);
     spec.orientation = this.FacingV();
     spec.persistState = false;
@@ -257,8 +285,29 @@ public class CMSpikeSystem extends ScriptableSystem {
     spec.alwaysSpawned = true;
     spec.tags = [n"CMSpikeTurret"];
     this.m_turretID = GameInstance.GetDynamicEntitySystem().CreateEntity(spec);
-    CMSpikeSystem.Log("S0: security_turret_1.ent spawned 4 m ahead");
-    return "*TURRET INBOUND";
+    CMSpikeSystem.Log("S0: " + this.m_turretName + " spawning 4 m ahead");
+    return "*TURRET INBOUND: " + this.m_turretName;
+  }
+
+  public func S0Remove() -> String {
+    if EntityID.IsDefined(this.m_turretID) {
+      GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_turretID);
+    }
+    let empty: EntityID;
+    this.m_turretID = empty;
+    return "TEST TURRET REMOVED";
+  }
+
+  // after leaving a turret: is V back to normal? (camera, restrictions, HUD blackboard)
+  public func S0VState() -> String {
+    let game = this.GetGameInstance();
+    let player = GetPlayer(game);
+    let fpp = player.GetFPPCameraComponent();
+    let line = "S0 V state: FPP camera " + (IsDefined(fpp) && fpp.IsEnabled() ? "enabled" : "DISABLED")
+      + ", no-combat restriction " + (StatusEffectSystem.ObjectHasStatusEffectWithTag(player, n"NoCombat") ? "ON" : "off")
+      + ", camera forward vs V forward " + FloatToStringPrec(Rad2Deg(AcosF(ClampF(Vector4.Dot(Vector4.Normalize(GameInstance.GetCameraSystem(game).GetActiveCameraForward()), player.GetWorldForward()), -1.0, 1.0))), 1) + " deg";
+    CMSpikeSystem.Log(line);
+    return "*V STATE LOGGED";
   }
 
   private func Listen() -> Void {
@@ -287,7 +336,7 @@ public class CMSpikeSystem extends ScriptableSystem {
       let action = turret.GetDevicePS().ActionSetDeviceAttitude();
       action.SetExecutor(GetPlayer(game));
       turret.QueueEvent(action);
-      CMSpikeSystem.Log("S0: turret spawned and set friendly");
+      CMSpikeSystem.Log("S0: " + this.m_turretName + " spawned and set friendly");
       return;
     }
     if event.GetEntityID() == this.m_s5ID {
@@ -571,6 +620,7 @@ public class CMSpikeSystem extends ScriptableSystem {
     this.m_s1HostID = empty;
     this.m_s4ID = empty;
     this.m_s5ID = empty;
+    CMSpike2System.Get(game).DespawnAll();
     CMSpikeSystem.Log("all spike objects removed");
     return "SPIKE OBJECTS REMOVED";
   }
@@ -593,13 +643,18 @@ public class CMSpikeSystem extends ScriptableSystem {
   // The SPIKES page (dev only)
   // ---------------------------------------------------------------------------
   public func Page(p: ref<TKPage>) -> Void {
-    p.SetTitle("SPIKES", "Framework tests, first batch. Results go to TOOLS > LOG (tag CM-SPIKE).");
+    p.SetTitle("SPIKES", "Framework tests. Batch 2 first, then batch 1. Results go to TOOLS > LOG (tag CM-SPIKE).");
     p.SetSection("spikes");
 
-    p.Heading("S0  VANILLA TURRET TAKEOVER");
-    p.Item("SPAWN A SECURITY TURRET", "4 m ahead of you, set friendly.", "", this.Has(0) ? "!SPAWNED" : "SPAWN", "sp_s0", "", !this.Has(0));
+    CMSpike2System.Get(this.GetGameInstance()).Page(p);
+
+    p.Heading("S0 / S0b  VANILLA TURRET TAKEOVER");
+    p.Buttons("Spawn a turret 4 m ahead, set friendly", "", "", "SECURITY 1|SECURITY 2|BIG TURRET", "sp_s0|sp_s0|sp_s0", "0|1|2");
+    p.Buttons("Other models", "", "", "ARASAKA FLOOR|VEHICLE TURRET|CAR-MOUNTED", "sp_s0|sp_s0|sp_s0", "3|4|5");
     p.Buttons("Take control of it", "", "", "QUICKHACK ROUTE|SYSTEM ROUTE", "sp_s0take|sp_s0take", "0|1");
-    p.ItemNote("Question: does the view switch into the turret, can you aim and fire it, do its barrel, flash and rounds line up, and how do you get out?");
+    p.Item("V STATE", "After you exit: logs V's camera and restrictions", "", "LOG", "sp_s0state", "", true);
+    p.Item("REMOVE THE TEST TURRET", "Then spawn the next model", "", "REMOVE", "sp_s0rm", "", this.Has(0));
+    p.ItemNote("Question (S0b): for each model, does it spawn, does the takeover work, do barrel, flash and rounds line up, and after Esc is V back to normal (view, HUD, weapons, able to fight)? Press V STATE after each exit.");
 
     p.Heading("S1  MOVABLE SINGLE PARTS");
     p.Item("SPAWN THE PARTS", "Right: the whole MaxTac turret entity. Left: a lone HMG mesh on a host entity.", "", this.Has(1) ? "!SPAWNED" : "SPAWN", "sp_s1", "", !this.Has(1));
@@ -627,7 +682,9 @@ public class CMSpikeSystem extends ScriptableSystem {
   public func Act(p: ref<TKPage>, action: String, arg: String) -> Bool {
     let msg = "";
     switch action {
-      case "sp_s0": msg = this.S0Spawn(); break;
+      case "sp_s0": msg = this.S0Spawn(StringToInt(arg, 0)); break;
+      case "sp_s0rm": msg = this.S0Remove(); break;
+      case "sp_s0state": msg = this.S0VState(); break;
       case "sp_s0take": msg = this.S0TakeControl(StringToInt(arg, 0)); break;
       case "sp_s1": msg = this.S1Spawn(); break;
       case "sp_s1spin": msg = this.S1ToggleSpin(); break;
@@ -637,7 +694,7 @@ public class CMSpikeSystem extends ScriptableSystem {
       case "sp_s5guns": msg = this.S5ToggleGuns(); break;
       case "sp_s5mech": msg = this.S5SpawnMech(); break;
       case "sp_clear": msg = this.DespawnAll(); break;
-      default: return false;
+      default: return CMSpike2System.Get(this.GetGameInstance()).Act(p, action, arg);
     }
     if StrLen(msg) > 0 {
       p.SetMessage(msg);
