@@ -248,14 +248,14 @@ public class CMUMinotaur extends CMCUnit {
     let spun = this.m_spin >= this.SPIN_FIRE;
     let lmb = spun && s.Key(CMCKey.Lmb());
     let rmb = spun && split && s.Key(CMCKey.Rmb());
-    if trigger {
-      let offL = CMCSession.AimError(this.m_guns.left.weapon, s.aim) > this.GATE_DEG;
-      let offR = CMCSession.AimError(this.m_guns.right.weapon, s.aim) > this.GATE_DEG;
-      this.m_guns.left.offAim = offL;
-      this.m_guns.right.offAim = offR;
-      if offL || offR {
-        this.m_held += 1;
-      }
+    // each barrel against the fire gate, every frame: it holds that gun's fire, and the
+    // gun's reticle shows it (tight and bright when locked on)
+    let offL = CMCSession.AimError(this.m_guns.left.weapon, s.aim) > this.GATE_DEG;
+    let offR = CMCSession.AimError(this.m_guns.right.weapon, s.aim) > this.GATE_DEG;
+    this.m_guns.left.offAim = offL;
+    this.m_guns.right.offAim = offR;
+    if trigger && (offL || offR) {
+      this.m_held += 1;
     }
     let flashL = this.m_guns.left.flash;
     let flashR = this.m_guns.right.flash;
@@ -277,6 +277,7 @@ public class CMUMinotaur extends CMCUnit {
     let hud = s.Hud();
     if IsDefined(hud) {
       hud.FadeHit(dt);
+      hud.SetGunState(!offL, this.m_guns.left.heat, !offR, this.m_guns.right.heat);
       hud.Flash(this.m_guns.left.flash > 0.0, this.m_guns.right.flash > 0.0);
       let range = s.aimDist > 1.0 ? s.aimDist : 150.0;
       let l = s.PipOffset(this.m_guns.BarrelPoint(this.m_guns.left, range));

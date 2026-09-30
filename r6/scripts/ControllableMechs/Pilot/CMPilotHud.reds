@@ -40,8 +40,14 @@ public class CMPilotHud {
   private let m_markROn: Bool;
   private let m_reticle: ref<inkCanvas>;
   // where each barrel points: a small diamond, placed from the centre in 4K units
-  private let m_pipL: ref<inkRectangle>;
-  private let m_pipR: ref<inkRectangle>;
+  private let m_pipL: ref<inkCanvas>;
+  private let m_pipR: ref<inkCanvas>;
+  private let m_heatTicksL: array<ref<inkRectangle>>;
+  private let m_heatTicksR: array<ref<inkRectangle>>;
+  private let m_lockL: Bool;
+  private let m_lockR: Bool;
+  private let m_litL: Int32;
+  private let m_litR: Int32;
   private let m_pipLX: Float;
   private let m_pipLY: Float;
   private let m_pipRX: Float;
@@ -190,8 +196,8 @@ public class CMPilotHud {
     this.m_markL = CMPilotHud.Bar(r, 200.0 - 150.0, 200.0 - 40.0, 8.0, 80.0, c, 0.35);
     this.m_markR = CMPilotHud.Bar(r, 200.0 + 142.0, 200.0 - 40.0, 8.0, 80.0, c, 0.35);
     // barrel pips (hidden until the pilot system places them)
-    this.m_pipL = CMPilotHud.Pip(root);
-    this.m_pipR = CMPilotHud.Pip(root);
+    this.m_pipL = this.GunReticle(root, true);
+    this.m_pipR = this.GunReticle(root, false);
     // range under the reticle
     this.m_range = CMPilotHud.Label(root, inkEAnchor.Centered, 0.0, 130.0, "RNG ---", 34, n"Medium", c);
     this.m_range.SetAnchorPoint(Vector2(0.5, 0.0));
@@ -351,17 +357,89 @@ public class CMPilotHud {
     }
   }
 
-  private static func Pip(root: ref<inkCanvas>) -> ref<inkRectangle> {
-    let r = new inkRectangle();
-    r.SetAnchor(inkEAnchor.Centered);
-    r.SetAnchorPoint(Vector2(0.5, 0.5));
-    r.SetSize(Vector2(18.0, 18.0));
-    r.SetRotation(45.0);
-    r.SetTintColor(CMPilotHud.Pale());
-    r.SetOpacity(0.9);
-    r.SetVisible(false);
-    r.Reparent(root);
-    return r;
+  // A gun's reticle, where its barrel points: a broken ring of eight short segments with a
+  // centre dot and an L / R tag, and outside it a ring of twelve heat ticks that light up
+  // as that gun heats (red near overheat). Locked (the barrel inside the fire gate) the
+  // reticle is tight and bright; converging it's larger and dim. Shapes only, no assets.
+  private func GunReticle(root: ref<inkCanvas>, left: Bool) -> ref<inkCanvas> {
+    let c = new inkCanvas();
+    c.SetAnchor(inkEAnchor.Centered);
+    c.SetAnchorPoint(Vector2(0.5, 0.5));
+    c.SetSize(Vector2(120.0, 120.0));
+    c.SetRenderTransformPivot(Vector2(0.5, 0.5));
+    c.SetVisible(false);
+    c.Reparent(root);
+    let i = 0;
+    while i < 8 {
+      let a = Deg2Rad(Cast<Float>(i) * 45.0 + 22.5);
+      let seg = CMPilotHud.Bar(c, 60.0 + CosF(a) * 26.0 - 7.0, 60.0 + SinF(a) * 26.0 - 1.5, 14.0, 3.0, CMPilotHud.Pale(), 1.0);
+      seg.SetRotation(Cast<Float>(i) * 45.0 + 22.5 + 90.0);
+      i += 1;
+    }
+    CMPilotHud.Bar(c, 57.5, 57.5, 5.0, 5.0, CMPilotHud.Pale(), 1.0);
+    let tag = new inkText();
+    tag.SetFontFamily("base\\gameplay\\gui\\fonts\\raj\\raj.inkfontfamily");
+    tag.SetFontStyle(n"Semi-Bold");
+    tag.SetFontSize(22);
+    tag.SetTintColor(CMPilotHud.Pale());
+    tag.SetText(left ? "L" : "R");
+    tag.SetMargin(inkMargin(left ? 8.0 : 100.0, 84.0, 0.0, 0.0));
+    tag.Reparent(c);
+    // heat ticks, clockwise from the top
+    let k = 0;
+    while k < 12 {
+      let a = Deg2Rad(Cast<Float>(k) * 30.0 - 90.0);
+      let tick = CMPilotHud.Bar(c, 60.0 + CosF(a) * 42.0 - 5.0, 60.0 + SinF(a) * 42.0 - 2.0, 10.0, 4.0, CMPilotHud.Amber(), 0.12);
+      tick.SetRotation(Cast<Float>(k) * 30.0);
+      if left {
+        ArrayPush(this.m_heatTicksL, tick);
+      } else {
+        ArrayPush(this.m_heatTicksR, tick);
+      }
+      k += 1;
+    }
+    c.SetScale(Vector2(1.25, 1.25));
+    c.SetOpacity(0.5);
+    return c;
+  }
+
+  // every frame while piloting, but widgets are only touched when something changed:
+  // each gun's lock state, and how many of its heat ticks are lit
+  public func SetGunState(lockedL: Bool, heatL: Float, lockedR: Bool, heatR: Float) -> Void {
+    if !IsDefined(this.m_root) {
+      return;
+    }
+    if NotEquals(lockedL, this.m_lockL) {
+      this.m_lockL = lockedL;
+      this.m_pipL.SetScale(lockedL ? Vector2(1.0, 1.0) : Vector2(1.25, 1.25));
+      this.m_pipL.SetOpacity(lockedL ? 1.0 : 0.5);
+    }
+    if NotEquals(lockedR, this.m_lockR) {
+      this.m_lockR = lockedR;
+      this.m_pipR.SetScale(lockedR ? Vector2(1.0, 1.0) : Vector2(1.25, 1.25));
+      this.m_pipR.SetOpacity(lockedR ? 1.0 : 0.5);
+    }
+    let litL = RoundF(ClampF(heatL, 0.0, 1.0) * 12.0);
+    if litL != this.m_litL {
+      this.m_litL = litL;
+      CMPilotHud.LightTicks(this.m_heatTicksL, litL);
+    }
+    let litR = RoundF(ClampF(heatR, 0.0, 1.0) * 12.0);
+    if litR != this.m_litR {
+      this.m_litR = litR;
+      CMPilotHud.LightTicks(this.m_heatTicksR, litR);
+    }
+  }
+
+  private static func LightTicks(ticks: array<ref<inkRectangle>>, lit: Int32) -> Void {
+    let hot = lit >= 10;
+    let i = 0;
+    while i < ArraySize(ticks) {
+      let on = i < lit;
+      ticks[i].SetOpacity(on ? 1.0 : 0.12);
+      ticks[i].SetTintColor(on && hot ? CMPilotHud.Red() : CMPilotHud.Amber());
+      i += 1;
+    }
   }
 
   public func ShowDebug(on: Bool) -> Void {
