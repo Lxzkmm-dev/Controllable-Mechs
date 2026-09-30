@@ -234,6 +234,32 @@ public class CMUDrone extends CMCUnit {
   private func Place(drone: ref<NPCPuppet>, now: Float) -> Void {
     let fl = this.m_flight;
     switch this.m_method {
+      case 4:
+        // the entity's own transform set each frame (Codeware), with the body's full
+        // tilt; an AI teleport four times a second keeps its movement component where
+        // the body is
+        let wt: WorldTransform;
+        let world: WorldPosition;
+        WorldPosition.SetVector4(world, fl.pos);
+        WorldTransform.SetWorldPosition(wt, world);
+        let q: EulerAngles;
+        q.Yaw = fl.yaw;
+        q.Pitch = fl.pitch;
+        q.Roll = fl.roll;
+        WorldTransform.SetOrientation(wt, EulerAngles.ToQuat(q));
+        drone.SetWorldTransform(wt);
+        if now - this.m_cmdAt >= 0.25 {
+          let sync = new AITeleportCommand();
+          sync.position = fl.pos;
+          sync.rotation = fl.yaw;
+          sync.doNavTest = false;
+          let ai4 = drone.GetAIControllerComponent();
+          if IsDefined(ai4) {
+            ai4.SendCommand(sync);
+          }
+          this.m_cmdAt = now;
+        }
+        break;
       case 0:
       case 3:
         let e: EulerAngles;
@@ -327,6 +353,7 @@ public class CMUDrone extends CMCUnit {
   // once a second (diagnostics)
   private func Report(drone: ref<NPCPuppet>) -> Void {
     let fl = this.m_flight;
+    let real = Quaternion.ToEulerAngles(drone.GetWorldOrientation());
     let avg = this.m_errN > 0 ? this.m_errSum / Cast<Float>(this.m_errN) : -1.0;
     let stalls = this.m_stalls;
     this.m_stalls = 0;
@@ -335,7 +362,8 @@ public class CMUDrone extends CMCUnit {
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
-      + ", gait " + NameToString(this.m_gait));
+      + ", gait " + NameToString(this.m_gait)
+      + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
     this.m_errN = 0;
@@ -383,6 +411,7 @@ public class CMUDrone extends CMCUnit {
       case 0: return "FACILITY TELEPORT";
       case 1: return "AI TELEPORT";
       case 3: return "AI OFF + TELEPORT";
+      case 4: return "ENTITY TRANSFORM";
     }
     return "AI MOVE CARROT";
   }
