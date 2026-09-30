@@ -222,7 +222,10 @@ else:
                 a = line[pi][i]
                 if owner[i] == pi or (pi == 6 and podz[i] < INF):
                     a = max(a, FILL)
-                buf[(yy * w + xx) * 4:(yy * w + xx) * 4 + 4] = bytes((255, 255, 255, int(a * 255)))
+                # premultiplied: the game's UI adds the colour of a texel whatever its alpha, so
+                # white where the layer is empty came out as solid white blocks
+                v = int(a * 255)
+                buf[(yy * w + xx) * 4:(yy * w + xx) * 4 + 4] = bytes((v, v, v, v))
         png(os.path.join(OUT, pname + '.png'), w, h, buf)
         meta.append((pname, x0, y0, w, h))
     with open(os.path.join(OUT, 'layout.txt'), 'w') as fo:
