@@ -56,6 +56,17 @@ public abstract class CMPart {
   }
 }
 
+// set on the linked mech while the damage test is on: V can shoot it, and it neither
+// turns on V nor dies (CMCCalm skips its threat and alert functions, as for a piloted one)
+@addField(ScriptedPuppet)
+public let m_cmTestTarget: Bool;
+
+// what one hit did: the part it landed on, and whether that broke it
+public class CMPartHit {
+  public let part: Int32;
+  public let broke: Bool;
+}
+
 // one mech's parts, 0..1 each
 public class CMPartState {
   public let id: EntityID;
@@ -100,8 +111,8 @@ public class CMCParts extends ScriptableSystem {
     }
     CMCParts.ShowGun(mech, true, true);
     CMCParts.ShowGun(mech, false, true);
-    CMCParts.Cripple(mech, true, false);
-    CMCParts.Cripple(mech, false, false);
+    // and the hull full again
+    GameInstance.GetStatPoolsSystem(mech.GetGame()).RequestSettingStatPoolMaxValue(Cast<StatsObjectID>(mech.GetEntityID()), gamedataStatPoolType.Health, null);
     let session = CMCSession.Get(mech.GetGame());
     if IsDefined(session) {
       session.PartsRestored();
@@ -120,10 +131,136 @@ public class CMCParts extends ScriptableSystem {
       CMCParts.BreakWeakspot(mech, part == CMPart.ArmL());
       CMCParts.ShowGun(mech, part == CMPart.ArmL(), false);
     }
-    if part == CMPart.LegL() || part == CMPart.LegR() {
-      CMCParts.Cripple(mech, part == CMPart.LegL(), true);
-    }
+
     CMCSession.Log("parts: " + CMPart.Name(part) + " broken (dev tool)");
+  }
+
+  // One hit on a mech: which part it landed on, and how much of that part it took. The
+  // body zone the game reports decides when it names a limb or the head; otherwise where
+  // the hit landed on the body does. A part breaks once the hits on it add up to its share
+  // of the mech's hull. None when the hit did no damage.
+  public func Hit(mech: ref<NPCPuppet>, hit: ref<gameHitEvent>) -> ref<CMPartHit> {
+    if !IsDefined(mech) || !IsDefined(hit) || !IsDefined(hit.attackData) || hit.attackData.HasFlag(hitFlag.DealNoDamage) {
+      return null;
+    }
+    let dmg = hit.attackComputed.GetTotalAttackValue(gamedataStatPoolType.Health);
+    if dmg <= 0.0 {
+      return null;
+    }
+    // where on the body, in the mech's own frame
+    let d = hit.hitPosition - mech.GetWorldPosition();
+    let fwd = mech.GetWorldForward();
+    let right = CMPilotRig.Dir(CMPilotRig.YawOf(fwd) - 90.0, 0.0);
+    let up = d.Z;
+    let side = Vector4.Dot(d, right);
+    let back = -(d.X * fwd.X + d.Y * fwd.Y);
+    let zone = EHitReactionZone.Special;
+    if ArraySize(hit.hitRepresentationResult.hitShapes) > 0 {
+      zone = HitShapeUserDataBase.GetHitReactionZone(hit.hitRepresentationResult.hitShapes[0].userData as HitShapeUserDataBase);
+    }
+    let r = new CMPartHit();
+    r.part = CMCParts.PartAt(zone, up, side, back);
+    let game = mech.GetGame();
+    if CMPilotSystem.Get(game).ShowDebug() {
+      CMCHits.Trace(game, "part hit: zone " + EnumValueToString("EHitReactionZone", Cast<Int64>(EnumInt(zone))) + ", " + FloatToStringPrec(up, 1) + " m up, " + FloatToStringPrec(side, 1) + " m right, " + FloatToStringPrec(back, 1) + " m back -> " + CMPart.Name(r.part) + ", " + FloatToStringPrec(dmg, 0) + " damage");
+    }
+    if r.part == CMPart.Torso() {
+      return r;   // the torso is the hull
+    }
+    let st = this.State(mech.GetEntityID());
+    let before = st.hp[r.part];
+    if before <= 0.0 {
+      return r;
+    }
+    let hull = GameInstance.GetStatPoolsSystem(game).GetStatPoolMaxPointValue(Cast<StatsObjectID>(mech.GetEntityID()), gamedataStatPoolType.Health);
+    st.hp[r.part] = MaxF(0.0, before - dmg / MaxF(1.0, hull * CMPart.Share(r.part)));
+    r.broke = st.hp[r.part] <= 0.0;
+    return r;
+  }
+
+  // The Minotaur's body, from the zone the game names or where the hit landed.
+  // Heights are metres above its feet; its arms and guns stand out about 1.3 m either side.
+  public static func PartAt(zone: EHitReactionZone, up: Float, side: Float, back: Float) -> Int32 {
+    switch zone {
+      case EHitReactionZone.Head: return CMPart.Sensor();
+      case EHitReactionZone.ArmLeft: return CMPart.ArmL();
+      case EHitReactionZone.HandLeft: return CMPart.ArmL();
+      case EHitReactionZone.ArmRight: return CMPart.ArmR();
+      case EHitReactionZone.HandRight: return CMPart.ArmR();
+      case EHitReactionZone.LegLeft: return CMPart.LegL();
+      case EHitReactionZone.LegRight: return CMPart.LegR();
+    }
+    if up < 2.0 {
+      return side < 0.0 ? CMPart.LegL() : CMPart.LegR();
+    }
+    if AbsF(side) > 1.3 {
+      return side < 0.0 ? CMPart.ArmL() : CMPart.ArmR();
+    }
+    if back > 0.8 && up > 2.6 {
+      return CMPart.Pods();
+    }
+    if up > 3.4 && back < 0.3 {
+      return CMPart.Sensor();
+    }
+    return CMPart.Torso();
+  }
+
+  // ---- the damage test (a dev tool): V shoots the linked mech to try part damage ----
+  private let m_test: wref<NPCPuppet>;
+
+  public func Testing() -> Bool = IsDefined(this.m_test) && this.m_test.m_cmTestTarget
+
+  // On: the mech can't be killed (it stops at 1 HP) and doesn't turn on V; V's hits on it
+  // wear its parts as they would while piloted, each named on screen. Off, or on unlink:
+  // back to normal.
+  public func SetTest(mech: ref<NPCPuppet>, on: Bool) -> Void {
+    if IsDefined(this.m_test) && (!on || this.m_test != mech) {
+      this.m_test.m_cmTestTarget = false;
+      GameInstance.GetGodModeSystem(this.m_test.GetGame()).RemoveGodMode(this.m_test.GetEntityID(), gameGodModeType.Immortal, n"CMDamageTest");
+      this.m_test = null;
+    }
+    if !on || !IsDefined(mech) {
+      return;
+    }
+    mech.m_cmTestTarget = true;
+    GameInstance.GetGodModeSystem(mech.GetGame()).AddGodMode(mech.GetEntityID(), gameGodModeType.Immortal, n"CMDamageTest");
+    this.m_test = mech;
+    CMCSession.Log("parts: damage test on");
+  }
+
+  // a hit on the mech under test (from CMCCalm)
+  public func TestHit(mech: ref<NPCPuppet>, hit: ref<gameHitEvent>) -> Void {
+    if !IsDefined(mech) {
+      return;
+    }
+    // friendly again, whatever the hit did to how it sees V
+    CMLinkSystem.Get(mech.GetGame()).Befriend(mech);
+    let r = this.Hit(mech, hit);
+    if !IsDefined(r) {
+      return;
+    }
+    if r.broke {
+      this.Break(mech, r.part);
+    }
+    let text = CMPart.Name(r.part);
+    if r.part == CMPart.Torso() {
+      let hull = GameInstance.GetStatPoolsSystem(mech.GetGame()).GetStatPoolValue(Cast<StatsObjectID>(mech.GetEntityID()), gamedataStatPoolType.Health, true);
+      text += " (HULL " + IntToString(RoundF(hull)) + "%)";
+    } else {
+      let hp = this.State(mech.GetEntityID()).hp[r.part];
+      text += hp <= 0.0 ? " BROKEN" : " " + IntToString(RoundF(hp * 100.0)) + "%";
+    }
+    CMCParts.Screen(mech.GetGame(), "DAMAGE TEST: " + text);
+  }
+
+  // a line in the game's on-screen message slot
+  public static func Screen(game: GameInstance, text: String) -> Void {
+    let msg: SimpleScreenMessage;
+    msg.isShown = true;
+    msg.duration = 2.5;
+    msg.message = text;
+    let bb = GameInstance.GetBlackboardSystem(game).Get(GetAllBlackboardDefs().UI_Notifications);
+    bb.SetVariant(GetAllBlackboardDefs().UI_Notifications.OnscreenMessage, ToVariant(msg), true);
   }
 
   // ---- what a broken part does to the model and the body ----
@@ -157,19 +294,6 @@ public class CMCParts extends ScriptableSystem {
           CMCSession.Log("parts: weak spot on the " + (left ? "left" : "right") + " (" + FloatToStringPrec(side, 1) + " m to the side) destroyed");
         }
       }
-    }
-  }
-
-  // a broken leg: the game's own crippled-leg effect, when this game has it
-  public static func Cripple(mech: ref<NPCPuppet>, left: Bool, on: Bool) -> Void {
-    let id = left ? t"BaseStatusEffect.CrippledLegLeft" : t"BaseStatusEffect.CrippledLegRight";
-    if !IsDefined(TweakDBInterface.GetStatusEffectRecord(id)) {
-      return;
-    }
-    if on {
-      StatusEffectHelper.ApplyStatusEffect(mech, id);
-    } else {
-      StatusEffectHelper.RemoveStatusEffect(mech, id);
     }
   }
 }

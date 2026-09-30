@@ -166,6 +166,13 @@ public class CMContent extends TKContent {
         CMCParts.Get(this.game).Restore(link.Unit());
         p.SetMessage("*ALL PARTS RESTORED");
         break;
+      case "damagetest":
+        if !IsDefined(link.Unit()) {
+          p.SetMessage("!NO UNIT ON UPLINK");
+          break;
+        }
+        CMCParts.Get(this.game).SetTest(link.Unit(), Equals(CMContent.Str(arg), "1"));
+        break;
       case "breakpart":
         if !IsDefined(link.Unit()) {
           p.SetMessage("!NO UNIT ON UPLINK");
@@ -220,7 +227,8 @@ public class CMContent extends TKContent {
     }
     // dev tools for part damage, while DIAGNOSTICS is on (repairs are a planned mechanic)
     if CMPilotSystem.Get(this.game).ShowDebug() && link.IsLinked() && Equals(link.UnitKind(), "MECH") {
-      p.Item("RESTORE MECH PARTS", "Dev tool: every part of the linked mech whole again, guns back on.", "", "RESTORE", "restoreparts", "", true);
+      p.Check("DAMAGE TEST", "Dev tool: shoot the linked mech to try part damage. It can't die and won't turn on you; each hit names the part it wore. Off when you close the link", CMCParts.Get(this.game).Testing(), "damagetest", "");
+      p.Item("RESTORE MECH PARTS", "Dev tool: every part of the linked mech whole again, guns back on, hull full.", "", "RESTORE", "restoreparts", "", true);
       p.Buttons("BREAK A PART (TEST)", "", "", "MK.31 L|MK.31 R|SENSOR|LEG L|PODS", "breakpart|breakpart|breakpart|breakpart|breakpart", "2|3|0|4|6");
     }
   }

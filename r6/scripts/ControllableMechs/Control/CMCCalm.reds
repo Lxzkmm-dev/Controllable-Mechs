@@ -34,6 +34,11 @@ public final static func OnHit(ownerPuppet: wref<ScriptedPuppet>, evt: ref<gameH
     }
     return;
   }
+  // the linked mech under the damage test: V's hits wear its parts, and nothing else
+  if IsDefined(ownerPuppet) && ownerPuppet.m_cmTestTarget {
+    CMCParts.Get(ownerPuppet.GetGame()).TestHit(ownerPuppet as NPCPuppet, evt);
+    return;
+  }
   // Someone hit by the piloted unit: the hit is credited to V (the kill, XP and heat are
   // V's), but the one to turn on is the unit that fired. The game's own function runs with
   // the unit standing in as the instigator, then V is put back.
@@ -65,6 +70,9 @@ public final static func InjectThreat(puppet: wref<ScriptedPuppet>, threat: wref
     CMCCalm.DrawFire(puppet, threat as ScriptedPuppet);
     return;
   }
+  if IsDefined(puppet) && puppet.m_cmTestTarget {
+    return;
+  }
   wrappedMethod(puppet, threat, accuracy, cooldown);
 }
 
@@ -74,7 +82,7 @@ public final static func InjectThreat(puppet: wref<ScriptedPuppet>, threat: wref
 @wrapMethod(NPCPuppet)
 public final static func ChangeHighLevelState(obj: ref<GameObject>, newState: gamedataNPCHighLevelState) -> Void {
   let puppet = obj as ScriptedPuppet;
-  if IsDefined(puppet) && puppet.m_cmPiloted
+  if IsDefined(puppet) && (puppet.m_cmPiloted || puppet.m_cmTestTarget)
     && (Equals(newState, gamedataNPCHighLevelState.Alerted) || Equals(newState, gamedataNPCHighLevelState.Combat)
       || Equals(newState, gamedataNPCHighLevelState.Stealth) || Equals(newState, gamedataNPCHighLevelState.Fear)) {
     if CMPilotSystem.Get(puppet.GetGame()).ShowDebug() {
@@ -87,7 +95,7 @@ public final static func ChangeHighLevelState(obj: ref<GameObject>, newState: ga
 
 @wrapMethod(NPCStatesComponent)
 public final static func AlertPuppet(ownerPuppet: wref<ScriptedPuppet>) -> Void {
-  if IsDefined(ownerPuppet) && ownerPuppet.m_cmPiloted {
+  if IsDefined(ownerPuppet) && (ownerPuppet.m_cmPiloted || ownerPuppet.m_cmTestTarget) {
     return;
   }
   wrappedMethod(ownerPuppet);
@@ -95,7 +103,7 @@ public final static func AlertPuppet(ownerPuppet: wref<ScriptedPuppet>) -> Void 
 
 @wrapMethod(TargetTrackingExtension)
 public final static func InjectThreat(puppet: wref<ScriptedPuppet>, const threat: script_ref<TrackedLocation>) -> Void {
-  if IsDefined(puppet) && puppet.m_cmPiloted {
+  if IsDefined(puppet) && (puppet.m_cmPiloted || puppet.m_cmTestTarget) {
     return;
   }
   wrappedMethod(puppet, threat);
@@ -103,7 +111,7 @@ public final static func InjectThreat(puppet: wref<ScriptedPuppet>, const threat
 
 @wrapMethod(TargetTrackingExtension)
 public final static func InjectThreat(puppet: wref<ScriptedPuppet>, pos: Vector4, timeToLive: Float) -> Void {
-  if IsDefined(puppet) && puppet.m_cmPiloted {
+  if IsDefined(puppet) && (puppet.m_cmPiloted || puppet.m_cmTestTarget) {
     return;
   }
   wrappedMethod(puppet, pos, timeToLive);
@@ -113,7 +121,7 @@ public final static func InjectThreat(puppet: wref<ScriptedPuppet>, pos: Vector4
 @wrapMethod(TargetTrackingExtension)
 protected cb func OnEnemyPushedToSquad(evt: ref<EnemyPushedToSquad>) -> Bool {
   let owner = this.GetEntity() as ScriptedPuppet;
-  if IsDefined(owner) && owner.m_cmPiloted {
+  if IsDefined(owner) && (owner.m_cmPiloted || owner.m_cmTestTarget) {
     return false;
   }
   return wrappedMethod(evt);

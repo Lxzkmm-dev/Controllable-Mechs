@@ -160,6 +160,7 @@ public class CMLinkSystem extends ScriptableSystem {
     if IsDefined(unit) {
       this.CancelCmd(unit);
     }
+    CMCParts.Get(this.GetGameInstance()).SetTest(null, false);
     this.Clear();
   }
 
@@ -500,6 +501,10 @@ public class CMLinkSystem extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   // Taking the robot over: friendly to V, no AI role of its own
   // ---------------------------------------------------------------------------
+  public func Befriend(npc: ref<NPCPuppet>) -> Void {
+    this.MakeFriendly(npc);
+  }
+
   private func MakeFriendly(npc: ref<NPCPuppet>) -> Void {
     let player = GetPlayer(this.GetGameInstance());
     if !IsDefined(player) {

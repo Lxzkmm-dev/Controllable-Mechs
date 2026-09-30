@@ -44,6 +44,8 @@ public class CMUMinotaur extends CMCUnit {
   private let m_hullMax: Float;
   private let m_partNote: String;
   private let m_partNoteUntil: Float;
+  private let m_limpHalt: Bool;
+  private let m_limpNext: Float;
   private let m_mech: wref<NPCPuppet>;
   private let m_sensorUp: Float;      // the sensor mount, read once per session
   private let m_sensorFwd: Float;
@@ -984,6 +986,9 @@ public class CMUMinotaur extends CMCUnit {
       return;   // standing: TurnChassis turns the body and holds its heading, every frame
     }
     dir = Vector4.Normalize(dir);
+    if this.Limp(s, mech, now) {
+      return;
+    }
     let turned = !this.m_moving || Vector4.Dot(dir, this.m_moveDir) < 0.94;
     let close = Vector4.Distance(pos, this.m_moveTarget) < 4.0;
     let stale = now - this.m_moveSent > 1.5;
@@ -1090,16 +1095,12 @@ public class CMUMinotaur extends CMCUnit {
     this.m_guns.right.destroyed = armR;
     CMCParts.ShowGun(mech, true, !armL);
     CMCParts.ShowGun(mech, false, !armR);
-    CMCParts.Cripple(mech, true, this.PartHp(CMPart.LegL()) <= 0.0);
-    CMCParts.Cripple(mech, false, this.PartHp(CMPart.LegR()) <= 0.0);
     if !this.OpticsOnline() {
       s.OpticsLost();
     }
   }
 
-  // A hit the mech took: which part it landed on, and how much of that part it took.
-  // The body zone the game reports decides when it names a limb or the head; otherwise
-  // where the hit landed on the body does (height, side, front or back).
+  // A hit the mech took: CMCParts works out the part and wears it down.
   public func TakeHit(s: ref<CMCSession>, hit: ref<gameHitEvent>) -> Void {
     let mech = this.Mech();
     if !IsDefined(mech) || !IsDefined(this.m_parts) {
@@ -1109,73 +1110,57 @@ public class CMUMinotaur extends CMCUnit {
       this.ApplyParts(s, mech);   // restored or broken from the terminal
       return;
     }
-    if !this.m_partsOn || !IsDefined(hit.attackData) || hit.attackData.HasFlag(hitFlag.DealNoDamage) {
+    if !this.m_partsOn {
       return;
     }
-    let dmg = hit.attackComputed.GetTotalAttackValue(gamedataStatPoolType.Health);
-    if dmg <= 0.0 {
+    let r = CMCParts.Get(this.m_game).Hit(mech, hit);
+    if !IsDefined(r) {
       return;
-    }
-    // where on the body, in the mech's own frame
-    let d = hit.hitPosition - mech.GetWorldPosition();
-    let fwd = mech.GetWorldForward();
-    let right = CMPilotRig.Dir(CMPilotRig.YawOf(fwd) - 90.0, 0.0);
-    let up = d.Z;
-    let side = Vector4.Dot(d, right);
-    let back = -(d.X * fwd.X + d.Y * fwd.Y);
-    let zone = EHitReactionZone.Special;
-    if ArraySize(hit.hitRepresentationResult.hitShapes) > 0 {
-      zone = HitShapeUserDataBase.GetHitReactionZone(hit.hitRepresentationResult.hitShapes[0].userData as HitShapeUserDataBase);
-    }
-    let part = CMUMinotaur.PartAt(zone, up, side, back);
-    if CMPilotSystem.Get(this.m_game).ShowDebug() {
-      CMCHits.Trace(this.m_game, "part hit: zone " + EnumValueToString("EHitReactionZone", Cast<Int64>(EnumInt(zone))) + ", " + FloatToStringPrec(up, 1) + " m up, " + FloatToStringPrec(side, 1) + " m right, " + FloatToStringPrec(back, 1) + " m back -> " + CMPart.Name(part) + ", " + FloatToStringPrec(dmg, 0) + " damage");
     }
     let hud = s.Hud();
     if IsDefined(hud) {
-      hud.PartHit(part);
+      hud.PartHit(r.part);
     }
-    if part == CMPart.Torso() {
-      return;   // the torso is the hull
-    }
-    let before = this.m_parts.hp[part];
-    if before <= 0.0 {
-      return;
-    }
-    let after = MaxF(0.0, before - dmg / MaxF(1.0, this.m_hullMax * CMPart.Share(part)));
-    this.m_parts.hp[part] = after;
-    if after <= 0.0 {
-      this.BreakPart(s, mech, part);
+    if r.broke {
+      this.BreakPart(s, mech, r.part);
     }
   }
 
-  // The Minotaur's body, from the zone the game names or where the hit landed.
-  // Heights are metres above its feet; its arms and guns stand out about 1.3 m either side.
-  public static func PartAt(zone: EHitReactionZone, up: Float, side: Float, back: Float) -> Int32 {
-    switch zone {
-      case EHitReactionZone.Head: return CMPart.Sensor();
-      case EHitReactionZone.ArmLeft: return CMPart.ArmL();
-      case EHitReactionZone.HandLeft: return CMPart.ArmL();
-      case EHitReactionZone.ArmRight: return CMPart.ArmR();
-      case EHitReactionZone.HandRight: return CMPart.ArmR();
-      case EHitReactionZone.LegLeft: return CMPart.LegL();
-      case EHitReactionZone.LegRight: return CMPart.LegR();
+  // A damaged leg: the walk comes in halting strides, the body dipping as it plants on the
+  // bad leg. One leg broken: short strides and halts; both: shorter, longer halts; a leg
+  // under half: a slight hitch. True while halted (no walk order goes out).
+  private func Limp(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Bool {
+    let l = this.PartHp(CMPart.LegL());
+    let r = this.PartHp(CMPart.LegR());
+    let broken = (l <= 0.0 ? 1 : 0) + (r <= 0.0 ? 1 : 0);
+    let stride = 0.0;
+    let halt = 0.0;
+    if broken == 2 {
+      stride = 0.7;
+      halt = 1.1;
+    } else if broken == 1 {
+      stride = 1.0;
+      halt = 0.7;
+    } else if l < 0.5 || r < 0.5 {
+      stride = 1.8;
+      halt = 0.35;
+    } else {
+      return false;
     }
-    if up < 2.0 {
-      return side < 0.0 ? CMPart.LegL() : CMPart.LegR();
+    if now >= this.m_limpNext {
+      this.m_limpHalt = !this.m_limpHalt;
+      this.m_limpNext = now + (this.m_limpHalt ? halt : stride);
+      if this.m_limpHalt {
+        s.rig.Nudge(this.STOP_ROCK * 1.6, -0.45);   // it sags onto the bad leg
+      }
     }
-    if AbsF(side) > 1.3 {
-      return side < 0.0 ? CMPart.ArmL() : CMPart.ArmR();
+    if this.m_limpHalt && this.m_moving {
+      this.CancelCmd(mech, this.m_moveCmd);
+      this.m_moveCmd = null;
+      this.m_moving = false;
     }
-    if back > 0.8 && up > 2.6 {
-      return CMPart.Pods();
-    }
-    if up > 3.4 && back < 0.3 {
-      return CMPart.Sensor();
-    }
-    return CMPart.Torso();
+    return this.m_limpHalt;
   }
-
   // A part has just broken: on the model, in how the mech works, and on the HUD.
   private func BreakPart(s: ref<CMCSession>, mech: ref<NPCPuppet>, part: Int32) -> Void {
     if part == CMPart.ArmL() || part == CMPart.ArmR() {
