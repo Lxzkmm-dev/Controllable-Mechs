@@ -7,6 +7,8 @@
 // =============================================================================
 module ControllableMechs
 
+import ControllableMechs.Control.*
+
 public class CMInput extends IScriptable {
   public let player: wref<PlayerPuppet>;
 
@@ -27,11 +29,17 @@ public class CMInput extends IScriptable {
     this.m_lastName = name;
     this.m_lastTime = now;
     let pilot = CMPilotSystem.Get(this.player.GetGame());
+    let session = CMCSession.Get(this.player.GetGame());
     if Equals(name, n"CM_Pilot") {
-      pilot.Toggle();
+      // the framework (M1) while its preview is on, else the alpha's Pilot Mode
+      if session.IsActive() || (session.Armed() && !pilot.IsPiloting()) {
+        session.Toggle();
+      } else {
+        pilot.Toggle();
+      }
       return false;
     }
-    if pilot.IsPiloting() {
+    if pilot.IsPiloting() || session.IsActive() {
       return false;   // the terminal and look-at linking wait until V is back
     }
     switch name {
@@ -73,6 +81,11 @@ public let m_cmPilot: wref<CMPilotSystem>;
 protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsumer) -> Bool {
   if IsDefined(this.m_cmPilot) {
     if this.m_cmPilot.OnGameAction(ListenerAction.GetName(action), ListenerAction.GetType(action), ListenerAction.GetValue(action)) {
+      return true;
+    }
+  }
+  if IsDefined(this.m_cmcSession) {
+    if this.m_cmcSession.OnGameAction(ListenerAction.GetName(action), ListenerAction.GetType(action), ListenerAction.GetValue(action)) {
       return true;
     }
   }

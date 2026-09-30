@@ -20,6 +20,7 @@
 module ControllableMechs
 
 import TerminalKit.*
+import ControllableMechs.Control.*
 
 public class CMSpike2System extends ScriptableSystem {
   // S2b
@@ -730,6 +731,13 @@ public class CMSpike2System extends ScriptableSystem {
   // The page (above batch 1 on the SPIKES tab)
   // ---------------------------------------------------------------------------
   public func Page(p: ref<TKPage>) -> Void {
+    let session = CMCSession.Get(this.GetGameInstance());
+    p.Heading("M1 PREVIEW  THE CONTROL FRAMEWORK WITH THE MINOTAUR");
+    p.Item("M1 PREVIEW", "On: the Pilot key (\\) starts the new framework instead of the alpha's Pilot Mode", "", session.Armed() ? "ON" : "OFF", "sp_m1_arm", session.Armed() ? "0" : "1", true);
+    p.Buttons("Fire call (now " + CMFireCall.Name(session.FireCall()) + ")", "", "", "MECH|V, NO POINT|V + POINT", "sp_m1_call|sp_m1_call|sp_m1_call", "0|1|2");
+    p.Item("PILOT THE LINKED MINOTAUR (M1)", "Starts the framework now; \\ disconnects", "", "PILOT", "sp_m1_go", "", true);
+    p.ItemNote("Question: does enter and exit work cleanly (view, HUD, V back to normal)? Do the guns follow the reticle while walking and turning, and do the rounds, tracers and flash land on it? V toggles the chase view, B the fire mode.");
+
     let pilot = CMPilotSystem.Get(this.GetGameInstance());
     p.Heading("S7  PILOT WITH THE GUN LOOK-AT (BATCH 3)");
     p.Item("GUN LOOK-AT WHILE PILOTING", "RightWeapon, LeftWeapon, Weapon and Chassis follow the reticle; the MK.31s fire along their barrels", "", pilot.S7On() ? "ON" : "OFF", "sp_b3_s7", pilot.S7On() ? "0" : "1", true);
@@ -765,7 +773,13 @@ public class CMSpike2System extends ScriptableSystem {
   public func Act(p: ref<TKPage>, action: String, arg: String) -> Bool {
     let msg = "";
     switch action {
-      case "sp_b3_s7": CMPilotSystem.Get(this.GetGameInstance()).SetS7(Equals(arg, "1")); msg = Equals(arg, "1") ? "*S7 ON: PILOT THE MECH" : "S7 OFF"; break;
+      case "sp_m1_arm": CMCSession.Get(this.GetGameInstance()).SetArmed(Equals(arg, "1")); msg = Equals(arg, "1") ? "*M1 PREVIEW ON: \\ STARTS THE FRAMEWORK" : "M1 PREVIEW OFF"; break;
+      case "sp_m1_call": CMCSession.Get(this.GetGameInstance()).SetFireCall(StringToInt(arg, 0)); msg = "*M1 FIRE CALL: " + CMFireCall.Name(StringToInt(arg, 0)); break;
+      case "sp_m1_go":
+        CMTerminal.CloseOpen(this.GetGameInstance());
+        CMCSession.Get(this.GetGameInstance()).RequestBegin(0.4);
+        break;
+      case "sp_b3_s7":CMPilotSystem.Get(this.GetGameInstance()).SetS7(Equals(arg, "1")); msg = Equals(arg, "1") ? "*S7 ON: PILOT THE MECH" : "S7 OFF"; break;
       case "sp_b3_s7call": CMPilotSystem.Get(this.GetGameInstance()).SetS7Call(StringToInt(arg, 0)); msg = "*FIRE CALL: " + CMFireCall.Name(StringToInt(arg, 0)); break;
       case "sp_b3_s2c":
         // batch 3 logged only modes 5 and 6: record exactly what the button handed over
