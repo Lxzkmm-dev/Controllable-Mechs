@@ -574,6 +574,7 @@ public class CMPilotSystem extends ScriptableSystem {
       TKLog.Add("ControllableMechs", "pilot: the mech jumped " + FloatToStringPrec(this.m_rig.jumped, 1) + " m in one frame (moving " + (this.m_moving ? "yes" : "no") + ")");
     }
     this.ApplyCamera();
+    this.m_hud.SetAttitude(CMPilotRig.Wrap(-this.m_rig.yaw), this.m_rig.pitch);
 
     // triggers: the MK.31s are fixed to the body, so they only fire once it faces the reticle
     // (otherwise the flash leaves the barrels one way and the rounds go another)

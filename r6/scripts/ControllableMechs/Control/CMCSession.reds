@@ -446,6 +446,9 @@ public class CMCSession extends ScriptableSystem {
     }
     this.ClipCamera(dt);
     this.ApplyCamera();
+    if IsDefined(this.m_hud) {
+      this.m_hud.SetAttitude(CMPilotRig.Wrap(-this.rig.yaw), this.rig.pitch);
+    }
     this.UpdateAim();
     this.m_unit.Tick(this, dt, now);
 

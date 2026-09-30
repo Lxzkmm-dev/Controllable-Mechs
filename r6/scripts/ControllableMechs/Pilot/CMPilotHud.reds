@@ -53,6 +53,18 @@ public class CMPilotHud {
   private let m_pipRX: Float;
   private let m_pipRY: Float;
 
+  private let m_tape: ref<inkCanvas>;
+  private let m_tapeLabels: array<ref<inkText>>;
+  private let m_tapeBase: Int32;
+  private let m_tapeX: Float;
+  private let m_pitchMark: ref<inkRectangle>;
+  private let m_pitchY: Float;
+  private let m_warnPlate: ref<inkCanvas>;
+  private let m_flash: Bool;
+  private let m_msl: ref<inkText>;
+  private let TAPE_Y: Float = 50.0;
+  private let TAPE_SPACING: Float = 165.0;   // px per 15 deg
+  private let PITCH_PX: Float = 6.0;         // px per degree on the elevation ladder
   private let m_hitBars: array<ref<inkRectangle>>;
   private let m_hitT: Float;
 
@@ -275,15 +287,129 @@ public class CMPilotHud {
   }
 
   private func BuildTop(root: ref<inkCanvas>) -> Void {
-    this.m_title = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 34.0, "MILITECH MINOTAUR  //  NEURAL LINK", 36, n"Semi-Bold", CMPilotHud.Amber());
+    this.m_title = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 14.0, "MILITECH MINOTAUR  //  NEURAL LINK", 30, n"Semi-Bold", CMPilotHud.Amber());
     this.m_title.SetAnchorPoint(Vector2(0.5, 0.0));
-    this.m_heading = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 84.0, "HDG 000  N", 46, n"Medium", CMPilotHud.Pale());
-    this.m_heading.SetAnchorPoint(Vector2(0.5, 0.0));
-    // a heading tape under the bearing: a base line with graduations
-    let tape = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 142.0, "|    '    |    '    |    '    V    '    |    '    |    '    |", 22, n"Medium", CMPilotHud.Dim());
+    // unit ID blocks in the housing, either side
+    CMPilotHud.Label(root, inkEAnchor.TopLeft, 330.0, 30.0, "UNIT  MT-M31 // MINOTAUR", 30, n"Semi-Bold", CMPilotHud.Amber());
+    CMPilotHud.Label(root, inkEAnchor.TopLeft, 330.0, 72.0, "LINK SECURE  //  CH 07  //  ENCR", 24, n"Medium", CMPilotHud.Dim());
+    let fr = CMPilotHud.Label(root, inkEAnchor.TopRight, 330.0, 30.0, "FCS ONLINE // MK.31 X2", 30, n"Semi-Bold", CMPilotHud.Amber());
+    fr.SetAnchorPoint(Vector2(1.0, 0.0));
+    let fi = CMPilotHud.Label(root, inkEAnchor.TopRight, 330.0, 72.0, "IFF ACTIVE  //  SAFETIES OFF", 24, n"Medium", CMPilotHud.Dim());
+    fi.SetAnchorPoint(Vector2(1.0, 0.0));
+
+    // the compass tape: nine bearings 15 deg apart and a tick every 5, sliding under a
+    // fixed index; SetAttitude moves it every frame (SPACING px per 15 deg)
+    let tape = new inkCanvas();
+    tape.SetAnchor(inkEAnchor.TopCenter);
     tape.SetAnchorPoint(Vector2(0.5, 0.0));
-    this.m_warn = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 232.0, "", 46, n"Semi-Bold", CMPilotHud.Red());
+    tape.SetSize(Vector2(2.0, 2.0));
+    tape.SetMargin(inkMargin(0.0, this.TAPE_Y, 0.0, 0.0));
+    tape.Reparent(root);
+    this.m_tape = tape;
+    let k = -4;
+    while k <= 4 {
+      let t = CMPilotHud.Label(tape, inkEAnchor.TopLeft, Cast<Float>(k) * this.TAPE_SPACING, 0.0, "000", 28, n"Semi-Bold", CMPilotHud.Pale());
+      t.SetAnchorPoint(Vector2(0.5, 0.0));
+      ArrayPush(this.m_tapeLabels, t);
+      k += 1;
+    }
+    let m = -12;
+    while m <= 12 {
+      let major = m % 3 == 0;
+      CMPilotHud.Bar(tape, Cast<Float>(m) * this.TAPE_SPACING / 3.0 - 1.5, 40.0, 3.0, major ? 20.0 : 11.0, major ? CMPilotHud.Amber() : CMPilotHud.Dim(), 0.95);
+      m += 1;
+    }
+    this.m_tapeBase = -999;
+    // the fixed index and the boxed bearing under the housing
+    let idx = CMPilotHud.Box(root, inkEAnchor.TopCenter, 0.0, this.TAPE_Y + 34.0, 5.0, 34.0, CMPilotHud.Caution(), 1.0);
+    idx.SetAnchorPoint(Vector2(0.5, 0.0));
+    this.m_heading = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 172.0, "[ HDG 000 N ]", 38, n"Semi-Bold", CMPilotHud.Pale());
+    this.m_heading.SetAnchorPoint(Vector2(0.5, 0.0));
+
+    // the warning panel: a steel plate with hazard stripes either end, shown and flashed
+    // only while there is a warning
+    let wp = new inkCanvas();
+    wp.SetAnchor(inkEAnchor.TopCenter);
+    wp.SetAnchorPoint(Vector2(0.5, 0.0));
+    wp.SetSize(Vector2(2.0, 2.0));
+    wp.SetMargin(inkMargin(0.0, 236.0, 0.0, 0.0));
+    wp.SetVisible(false);
+    wp.Reparent(root);
+    CMPilotHud.Bar(wp, -560.0, 0.0, 1120.0, 74.0, CMPilotHud.Steel(), 0.8);
+    CMPilotHud.Bar(wp, -560.0, 0.0, 1120.0, 5.0, CMPilotHud.Red(), 0.95);
+    CMPilotHud.Bar(wp, -560.0, 69.0, 1120.0, 5.0, CMPilotHud.Red(), 0.95);
+    let s = 0;
+    while s < 3 {
+      let l = CMPilotHud.Bar(wp, -540.0 + Cast<Float>(s) * 36.0, 8.0, 16.0, 58.0, CMPilotHud.Caution(), 0.9);
+      l.SetRotation(28.0);
+      let r = CMPilotHud.Bar(wp, 524.0 - Cast<Float>(s) * 36.0, 8.0, 16.0, 58.0, CMPilotHud.Caution(), 0.9);
+      r.SetRotation(-28.0);
+      s += 1;
+    }
+    this.m_warnPlate = wp;
+    this.m_warn = CMPilotHud.Label(root, inkEAnchor.TopCenter, 0.0, 246.0, "", 44, n"Semi-Bold", CMPilotHud.Red());
     this.m_warn.SetAnchorPoint(Vector2(0.5, 0.0));
+
+    // the elevation ladder left of the sight: a tick every 5 deg from +30 to -30, and a
+    // marker at the view's pitch (moved by SetAttitude)
+    let lad = new inkCanvas();
+    lad.SetAnchor(inkEAnchor.Centered);
+    lad.SetAnchorPoint(Vector2(0.5, 0.5));
+    lad.SetSize(Vector2(2.0, 2.0));
+    lad.SetMargin(inkMargin(-360.0, 0.0, 0.0, 0.0));
+    lad.Reparent(root);
+    let p = -6;
+    while p <= 6 {
+      let big = p % 2 == 0;
+      CMPilotHud.Bar(lad, big ? -26.0 : -14.0, -Cast<Float>(p) * 5.0 * this.PITCH_PX - 1.5, big ? 26.0 : 14.0, 3.0, CMPilotHud.Amber(), 0.9);
+      if big {
+        let n = CMPilotHud.Label(lad, inkEAnchor.TopLeft, -40.0, -Cast<Float>(p) * 5.0 * this.PITCH_PX - 16.0, IntToString(p * 5), 22, n"Medium", CMPilotHud.Dim());
+        n.SetAnchorPoint(Vector2(1.0, 0.0));
+      }
+      p += 1;
+    }
+    CMPilotHud.Bar(lad, 0.0, -30.0 * this.PITCH_PX, 3.0, 60.0 * this.PITCH_PX, CMPilotHud.Dim(), 0.8);
+    this.m_pitchMark = CMPilotHud.Bar(lad, 6.0, -3.0, 30.0, 6.0, CMPilotHud.Caution(), 1.0);
+  }
+
+  // every frame while piloting: the compass tape and the elevation marker. Widgets move
+  // only when they shift by more than a pixel; the bearings are relabelled only when the
+  // tape crosses a 15 deg step.
+  public func SetAttitude(heading: Float, pitch: Float) -> Void {
+    if !IsDefined(this.m_root) {
+      return;
+    }
+    let h = heading < 0.0 ? heading + 360.0 : heading;
+    let base = FloorF(h / 15.0) * 15;
+    if base != this.m_tapeBase {
+      this.m_tapeBase = base;
+      let i = 0;
+      while i < ArraySize(this.m_tapeLabels) {
+        let b = (base + (i - 4) * 15 + 720) % 360;
+        this.m_tapeLabels[i].SetText(CMPilotHud.Bearing(b));
+        i += 1;
+      }
+    }
+    let x = -(h - Cast<Float>(base)) / 15.0 * this.TAPE_SPACING;
+    if AbsF(x - this.m_tapeX) > 1.0 {
+      this.m_tapeX = x;
+      this.m_tape.SetMargin(inkMargin(x, this.TAPE_Y, 0.0, 0.0));
+    }
+    let y = -ClampF(pitch, -32.0, 32.0) * this.PITCH_PX - 3.0;
+    if AbsF(y - this.m_pitchY) > 1.0 {
+      this.m_pitchY = y;
+      this.m_pitchMark.SetMargin(inkMargin(6.0, y, 0.0, 0.0));
+    }
+  }
+
+  private static func Bearing(b: Int32) -> String {
+    switch b {
+      case 0: return "N";
+      case 90: return "E";
+      case 180: return "S";
+      case 270: return "W";
+    }
+    return CMPilotHud.Pad3(b);
   }
 
   private func BuildLeft(root: ref<inkCanvas>) -> Void {
@@ -301,11 +427,13 @@ public class CMPilotHud {
   }
 
   private func BuildRight(root: ref<inkCanvas>) -> Void {
-    this.Plate(root, inkEAnchor.TopRight, 96.0, 196.0, this.BAR_W + 74.0, 150.0, "FCS // FIRE CONTROL");
+    this.Plate(root, inkEAnchor.TopRight, 96.0, 196.0, this.BAR_W + 74.0, 196.0, "FCS // FIRE CONTROL");
     this.m_mode = CMPilotHud.Label(root, inkEAnchor.TopRight, 130.0, 238.0, "FIRE MODE", 34, n"Semi-Bold", CMPilotHud.Amber());
     this.m_mode.SetAnchorPoint(Vector2(1.0, 0.0));
     this.m_link = CMPilotHud.Label(root, inkEAnchor.TopRight, 130.0, 286.0, "LINK", 32, n"Medium", CMPilotHud.Pale());
     this.m_link.SetAnchorPoint(Vector2(1.0, 0.0));
+    this.m_msl = CMPilotHud.Label(root, inkEAnchor.TopRight, 130.0, 334.0, "", 32, n"Semi-Bold", CMPilotHud.Amber());
+    this.m_msl.SetAnchorPoint(Vector2(1.0, 0.0));
   }
 
   private func BuildGuns(root: ref<inkCanvas>) -> Void {
@@ -540,7 +668,7 @@ public class CMPilotHud {
       return;
     }
     this.m_title.SetText(s.title);
-    this.m_heading.SetText("HDG " + CMPilotHud.Pad3(s.heading) + "  " + CMPilotHud.Cardinal(s.heading));
+    this.m_heading.SetText("[ HDG " + CMPilotHud.Pad3(s.heading) + " " + CMPilotHud.Cardinal(s.heading) + " ]");
     this.m_range.SetText(s.range > 0.0 ? "[ LRF " + CMPilotHud.Pad4(RoundF(s.range)) + " M ]" : "[ LRF ---- M ]");
     this.m_zoom.SetText(s.zoomed ? "OPTICS  2.5X  NARROW" : "");
 
@@ -559,6 +687,15 @@ public class CMPilotHud {
     this.Gun(this.m_heatR, this.m_stateR, s.heatR, s.lockedR, s.hasR);
 
     this.m_warn.SetText(s.warning);
+    // the warning panel shows and flashes only while there is a warning
+    let warned = StrLen(s.warning) > 0;
+    this.m_flash = !this.m_flash;
+    this.m_warnPlate.SetVisible(warned);
+    if warned {
+      this.m_warnPlate.SetOpacity(this.m_flash ? 1.0 : 0.5);
+    }
+    this.m_msl.SetText(s.missile);
+    this.m_msl.SetTintColor(StrContains(s.missile, "READY") ? CMPilotHud.Amber() : CMPilotHud.Caution());
     this.m_hints.SetText(s.hints);
     if StrLen(s.debug) > 0 {
       this.m_debug.SetText(s.debug);
@@ -671,6 +808,7 @@ public class CMPilotHudState {
   public let heading: Int32;
   public let range: Float;
   public let zoomed: Bool;
+  public let missile: String;   // the secondary's status line ("MSL READY", "MSL 4S"), empty when there is none
   public let integrity: Float;
   public let signal: Float;
   public let distance: Float;

@@ -772,7 +772,8 @@ public class CMUMinotaur extends CMCUnit {
     st.hasL = this.m_guns.left.Ready();
     st.hasR = this.m_guns.right.Ready();
     let wait = this.m_missileReady - s.Now();
-    st.hints = st.hints + "   [G] MISSILE " + (wait > 0.0 ? IntToString(CeilF(wait)) + "s" : "READY");
+    st.hints = st.hints + "   [G] MISSILE";
+    st.missile = wait > 0.0 ? "MSL  RELOADING  " + IntToString(CeilF(wait)) + "S" : "MSL  READY";
     if st.integrity < 0.3 {
       st.warning = "INTEGRITY CRITICAL";
     } else {
