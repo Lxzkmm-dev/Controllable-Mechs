@@ -98,6 +98,8 @@ public class CMCSession extends ScriptableSystem {
   private let LOOK_YAW_RATE: Float = 24.0;    // deg/s top traverse (alpha: 40)
   private let LOOK_PITCH_RATE: Float = 16.0;  // deg/s top elevation
   private let LOOK_LEAD: Float = 25.0;        // how far the aim may run ahead of the view, degrees
+  private let OPTICS_FOV: Float = 27.0;       // field of view through the optics (the view is 68)
+  private let OPTICS_RATE: Float = 0.5;       // traverse rates and lead while zoomed, x
 
   public static func Get(game: GameInstance) -> ref<CMCSession> {
     return GameInstance.GetScriptableSystemsContainer(game).Get(n"ControllableMechs.Control.CMCSession") as CMCSession;
@@ -433,9 +435,11 @@ public class CMCSession extends ScriptableSystem {
       return;
     }
     let optics = this.m_fireMode == CMFireMode.Split() ? this.Key(CMCKey.Mmb()) : this.Key(CMCKey.Rmb());
-    this.zoom = optics;
+    if NotEquals(optics, this.zoom) {
+      this.SetOptics(optics);
+    }
     this.rig.Update(dt, this.m_unit.Ground(), this.CamUp(), this.CamFwd(), this.zoom);
-    if this.m_chase {
+    if this.ChaseNow() {
       // over the right shoulder, a little higher, so the hull never covers the reticle
       this.rig.pos += CMPilotRig.Dir(this.rig.yaw - 90.0, 0.0) * this.CHASE_SIDE + new Vector4(0.0, 0.0, this.CHASE_LIFT, 0.0);
     }
@@ -520,20 +524,37 @@ public class CMCSession extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   // Camera and aim
   // ---------------------------------------------------------------------------
-  private func CamUp() -> Float = this.m_chase ? Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).ChaseUpCm()) / 100.0 : this.m_unit.SensorUp()
-  private func CamFwd() -> Float = this.m_chase ? -Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).ChaseDistCm()) / 100.0 : this.m_unit.SensorFwd()
+  private func CamUp() -> Float = this.ChaseNow() ? Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).ChaseUpCm()) / 100.0 : this.m_unit.SensorUp()
+  private func CamFwd() -> Float = this.ChaseNow() ? -Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).ChaseDistCm()) / 100.0 : this.m_unit.SensorFwd()
+
+  // the optics always look from the sensor: the chase view steps in while they're held
+  private func ChaseNow() -> Bool = this.m_chase && !this.zoom
+
+  // optics on or off (held RMB, or MMB in split fire mode): tight field of view, slower
+  // traverse, the sight view even from the chase view, and the optics frame on the HUD
+  private func SetOptics(on: Bool) -> Void {
+    this.zoom = on;
+    this.m_clip = 999.0;
+    this.rig.SetChase(this.ChaseNow());
+    this.ApplyWeight();
+    if IsDefined(this.m_hud) {
+      this.m_hud.SetOptics(on);
+    }
+  }
 
   private func SetChase(on: Bool) -> Void {
     this.m_chase = on;
     this.m_clip = 999.0;
     if IsDefined(this.rig) {
-      this.rig.SetChase(on);
+      this.rig.SetChase(this.ChaseNow());
       this.ApplyWeight();   // SetChase resets the damping
     }
   }
 
   private func ApplyWeight() -> Void {
-    this.rig.SetWeight(this.LOOK_STIFFNESS, this.LOOK_DAMPING, this.LOOK_YAW_RATE, this.LOOK_PITCH_RATE, this.LOOK_LEAD);
+    let k = this.zoom ? this.OPTICS_RATE : 1.0;
+    this.rig.SetWeight(this.LOOK_STIFFNESS, this.LOOK_DAMPING, this.LOOK_YAW_RATE * k, this.LOOK_PITCH_RATE * k, this.LOOK_LEAD * k);
+    this.rig.SetZoomFov(this.OPTICS_FOV);
   }
 
   private func ApplyCamera() -> Void {

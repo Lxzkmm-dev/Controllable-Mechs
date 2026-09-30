@@ -270,6 +270,44 @@ public class CMPilotHud {
     }
   }
 
+  // the optics (M1): dark bands close in from the sides and a fine range scale sits
+  // under the reticle; built on first use, then only shown or hidden
+  private let m_optics: ref<inkCanvas>;
+
+  public func SetOptics(on: Bool) -> Void {
+    if !IsDefined(this.m_root) {
+      return;
+    }
+    if !IsDefined(this.m_optics) {
+      if !on {
+        return;
+      }
+      let o = new inkCanvas();
+      o.SetAnchor(inkEAnchor.Fill);
+      o.SetInteractive(false);
+      o.Reparent(this.m_root);
+      let left = CMPilotHud.Box(o, inkEAnchor.LeftFillVerticaly, 0.0, 0.0, 700.0, 0.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.8);
+      let right = CMPilotHud.Box(o, inkEAnchor.RightFillVerticaly, 0.0, 0.0, 700.0, 0.0, new HDRColor(0.0, 0.0, 0.0, 1.0), 0.8);
+      right.SetAnchorPoint(Vector2(1.0, 0.0));
+      // stadiametric ticks under the centre, and a long horizon line either side
+      let i = 1;
+      while i <= 4 {
+        let t = CMPilotHud.Bar(o, 0.0, 0.0, 4.0, 18.0 - Cast<Float>(i) * 2.0, CMPilotHud.Amber(), 0.9);
+        t.SetAnchor(inkEAnchor.Centered);
+        t.SetMargin(inkMargin(-2.0, 40.0 + Cast<Float>(i) * 45.0, 0.0, 0.0));
+        i += 1;
+      }
+      let hl = CMPilotHud.Bar(o, 0.0, 0.0, 520.0, 3.0, CMPilotHud.Amber(), 0.6);
+      hl.SetAnchor(inkEAnchor.Centered);
+      hl.SetMargin(inkMargin(-680.0, -1.5, 0.0, 0.0));
+      let hr = CMPilotHud.Bar(o, 0.0, 0.0, 520.0, 3.0, CMPilotHud.Amber(), 0.6);
+      hr.SetAnchor(inkEAnchor.Centered);
+      hr.SetMargin(inkMargin(160.0, -1.5, 0.0, 0.0));
+      this.m_optics = o;
+    }
+    this.m_optics.SetVisible(on);
+  }
+
   // a round connected: the marker flashes (red for a kill) and fades over 0.25 s
   public func Hit(kill: Bool) -> Void {
     if !IsDefined(this.m_root) {

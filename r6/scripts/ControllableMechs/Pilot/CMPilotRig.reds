@@ -110,6 +110,10 @@ public class CMPilotRig {
   // turning on its own for seconds afterwards (0 = no limit, the alpha's feel)
   private let m_lead: Float;
 
+  public func SetZoomFov(fov: Float) -> Void {
+    this.m_fovZoom = fov;
+  }
+
   public func SetWeight(stiffness: Float, damping: Float, maxYawRate: Float, maxPitchRate: Float, lead: Float) -> Void {
     this.m_turnK = stiffness;
     this.m_turnDamp = damping;
