@@ -1,0 +1,11 @@
+# Controllable Mechs - records the piloted mech uses (TweakXL)
+# The Minotaur's secondary: a missile strike at the reticle point. The explosion's
+# damage is added from script when it lands (CMUMinotaur.Detonate), with V as the
+# instigator, so the record carries none of its own.
+Attacks.CM_Missile:
+  $base: Attacks.BaseProjectileAoEAttack
+  effectTag: explosion_round_charged
+  range: 5.0
+  damageType: DamageTypes.Physical
+  statModifiers: []
+  statusEffects: []

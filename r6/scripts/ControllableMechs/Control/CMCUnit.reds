@@ -33,5 +33,8 @@ public abstract class CMCUnit extends IScriptable {
   // ten times a second: the unit's part of the HUD
   public func Hud(s: ref<CMCSession>, state: ref<CMPilotHudState>) -> Void {}
 
+  // the secondary weapon key (G) was pressed
+  public func Secondary(s: ref<CMCSession>) -> Void {}
+
   public func Name() -> String = "UNIT"
 }

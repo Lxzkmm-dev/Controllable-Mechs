@@ -768,6 +768,13 @@ public class CMCSession extends ScriptableSystem {
           this.m_slow = 1.0;
         }
         break;
+      case EInputKey.IK_G:
+        // the grenade key: the unit's secondary weapon
+        if press && IsDefined(this.m_unit) {
+          this.m_unit.Secondary(this);
+          this.m_slow = 1.0;
+        }
+        break;
       case EInputKey.IK_B:
         if press {
           this.m_fireMode = CMFireMode.Next(this.m_fireMode);

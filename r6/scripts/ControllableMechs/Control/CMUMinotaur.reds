@@ -73,6 +73,11 @@ public class CMUMinotaur extends CMCUnit {
   // servo thunk on each start (state changes only)
   private let m_servoOn: Bool;
   private let m_servoHit: Float;
+  private let MISSILE_COOLDOWN: Float = 6.0;   // seconds between missiles
+  private let MISSILE_SPEED: Float = 70.0;     // m/s, for the flight time to the reticle point
+  private let MISSILE_RADIUS: Float = 5.0;     // blast radius, metres
+  private let MISSILE_DAMAGE: Float = 900.0;   // physical damage added to the blast
+  private let m_missileReady: Float;
   private let m_audioTrigger: Bool;
   private let m_fireLoop: Bool;
   private let m_heatWarned: Bool;
@@ -131,6 +136,8 @@ public class CMUMinotaur extends CMCUnit {
     this.Pacify(mech, true);
     GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_q110_personal_link_01");   // link established
     CMCSession.Log("Minotaur: guns " + this.m_guns.Describe());
+    this.LogInventory(mech);
+    this.m_missileReady = 0.0;
     CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
     return "";
   }
@@ -384,6 +391,86 @@ public class CMUMinotaur extends CMCUnit {
     WorldTransform.SetWorldPosition(wt, wp);
     WorldTransform.SetOrientationFromDir(wt, dir);
     return wt;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The secondary: a missile strike at the reticle point (G)
+  // A launch sound and a kick, then after the flight time an explosion attack at the
+  // point with V as the instigator (the Dead Shot attack sequence), and the blast effect.
+  // One delayed callback per shot; MISSILE_COOLDOWN between shots.
+  // ---------------------------------------------------------------------------
+  public func Secondary(s: ref<CMCSession>) -> Void {
+    let mech = this.Mech();
+    let now = s.Now();
+    if !IsDefined(mech) {
+      return;
+    }
+    if now < this.m_missileReady {
+      GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_hacking_press_fail");
+      return;
+    }
+    this.m_missileReady = now + this.MISSILE_COOLDOWN;
+    let at = s.aim;
+    let flight = ClampF(Vector4.Distance(mech.GetWorldPosition(), at) / this.MISSILE_SPEED, 0.25, 2.5);
+    GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_wpn_missile_fire_single");
+    s.rig.Recoil(1.6);
+    let cb = new CMUMinotaurMissileCb();
+    cb.unit = this;
+    cb.at = at;
+    GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, flight, false);
+    CMCSession.Log("missile: launched at " + CMHitLog.V(at) + ", " + FloatToStringPrec(flight, 2) + " s flight");
+  }
+
+  public func Detonate(at: Vector4) -> Void {
+    let player = GetPlayer(this.m_game);
+    if !IsDefined(player) {
+      return;
+    }
+    // the blast, seen and heard
+    GameInstance.GetFxSystem(this.m_game).SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\minotaur\\v_minotaur_explosion.effect"), CMUMinotaur.At(at, new Vector4(0.0, 0.0, 1.0, 0.0)), true);
+    // the damage: our record (TweakXL), else the game's frag grenade attack
+    let used = "Attacks.CM_Missile";
+    let record = TweakDBInterface.GetAttackRecord(t"Attacks.CM_Missile") as Attack_GameEffect_Record;
+    if !IsDefined(record) {
+      used = "Attacks.FragGrenade";
+      record = TweakDBInterface.GetAttackRecord(t"Attacks.FragGrenade") as Attack_GameEffect_Record;
+    }
+    if !IsDefined(record) {
+      CMCSession.Log("missile: no attack record found (Attacks.CM_Missile, Attacks.FragGrenade); the blast is visual only");
+      return;
+    }
+    let ctx: AttackInitContext;
+    ctx.record = record;
+    ctx.instigator = player;
+    ctx.source = player;
+    let attack = IAttack.Create(ctx) as Attack_GameEffect;
+    if !IsDefined(attack) {
+      CMCSession.Log("missile: IAttack.Create returned nothing for " + used);
+      return;
+    }
+    attack.AddStatModifier(RPGManager.CreateStatModifier(gamedataStatType.PhysicalDamage, gameStatModifierType.Additive, this.MISSILE_DAMAGE));
+    let statMods: array<ref<gameStatModifierData>>;
+    attack.GetStatModList(statMods);
+    let flags: array<SHitFlag>;
+    let effect = attack.PrepareAttack(player);
+    EffectData.SetFloat(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.radius, this.MISSILE_RADIUS);
+    EffectData.SetVector(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.position, at);
+    EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attack, ToVariant(attack));
+    EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attackStatModList, ToVariant(statMods));
+    EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.flags, ToVariant(flags));
+    attack.StartAttack();
+    CMCSession.Log("missile: detonated at " + CMHitLog.V(at) + " with " + used + ", radius " + FloatToStringPrec(this.MISSILE_RADIUS, 1) + " m, damage " + FloatToStringPrec(this.MISSILE_DAMAGE, 0));
+  }
+
+  // what the mech really carries, once per session (is there a launcher to use later?)
+  private func LogInventory(mech: ref<NPCPuppet>) -> Void {
+    let items: array<wref<gameItemData>>;
+    GameInstance.GetTransactionSystem(this.m_game).GetItemList(mech, items);
+    let names = "";
+    for item in items {
+      names += (StrLen(names) > 0 ? ", " : "") + TDBID.ToStringDEBUG(ItemID.GetTDBID(item.GetID()));
+    }
+    CMCSession.Log("Minotaur inventory (" + IntToString(ArraySize(items)) + "): " + names);
   }
 
   // ---- audio: the game's own Militech HMG sounds layered on the mech, and cues for V.
@@ -683,6 +770,8 @@ public class CMUMinotaur extends CMCUnit {
     st.lockedR = this.m_guns.right.locked;
     st.hasL = this.m_guns.left.Ready();
     st.hasR = this.m_guns.right.Ready();
+    let wait = this.m_missileReady - s.Now();
+    st.hints = st.hints + "   [G] MISSILE " + (wait > 0.0 ? IntToString(CeilF(wait)) + "s" : "READY");
     if st.integrity < 0.3 {
       st.warning = "INTEGRITY CRITICAL";
     } else {
@@ -697,6 +786,16 @@ public class CMUMinotaur extends CMCUnit {
           }
         }
       }
+    }
+  }
+}
+
+public class CMUMinotaurMissileCb extends DelayCallback {
+  public let unit: wref<CMUMinotaur>;
+  public let at: Vector4;
+  public func Call() -> Void {
+    if IsDefined(this.unit) {
+      this.unit.Detonate(this.at);
     }
   }
 }
