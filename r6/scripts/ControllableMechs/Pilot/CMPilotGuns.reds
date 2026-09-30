@@ -67,6 +67,7 @@ public class CMPilotGuns {
   private let m_turnLeft: Bool;     // stagger: which barrel is next
   private let m_names: String;      // what was found, for the HUD / diagnostics
   public let call: Int32;           // spike S7: CMFireCall (0 = the mech's call, the default)
+  public let rate: Float = 1.0;     // M1 spin-up: fraction of the full rate of fire (1 = full, the alpha)
   private let m_aimMode: Int32;    // CMAimMode: gimballed (default), to the reticle, along the barrels
 
   private let HEAT_PER_SHOT: Float = 0.022;
@@ -193,7 +194,8 @@ public class CMPilotGuns {
   }
 
   public func HasAny() -> Bool = this.left.Ready() || this.right.Ready()
-  public func Cycle() -> Float = this.m_cycle
+  // seconds between shots of one gun, stretched while the M1 barrels spin up
+  public func Cycle() -> Float = this.m_cycle / MaxF(0.2, this.rate)
 
   public static func ItemName(w: wref<WeaponObject>) -> String {
     if !IsDefined(w) {
@@ -208,30 +210,30 @@ public class CMPilotGuns {
     this.Cool(this.right, now, dt);
     let shots = 0;
     if mode == CMFireMode.Split() {
-      if lmb && this.TryFire(mech, this.left, now, this.m_cycle, aim, spreadDeg, camPos) { shots += 1; }
-      if rmb && this.TryFire(mech, this.right, now, this.m_cycle, aim, spreadDeg, camPos) { shots += 1; }
+      if lmb && this.TryFire(mech, this.left, now, this.Cycle(), aim, spreadDeg, camPos) { shots += 1; }
+      if rmb && this.TryFire(mech, this.right, now, this.Cycle(), aim, spreadDeg, camPos) { shots += 1; }
       return shots;
     }
     if !lmb {
       return 0;
     }
     if mode == CMFireMode.Together() {
-      if this.TryFire(mech, this.left, now, this.m_cycle, aim, spreadDeg, camPos) { shots += 1; }
+      if this.TryFire(mech, this.left, now, this.Cycle(), aim, spreadDeg, camPos) { shots += 1; }
       if this.right.weapon != this.left.weapon {
-        if this.TryFire(mech, this.right, now, this.m_cycle, aim, spreadDeg, camPos) { shots += 1; }
+        if this.TryFire(mech, this.right, now, this.Cycle(), aim, spreadDeg, camPos) { shots += 1; }
       }
       return shots;
     }
     // stagger: one barrel every half cycle, alternating; a hot or missing barrel yields to the other
     let first = this.m_turnLeft ? this.left : this.right;
     let second = this.m_turnLeft ? this.right : this.left;
-    let half = this.m_cycle * 0.5;
-    if this.CanFire(first, now) && this.TryFire(mech, first, now, this.m_cycle, aim, spreadDeg, camPos) {
+    let half = this.Cycle() * 0.5;
+    if this.CanFire(first, now) && this.TryFire(mech, first, now, this.Cycle(), aim, spreadDeg, camPos) {
       second.nextShot = MaxF(second.nextShot, now + half);
       this.m_turnLeft = !this.m_turnLeft;
       return 1;
     }
-    if !this.CanFire(first, now) && (first.locked || !first.Ready()) && this.TryFire(mech, second, now, this.m_cycle, aim, spreadDeg, camPos) {
+    if !this.CanFire(first, now) && (first.locked || !first.Ready()) && this.TryFire(mech, second, now, this.Cycle(), aim, spreadDeg, camPos) {
       return 1;
     }
     return 0;

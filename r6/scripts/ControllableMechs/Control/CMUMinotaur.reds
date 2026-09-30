@@ -62,6 +62,10 @@ public class CMUMinotaur extends CMCUnit {
 
   private let ROUND_SPEED: Float = 4.0;      // x the MK.31's smart-round velocity while piloted
   private let KICK: Float = 0.6;             // camera kick per round (alpha: 0.45)
+  private let SPIN_UP: Float = 0.5;          // seconds from still to full spin
+  private let SPIN_DOWN: Float = 0.9;        // seconds from full spin to still
+  private let SPIN_FIRE: Float = 0.3;        // spin fraction at which rounds start
+  private let m_spin: Float;
 
   private let GATE_DEG: Float = 4.0;
   private let SPREAD_DEG: Float = 0.6;
@@ -208,9 +212,18 @@ public class CMUMinotaur extends CMCUnit {
     this.TurnChassis(s, mech, dt);
     this.SetCredit(s.CreditV());
     let split = s.FireMode() == CMFireMode.Split();
-    let lmb = s.Key(CMCKey.Lmb());
-    let rmb = split && s.Key(CMCKey.Rmb());
-    let trigger = lmb || rmb;
+    let trigger = s.Key(CMCKey.Lmb()) || (split && s.Key(CMCKey.Rmb()));
+    // the barrels spin up while the trigger is held and wind down after: no rounds until
+    // SPIN_FIRE, then the rate climbs from 35% to full
+    if trigger {
+      this.m_spin = MinF(1.0, this.m_spin + dt / this.SPIN_UP);
+    } else {
+      this.m_spin = MaxF(0.0, this.m_spin - dt / this.SPIN_DOWN);
+    }
+    this.m_guns.rate = 0.35 + 0.65 * this.m_spin;
+    let spun = this.m_spin >= this.SPIN_FIRE;
+    let lmb = spun && s.Key(CMCKey.Lmb());
+    let rmb = spun && split && s.Key(CMCKey.Rmb());
     if trigger {
       let offL = CMCSession.AimError(this.m_guns.left.weapon, s.aim) > this.GATE_DEG;
       let offR = CMCSession.AimError(this.m_guns.right.weapon, s.aim) > this.GATE_DEG;
@@ -522,6 +535,10 @@ public class CMUMinotaur extends CMCUnit {
       } else {
         if this.m_guns.left.offAim && this.m_guns.right.offAim && s.Key(CMCKey.Lmb()) {
           st.warning = "GUNS TRAVERSING";
+        } else {
+          if s.Key(CMCKey.Lmb()) && this.m_spin < 1.0 {
+            st.warning = "SPINNING UP";
+          }
         }
       }
     }
