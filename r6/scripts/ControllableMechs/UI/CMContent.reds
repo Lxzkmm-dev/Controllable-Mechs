@@ -89,7 +89,7 @@ public class CMContent extends TKContent {
         session.RequestBegin(0.4);
         break;
       case "spawntest":
-        p.SetMessage(link.SpawnTestMech());
+        p.SetMessage(link.SpawnTestMech(StringToName(CMContent.Str(arg))));
         break;
       case "despawntest":
         link.DespawnTestMech();
@@ -223,7 +223,8 @@ public class CMContent extends TKContent {
     if link.HasTestMech() {
       p.Item("TEST MINOTAUR", "Spawned for testing; not kept in the save.", "", "REMOVE", "despawntest", "", true);
     } else {
-      p.Item("MILITECH MINOTAUR", "Spawns one 46 ft in front of you and links it.", "", "SPAWN", "spawntest", "", true);
+      p.Buttons("SPAWN A MINOTAUR", "", "", "MILITECH|ARASAKA|NCPD|KURT'S", "spawntest|spawntest|spawntest|spawntest", "mch_003__minotaur_militech_01|mch_003__minotaur_arasaka_01|mch_003__minotaur_police_01|mch_003__minotaur_kurt");
+      p.SetTip("Spawns one 46 ft in front of you and links it, in that livery.");
     }
     // dev tools for part damage, while DIAGNOSTICS is on (repairs are a planned mechanic)
     if CMPilotSystem.Get(this.game).ShowDebug() && link.IsLinked() && Equals(link.UnitKind(), "MECH") {

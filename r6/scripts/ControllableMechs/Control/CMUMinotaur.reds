@@ -110,7 +110,24 @@ public class CMUMinotaur extends CMCUnit {
   private let m_gate: Bool;           // CONFIG: hold a gun's fire until its barrel is on the reticle
   private let SPREAD_DEG: Float = 0.6;
 
-  public func Name() -> String = "MILITECH MINOTAUR"
+  // the livery names it: the Minotaur's four appearances share one body
+  public func Name() -> String {
+    let mech = this.Mech();
+    if !IsDefined(mech) {
+      return "MINOTAUR";
+    }
+    let look = NameToString(mech.GetCurrentAppearanceName());
+    if StrContains(look, "arasaka") {
+      return "ARASAKA MINOTAUR";
+    }
+    if StrContains(look, "police") {
+      return "NCPD MINOTAUR";
+    }
+    if StrContains(look, "kurt") {
+      return "KURT'S MINOTAUR";
+    }
+    return "MILITECH MINOTAUR";
+  }
   public func LostReason() -> String = "!MECH DESTROYED"
 
   // the mech, looked up by its id only when the kept reference has gone (it is asked for

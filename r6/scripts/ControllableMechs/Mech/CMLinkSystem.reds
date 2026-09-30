@@ -175,7 +175,10 @@ public class CMLinkSystem extends ScriptableSystem {
   // ---------------------------------------------------------------------------
   public func HasTestMech() -> Bool = EntityID.IsDefined(this.m_testID)
 
-  public func SpawnTestMech() -> String {
+  // `appearance`: one of the Minotaur's liveries (mch_003__minotaur_militech_01, _arasaka_01,
+  // _police_01, _kurt), or none for the record's own. Optional: Night City Empires calls this
+  // with no argument.
+  public func SpawnTestMech(opt appearance: CName) -> String {
     let game = this.GetGameInstance();
     let player = GetPlayer(game);
     if !IsDefined(player) {
@@ -216,6 +219,9 @@ public class CMLinkSystem extends ScriptableSystem {
     spec.persistState = false;
     spec.persistSpawn = false;
     spec.alwaysSpawned = true;
+    if NotEquals(appearance, n"") {
+      spec.appearanceName = appearance;
+    }
     spec.tags = [n"ControllableMechsTest"];
     this.m_testID = GameInstance.GetDynamicEntitySystem().CreateEntity(spec);
     return "*MINOTAUR INBOUND";
