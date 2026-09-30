@@ -1,6 +1,12 @@
 # Controllable Mechs: control framework technical design
 
-Status: **proposal for review**. No framework code exists yet, and nothing below gets built until Omar agrees the plan.
+Status: **agreed with changes (rev 2, 2026-09-30)**. Omar's review asked for four changes, all folded in below:
+1. Every unit is a **body + skin**.
+2. **S4/S5 move into the first spike batch.**
+3. S2 **prefers real projectiles with V as the instigator**.
+4. A new **S0** tries the vanilla turret takeover.
+
+His answers to the open questions are in section 13.
 Baseline: 0.1 alpha (d397dab) stays as it is. The framework replaces its Pilot Mode rather than patching it.
 Research behind every API named here: `docs/MODDER_RESOURCES.md`. Tags follow that file: **[proven]** worked in game in this mod; **[used by X]** another installed mod does it; **[decl]** declared but not tried; **[spike]** needs a small test build before we rely on it.
 
@@ -51,6 +57,14 @@ r6/scripts/ControllableMechs/
     CMUMinotaur.reds           later: the Minotaur on the same core
   UI/, Core/, Mech/            existing terminal, keys, link (kept; link feeds units later)
 ```
+
+**Body + skin: the rule for every unit.** A unit is **a vanilla gameplay entity (the body) wearing our parts (the skin)**:
+- **Body:** it provides everything spawned meshes can't: health and damage, attitude (friendly to V), and being targeted and shot by enemies, plus save and streaming behaviour.
+  - Emplacement: a spawned vanilla turret device (e.g. `security_turret_1.ent`, which Night City Empires already spawns and befriends).
+  - Mech: the Minotaur NPC itself.
+- **Skin:** our moving parts (gun, cradle), attached to the body as components wherever possible (S4/S5), or as separate entities placed every frame where not (a static emplacement tolerates that).
+- **Hidden body guns:** the body's own guns are hidden (`Toggle(false)` on their mesh components, S5), so the only guns you see are ours.
+- **Health:** unit health, "destroyed" and "friendly" all come from the body. The session ends when the body dies.
 
 **One session, one unit.** `CMCSession` is a `ScriptableSystem`. It holds `m_unit: ref<CMCUnit>` and is either idle or controlling. Everything per-frame hangs off the session and stops when the session ends.
 
@@ -168,7 +182,8 @@ muzzle(s)          = pitch * offset(muzzle_i)        (not an entity, just a tran
 camera (sight)     = pitch * offset(sight)
 ```
 
-- **Placing:** `Entity.SetWorldTransform(WorldTransform)` per moving part per frame. It's **[proven]** on our camera entity every frame and **[used by XUtils]** for the same purpose. For the emplacement that's 2 calls per frame (the yaw and pitch parts), and only when their pose changed (a dirty check, as XUtils does).
+- **Preferred for anything that moves with an animated body (mechs): components on the body.** The skin's meshes go on the body as components bound to its root or a bone (`entHardTransformBinding` with `bindName`/`slotName`) and are rotated with `IPlacedComponent.SetLocalOrientation`, so they ride the animated pose natively, with no trailing or jitter. That's **[decl]**, and spikes **S4/S5 (first batch)** decide it.
+- **Otherwise (static bodies such as the emplacement): separate part entities.** `Entity.SetWorldTransform(WorldTransform)` per moving part per frame. It's **[proven]** on our camera entity every frame and **[used by XUtils]** for the same purpose. For the emplacement that's 2 calls per frame (the yaw and pitch parts), and only when their pose changed (a dirty check, as XUtils does).
 - **Why separate entities, not one entity with bone control:** we have no script API that sets arbitrary bone rotations on a rig, and the per-component parenting route (`entHardTransformBinding` + `SetLocalOrientation`) is only **[decl]**. Separate entities use only proven calls. If the component route proves out later (spike S4), a unit can switch to it without the rest of the framework changing.
 - **Where part entities come from**, in order of preference:
   1. **Existing `.ent` files** that already contain the right mesh. The **MaxTac turret** has separate meshes for the ground base, rotating base, arm and guns, but they're components of one `.ent`, so this needs spike S1 to split them.
@@ -189,7 +204,7 @@ Every shot:
 1. Take the muzzle transform. The origin is the muzzle; the direction is the barrel plus spread.
 2. **Aim ray along the barrel:** `SyncRaycastByQueryFilter(origin, origin + dir*range, QueryFilter.ALL(), out hit, ...)` + Codeware `TraceResult.GetHitEntity` **[used by Nitrous]**. That gives the impact point and the entity hit.
 3. **Visuals from the muzzle:** a muzzle flash at the muzzle and a tracer along origin → impact with `FxSystem.SpawnEffect(FxResource, WorldTransform)` **[used by XUtils]**, plus the gun sound on the part entity **[proven: PlaySoundEvent]**. The effect paths get picked from the game's files with WolvenKit (spike S3).
-4. **Damage.** Which way works best is **spike S2**:
+4. **Damage: real projectiles preferred, with V as the instigator (owner).** One route then gives tracers, hit reactions, armour and damage together, and crediting V keeps aggro, kills, XP and NCPD behaviour sane. Hitscan would mean hand-building tracers and the damage pipeline, so it's the last resort. **Spike S2** confirms the route:
    - **(a) real projectiles:** `gameprojectileSpawnerLaunchEvent` queued on a weapon *item* with a projectile spawner, position and orientation from our muzzle **[used by Doctrine Hydra, Missile Rain]**. Real bullets, real hit reactions.
    - **(b) `AIWeapon.Fire`** from a spawned weapon item owned by the unit **[proven with an NPC owner]**. Needs a weapon object without an NPC.
    - **(c) hitscan:** apply the hit ourselves to `GetHitEntity` through the game's damage pipeline (an attack record via TweakXL). This needs the most research.
@@ -229,8 +244,10 @@ Hard caps:
 
 ## 10. The first unit: MG emplacement (`CMUEmplacement`)
 
+- **S0 first:** if a spawned vanilla security turret accepts the game's own turret takeover (the quickhack route), the emplacement is nearly free: the barrel, flash and rounds already match. The framework then only adds the session, weight, HUD and exits, and its main effort goes to the Minotaur. The rest of this section is the plan if S0 fails or feels too limited.
 - **Spawn:** from the Robot Link terminal (TEST → SPAWN EMPLACEMENT), 4 m ahead of V. It's placed on the ground with a downward raycast **[proven pattern]** and faces V's forward.
-- **Parts:**
+- **Body:** a spawned vanilla turret device (Night City Empires' `security_turret_1.ent` pattern: spawned through the DynamicEntitySystem and made friendly through its device state), with its own gun meshes hidden. It gives the emplacement health, "friendly to V" and enemy targeting.
+- **Skin parts:**
   - **Base:** the MaxTac turret's ground base (`w_turret__maxtac_turret__base1_g_base.mesh`).
   - **Yaw part:** its rotating base (`..._r_base.mesh`).
   - **Pitch part:** the arm with the guns (`..._arm.mesh` + `..._guns.mesh`).
@@ -265,7 +282,7 @@ Two routes, decided by spikes, and not built until M4 passes:
 
 - **(A) Our own guns, spike S5:**
   - Hide the skinned MK.31 meshes on the live mech (`FindComponentByName(n"mch_003__minotaur_weapons_l_01" / "_r_01")` + `Toggle(false)`) **[decl]**.
-  - Mount two HMG part entities that the framework places every frame at the mech's shoulder transforms (mech transform + fixed offsets), with their own yaw/pitch limits.
+  - Attach two HMG mesh components to the mech body, bound to its `l/r_weapon_jnt` (or `upper_body_01`) through `parentTransform`, and turn them with `SetLocalOrientation` within their own yaw/pitch limits (S4/S5). They then ride the walk animation natively. The fallback is part entities placed every frame at the shoulder transforms, which will likely trail the animated pose.
   - The rounds, tracers and flash then come from our guns, exactly like the emplacement.
   - The mech's legs keep using AI move orders (walking already works).
 - **(B) The mech's own arms, spike S6:** look-at requests with the anim graph's real part names (**LeftWeapon / RightWeapon / Weapon / Chassis**; the alpha tried the hands and chest) or arm IK (`ikLeftArm` / `ikRightArm`). If the arms follow, the framework reads the barrel transform off the `l/r_weapon_jnt` bones' effect.
@@ -279,6 +296,7 @@ Two routes, decided by spikes, and not built until M4 passes:
 
 | # | Question | Test build | Decides |
 |---|---|---|---|
+| S0 | Does a spawned vanilla security turret accept the game's own takeover (the quickhack route: `TakeOverControlSystem` / the turret's take-control action)? | Spawn a turret, friendly it, request takeover from the dev page. The log reports each step. | Whether the emplacement is nearly free (section 10) |
 | S1 | Can we spawn a single mesh as a movable entity? | Spawn an empty entity and `AddComponent(entMeshComponent)` with the MaxTac gun mesh at build time; also try spawning the whole MaxTac `.ent`. Move each with `SetWorldTransform`. | How parts are built (section 6) |
 | S2 | Which firing route deals damage from our muzzle? | Three buttons: projectile launch event on a spawned HMG item; `AIWeapon.Fire` from a spawned item; hitscan + damage. The log records what hit and what damage landed. | The weapon backend (section 7) |
 | S3 | Which vanilla effects make a good HMG flash and tracer? | Cycle 3-4 candidate `.effect` paths from WolvenKit at a test muzzle. | The effect resources |
@@ -286,14 +304,14 @@ Two routes, decided by spikes, and not built until M4 passes:
 | S5 | Do the Minotaur's gun meshes hide with `Toggle(false)`? | Toggle on a linked mech. | Minotaur route A |
 | S6 | Do LeftWeapon/RightWeapon look-ats or arm IK move the Minotaur's arms? | A look-at on each part name toward a marker. | Minotaur route B |
 
-S1–S3 come before M1. Each spike is a dev-only terminal page (TOOLS-style), compile-checked against the full load order and pushed like any build. Each asks Omar one clear question.
+**The first batch is S0, S1, S2, S4 and S5**, all before M1. S4 and S5 decide how skins attach to an animated body, which is the end goal for mechs, so they're learned first. S3 (effect picks) and S6 (arm look-ats) follow. Each spike is a dev-only terminal page (TOOLS-style), compile-checked against the full load order and pushed like any build. Each asks Omar one clear question.
 
 ---
 
-## 13. Open questions for Omar
+## 13. Decisions (Omar, 2026-09-30)
 
-1. **Enter an emplacement:** look at it and press the Pilot key, or only from the terminal? And should V be hidden or kept visible beside it?
-2. **Damage model:** real bullets (hit reactions, the game's armour rules), or tuned hitscan (predictable, easier to balance)? The design supports both; S2 will show which is possible.
-3. **Ammo:** heat only (as now), or ammo belts with reloads for emplacements?
-4. **Chase view on emplacements:** wanted, or sight view only?
-5. **The alpha's Pilot Mode:** keep it available until the framework's Minotaur replaces it, or hide it now?
+1. **Enter an emplacement:** the Pilot key while looking at it, **and** from the terminal. **V stays visible** beside it.
+2. **Damage model:** **real bullets** (projectiles), with V as the instigator.
+3. **Ammo:** **heat only**.
+4. **Chase view:** **kept** for emplacements too.
+5. **The alpha's Pilot Mode:** **kept** until M5, when the framework's Minotaur replaces it.
