@@ -77,26 +77,68 @@ public class CMPhysSpike extends ScriptableSystem {
     return "*BOX DROPPED AHEAD OF YOU: WATCH IT FALL, THEN WALK INTO IT OR DRIVE INTO IT";
   }
 
-  public func Kick() -> String {
-    if !this.Ready() {
+  // R2, two ways (a1: the body handle taken the frame it spawned read "not simulated" at
+  // 0,0,0 and its pushes did nothing, though the box fell under the engine's gravity):
+  //   event: a PhysicalImpulseEvent queued on the entity (how NitroBoost and TDO push cars)
+  //   body:  a fresh body handle from the collider, taken now, not at spawn
+  public func Kick(viaBody: Bool) -> String {
+    let e = this.Box();
+    if !IsDefined(e) {
       return "!DROP A BOX FIRST";
     }
     let player = GetPlayer(this.GetGameInstance());
     let side = IsDefined(player) ? player.GetWorldRight() : new Vector4(1.0, 0.0, 0.0, 0.0);
     // 4 m/s sideways and a little up, on 20 kg
     let j = new Vector4(side.X * this.MASS * 4.0, side.Y * this.MASS * 4.0, this.MASS * 2.0, 0.0);
-    this.m_body.AddLinearImpulse(j, true);
-    CMPhysSpike.Log("R2 kick: impulse " + CMCHits.V(j) + " N s, simulated " + (this.m_body.IsSimulated() ? "yes" : "NO"));
+    if viaBody {
+      let c = e.FindComponentByName(n"proxy_body") as ColliderComponent;
+      if IsDefined(c) {
+        this.m_body = c.CreatePhysicalBodyInterface();
+      }
+      if !IsDefined(this.m_body) {
+        CMPhysSpike.Log("R2 kick (body): no body handle");
+        return "!NO BODY HANDLE";
+      }
+      let t = this.m_body.GetTransform();
+      CMPhysSpike.Log("R2 kick (body): fresh handle reads " + CMCHits.V(t.position) + ", simulated " + (this.m_body.IsSimulated() ? "yes" : "NO") + "; impulse " + CMCHits.V(j) + " N s");
+      this.m_body.AddLinearImpulse(j, true);
+    } else {
+      this.Push(e, j);
+      CMPhysSpike.Log("R2 kick (event): impulse " + CMCHits.V(j) + " N s at " + CMCHits.V(this.Centre(e)));
+    }
     this.Start(0);
     return "*KICKED: IT SHOULD SLIDE TO YOUR RIGHT";
   }
 
+  private func Box() -> ref<Entity> {
+    if !this.m_has {
+      return null;
+    }
+    return GameInstance.GetDynamicEntitySystem().GetEntity(this.m_id);
+  }
+
+  // the box's middle (the entity's origin is its base)
+  private func Centre(e: ref<Entity>) -> Vector4 = e.GetWorldPosition() + new Vector4(0.0, 0.0, 0.2, 0.0)
+
+  // an impulse through the box's middle, as an event on the entity
+  private func Push(e: ref<Entity>, j: Vector4) -> Void {
+    let c = this.Centre(e);
+    let ev = new PhysicalImpulseEvent();
+    ev.worldPosition.X = c.X;
+    ev.worldPosition.Y = c.Y;
+    ev.worldPosition.Z = c.Z;
+    ev.worldImpulse.X = j.X;
+    ev.worldImpulse.Y = j.Y;
+    ev.worldImpulse.Z = j.Z;
+    e.QueueEvent(ev);
+  }
+
   public func Hover() -> String {
-    if !this.Ready() {
+    let e = this.Box();
+    if !IsDefined(e) {
       return "!DROP A BOX FIRST";
     }
-    let t = this.m_body.GetTransform();
-    this.m_holdZ = t.position.Z + 2.0;
+    this.m_holdZ = e.GetWorldPosition().Z + 2.0;
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
     this.m_errN = 0;
@@ -170,11 +212,10 @@ public class CMPhysSpike extends ScriptableSystem {
       this.m_prevAt = now;
       CMPhysSpike.Log("R1 spawned after " + FloatToStringPrec(now - this.m_spawnAt, 2) + " s: body at " + CMCHits.V(t0.position) + ", entity at " + CMCHits.V(e.GetWorldPosition()) + ", simulated " + (this.m_body.IsSimulated() ? "yes" : "NO"));
     }
-    if !IsDefined(this.m_body) {
-      return;
-    }
-    let t = this.m_body.GetTransform();
-    let p = t.position;
+    // measured from the entity: it followed the body down in a1, the body handle didn't
+    let p = e.GetWorldPosition();
+    let bodyAt = IsDefined(this.m_body) ? this.m_body.GetTransform().position : new Vector4(0.0, 0.0, 0.0, 0.0);
+    let bodySim = IsDefined(this.m_body) && this.m_body.IsSimulated();
     let dt = now - this.m_prevAt;
     if dt > 0.0001 {
       this.m_vel = (p - this.m_prev) / dt;
@@ -190,7 +231,7 @@ public class CMPhysSpike extends ScriptableSystem {
       let err = this.m_holdZ - p.Z;
       let up = this.MASS * (9.81 + err * 6.0 - this.m_vel.Z * 4.0) * h;
       let drift = new Vector4(-this.m_vel.X * this.MASS * 2.0 * h, -this.m_vel.Y * this.MASS * 2.0 * h, up, 0.0);
-      this.m_body.AddLinearImpulse(drift, true);
+      this.Push(e, drift);
       if age > 3.0 {
         // settled: how well it holds
         this.m_errSum += AbsF(err);
@@ -200,7 +241,7 @@ public class CMPhysSpike extends ScriptableSystem {
     }
     if now >= this.m_logAt {
       this.m_logAt = now + 0.5;
-      CMPhysSpike.Log((this.m_mode == 1 ? "R3 " : "watch ") + FloatToStringPrec(age, 1) + " s: body " + CMCHits.V(p) + ", entity " + CMCHits.V(e.GetWorldPosition()) + ", speed " + FloatToStringPrec(Vector4.Length(this.m_vel), 2) + " m/s (climb " + FloatToStringPrec(this.m_vel.Z, 2) + ")" + (this.m_mode == 1 ? ", off the hold by " + FloatToStringPrec(this.m_holdZ - p.Z, 3) + " m" : "") + ", simulated " + (this.m_body.IsSimulated() ? "yes" : "no") + ", " + IntToString(this.m_frames) + " frames");
+      CMPhysSpike.Log((this.m_mode == 1 ? "R3 " : "watch ") + FloatToStringPrec(age, 1) + " s: entity " + CMCHits.V(p) + ", speed " + FloatToStringPrec(Vector4.Length(this.m_vel), 2) + " m/s (climb " + FloatToStringPrec(this.m_vel.Z, 2) + ")" + (this.m_mode == 1 ? ", off the hold by " + FloatToStringPrec(this.m_holdZ - p.Z, 3) + " m" : "") + "; body handle " + CMCHits.V(bodyAt) + (bodySim ? " simulated" : " not simulated") + ", " + IntToString(this.m_frames) + " frames");
     }
     let limit = this.m_mode == 1 ? this.HOVER : this.WATCH;
     if age >= limit {

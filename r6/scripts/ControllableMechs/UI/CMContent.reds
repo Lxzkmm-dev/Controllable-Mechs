@@ -107,7 +107,9 @@ public class CMContent extends TKContent {
         if Equals(what, "drop") {
           p.SetMessage(spike.Drop());
         } else if Equals(what, "kick") {
-          p.SetMessage(spike.Kick());
+          p.SetMessage(spike.Kick(false));
+        } else if Equals(what, "kickbody") {
+          p.SetMessage(spike.Kick(true));
         } else if Equals(what, "hover") {
           p.SetMessage(spike.Hover());
         } else {
@@ -412,7 +414,7 @@ public class CMContent extends TKContent {
       p.Dropdown("DRONE CAMERA FRAME LAG", "How many frames the camera follows a flown drone behind. Its mesh is drawn from where it was a frame earlier, 0 by default; 1 or 2 only to test if the drone jitters in the chase view (applies at once)", IntToString(cfg.DroneCamLag()), "0|1|2", "0|1|2", "dronelag", "");
       p.Dropdown("DRONE NPC SYSTEMS OFF (TEST)", "Which of the drone's own NPC systems are off while you fly it, to find what draws it off the camera in the chase view (from the next link-in)", IntToString(cfg.DroneVisualTest()), "NONE|MOVEMENT|ANIMATION|BOTH", "0|1|2|3", "dronevis", "");
       p.Check("DRONE FRAME LOG", "Logs every frame for four seconds the first time a flown drone passes 8 m/s (where the flight, the drone and the camera each are), to find the chase-view jitter", cfg.DroneFrameLog(), "dronefl", "");
-      p.Buttons("PHYSICS SPIKE (RIGID BODIES)", "Drones as real physics bodies, the first tests. DROP: a physics box falls ahead of you (walk or drive into it). KICK: one push through its physics body. HOVER: held 2 m up for 30 s on pushes alone. Results go to the log", "", "DROP|KICK|HOVER|REMOVE", "physspike|physspike|physspike|physspike", "drop|kick|hover|remove");
+      p.Buttons("PHYSICS SPIKE (RIGID BODIES)", "Drones as real physics bodies, the first tests. DROP: a physics box falls ahead of you (walk or drive into it). KICK: one push through its physics body. HOVER: held 2 m up for 30 s on pushes alone. Results go to the log", "", "DROP|KICK (EVENT)|KICK (BODY)|HOVER|REMOVE", "physspike|physspike|physspike|physspike|physspike", "drop|kick|kickbody|hover|remove");
     }
   }
 
