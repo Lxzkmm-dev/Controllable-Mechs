@@ -447,7 +447,8 @@ void StepInfo(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CStr
     const bool ok = ReadBody(aFrame, proxy, index);
     aFrame->code++; // ParamEnd
     std::string text = std::string("hook ") + (MNC::PhysXBody::IsHooked() ? "on" : "OFF") + ", " +
-                       std::to_string(MNC::PhysXBody::Steps()) + " physics steps";
+                       std::to_string(MNC::PhysXBody::Steps()) + " physics steps, " +
+                       std::to_string(MNC::PhysXBody::Faults()) + " faults caught";
     MNC::PhysXBody::Readback back{};
     if (!ok)
     {

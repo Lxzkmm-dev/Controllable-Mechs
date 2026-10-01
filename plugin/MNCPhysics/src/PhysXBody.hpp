@@ -31,4 +31,5 @@ bool SetCollision(uint32_t aProxy, uint32_t aIndex, bool aOn);
 void Release(uint32_t aProxy, uint32_t aIndex);
 bool GetReadback(uint32_t aProxy, uint32_t aIndex, Readback& aOut);
 uint32_t Steps();
+uint32_t Faults(); // per-body faults caught by the step guard (that body is then dropped)
 } // namespace MNC::PhysXBody

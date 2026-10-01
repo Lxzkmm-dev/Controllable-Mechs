@@ -35,7 +35,6 @@ namespace
 constexpr std::size_t SLOT_SIMULATE = 56; // PxScene vtable (3.4 order, checked in PhysX3_x64.dll)
 constexpr std::size_t SLOT_COLLIDE = 58;
 constexpr std::size_t MAX_BODIES = 32;
-constexpr PxU32 MAX_SHAPES = 32;
 constexpr ULONGLONG HOLD_MS = 300;
 
 // the engine's physics proxy table (address-library hashes, game 2.31)
@@ -132,72 +131,67 @@ PxRigidDynamic* ActorOf(uint32_t aProxy, uint32_t aIndex, PxScene* aScene)
     return dyn;
 }
 
-// a body's shapes as simulation shapes (they push and are pushed) or not (scene queries,
-// so bullets and rays, still find them); only the shapes this changed are put back
-void SetSimulationShapes(PxRigidActor* aActor, Wish& aWish, bool aOn)
+// a body in the simulation (it pushes and is pushed) or not: PxActorFlag::eDISABLE_SIMULATION,
+// which PhysX documents for actors kept for scene queries only (bullets and rays still find
+// them). Only a body this took out is put back. v3.1's first build changed its shapes'
+// flags through PxShape's virtuals, whose slots in the game's PhysX3_x64.dll don't match the
+// 3.4 headers: getFlags was another function, and the game crashed reading its result. The
+// actor's setActorFlag/getActorFlags slots are the ones the gravity test proved in game.
+void SetSimulated(PxRigidDynamic* aActor, Wish& aWish, bool aOn)
 {
-    PxShape* shapes[MAX_SHAPES];
-    const PxU32 n = aActor->getShapes(shapes, MAX_SHAPES, 0);
-    for (PxU32 i = 0; i < n; ++i)
+    const bool out = aActor->getActorFlags().isSet(PxActorFlag::eDISABLE_SIMULATION);
+    if (!aOn && !out)
     {
-        const bool sim = shapes[i]->getFlags().isSet(PxShapeFlag::eSIMULATION_SHAPE);
-        if (!aOn && sim)
-        {
-            shapes[i]->setFlag(PxShapeFlag::eSIMULATION_SHAPE, false);
-            aWish.turnedOff |= 1u << i;
-        }
-        else if (aOn && !sim && (aWish.turnedOff & (1u << i)))
-        {
-            shapes[i]->setFlag(PxShapeFlag::eSIMULATION_SHAPE, true);
-            aWish.turnedOff &= ~(1u << i);
-        }
+        aActor->setActorFlag(PxActorFlag::eDISABLE_SIMULATION, true);
+        aWish.turnedOff = 1;
+    }
+    else if (aOn && out && aWish.turnedOff)
+    {
+        aActor->setActorFlag(PxActorFlag::eDISABLE_SIMULATION, false);
+        aWish.turnedOff = 0;
     }
 }
 
-void Drive(PxScene* aScene)
+std::atomic<uint32_t> g_faults{0};
+
+// one wish, one step (no C++ objects needing unwinding: it runs under a structured-exception
+// guard, so a fault in here drops the wish instead of taking the game down)
+void DriveOne(Wish& w, PxScene* aScene, ULONGLONG aNow)
 {
-    g_steps.fetch_add(1, std::memory_order_relaxed);
-    const auto now = GetTickCount64();
-    AcquireSRWLockExclusive(&g_lock);
-    for (auto& w : g_wishes)
+    auto actor = ActorOf(w.proxy, w.index, aScene);
+    const bool expired = w.until <= aNow;
+    if (!actor)
     {
-        if (!w.proxy)
-        {
-            continue;
-        }
-        auto actor = ActorOf(w.proxy, w.index, aScene);
-        const bool expired = w.until <= now;
-        if (!actor)
-        {
-            if (expired)
-            {
-                w = {};
-            }
-            continue;
-        }
-        const bool gravityOff = actor->getActorFlags().isSet(PxActorFlag::eDISABLE_GRAVITY);
         if (expired)
         {
-            // the script stopped asking: give the body back as the game had it
-            if (w.restore && gravityOff)
-            {
-                actor->setActorFlag(PxActorFlag::eDISABLE_GRAVITY, false);
-                actor->wakeUp();
-            }
-            if (w.turnedOff)
-            {
-                SetSimulationShapes(actor, w, true);
-            }
             w = {};
-            continue;
         }
+        return;
+    }
+    const bool gravityOff = actor->getActorFlags().isSet(PxActorFlag::eDISABLE_GRAVITY);
+    if (expired)
+    {
+        // the script stopped asking: give the body back as the game had it
+        if (w.restore && gravityOff)
+        {
+            actor->setActorFlag(PxActorFlag::eDISABLE_GRAVITY, false);
+            actor->wakeUp();
+        }
+        if (w.turnedOff)
+        {
+            SetSimulated(actor, w, true);
+        }
+        w = {};
+        return;
+    }
+    {
         if (w.collide == 0)
         {
-            SetSimulationShapes(actor, w, false);
+            SetSimulated(actor, w, false);
         }
         else if (w.collide == 1 && w.turnedOff)
         {
-            SetSimulationShapes(actor, w, true);
+            SetSimulated(actor, w, true);
         }
         if (w.gravity >= 0)
         {
@@ -231,6 +225,39 @@ void Drive(PxScene* aScene)
         w.back.spin[2] = s.z;
         w.back.gravity = actor->getActorFlags().isSet(PxActorFlag::eDISABLE_GRAVITY) ? 0 : 1;
         ++w.back.steps;
+    }
+}
+
+bool DriveGuarded(Wish* aWish, PxScene* aScene, ULONGLONG aNow)
+{
+    __try
+    {
+        DriveOne(*aWish, aScene, aNow);
+        return true;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+void Drive(PxScene* aScene)
+{
+    g_steps.fetch_add(1, std::memory_order_relaxed);
+    const auto now = GetTickCount64();
+    AcquireSRWLockExclusive(&g_lock);
+    for (auto& w : g_wishes)
+    {
+        if (!w.proxy)
+        {
+            continue;
+        }
+        if (!DriveGuarded(&w, aScene, now))
+        {
+            // a fault on this body: never touch it again (it is dropped, not put back)
+            w = {};
+            g_faults.fetch_add(1, std::memory_order_relaxed);
+        }
     }
     ReleaseSRWLockExclusive(&g_lock);
 }
@@ -460,5 +487,10 @@ bool GetReadback(uint32_t aProxy, uint32_t aIndex, Readback& aOut)
 uint32_t Steps()
 {
     return g_steps.load(std::memory_order_relaxed);
+}
+
+uint32_t Faults()
+{
+    return g_faults.load(std::memory_order_relaxed);
 }
 } // namespace MNC::PhysXBody
