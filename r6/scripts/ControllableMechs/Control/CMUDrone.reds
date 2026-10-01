@@ -58,6 +58,10 @@ public class CMUDrone extends CMCUnit {
   private let m_liftComp: CName;       // the slot measured for it (on the body bone)
   private let m_liftSlot: CName;
   private let m_bindZ: Float;          // the body bone's rest height in the rig
+  private let m_show: Float;           // deg, the most the model is drawn leaning, now
+  private let m_bone: Vector4;         // the body bone, last measured (world, log)
+  private let m_boneOff: Vector4;      // it less the flight's centre when last placed (log)
+  private let m_placed: Vector4;       // the flight's centre at the last placement
   private let m_probe: Int32;          // the old inline ground ray, kept as a control (log)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
@@ -87,6 +91,8 @@ public class CMUDrone extends CMCUnit {
     // the model flies the centre of mass; the drone's origin hangs below it (Root())
     this.m_flight = CMFlight.Make(prof, drone.GetWorldPosition() + new Vector4(0.0, 0.0, prof.com, 0.0), CMPilotRig.YawOf(drone.GetWorldForward()));
     this.m_flight.level = Cast<Float>(cfg.DroneLevel(this.m_kind)) / 100.0;
+    this.m_show = prof.showTilt;
+    this.m_placed = this.m_flight.pos;
     this.m_seen = drone.GetWorldPosition();
     this.m_method = cfg.DroneMove();
     this.m_logAt = s.Now() + 1.0;
@@ -169,19 +175,9 @@ public class CMUDrone extends CMCUnit {
   public func SensorUp() -> Float = 0.1
   public func SensorFwd() -> Float = 0.35
   public func AimSkip() -> Float = 1.5
-  // the body's tilt, shown through the camera (the game won't tilt a drone's body)
-  // The tilt as the model shows it (its lean capped per type), not the flight's own: with
-  // the flight's, the sight view dived into the road while the model beside it stayed near
-  // level, and the two never matched (Omar, a23 Bombus).
-  public func CamTilt() -> Vector4 {
-    if !IsDefined(this.m_flight) {
-      return new Vector4(0.0, 0.0, 0.0, 0.0);
-    }
-    let q = this.m_flight.Shown(this.m_flight.p.showTilt);
-    let f = CMFlight.QRot(q, new Vector4(0.0, 1.0, 0.0, 0.0));
-    let r = CMFlight.QRot(q, new Vector4(1.0, 0.0, 0.0, 0.0));
-    return new Vector4(Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0))), Rad2Deg(AsinF(ClampF(-r.Z, -1.0, 1.0))), 0.0, 0.0);
-  }
+  // the flight's own tilt, through the camera: the sight view is the true attitude (Omar:
+  // in first person it crashes into the floor correctly)
+  public func CamTilt() -> Vector4 = IsDefined(this.m_flight) ? new Vector4(this.m_flight.pitch, this.m_flight.roll, 0.0, 0.0) : new Vector4(0.0, 0.0, 0.0, 0.0)
   public func StepWeight() -> Float = 0.0   // no footfalls
   public func CamProfile() -> String = this.m_kind
 
@@ -245,7 +241,7 @@ public class CMUDrone extends CMCUnit {
   // so the body is drawn where the flight is.
   private func Root() -> Vector4 {
     let fl = this.m_flight;
-    let q = fl.Shown(fl.p.showTilt);
+    let q = fl.Shown(this.m_show);
     let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com - CMFlight.QRot(q, this.m_lift);
     r.W = 1.0;
     return r;
@@ -286,6 +282,8 @@ public class CMUDrone extends CMCUnit {
       return;
     }
     let at = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
+    this.m_bone = at;
+    this.m_boneOff = at - this.m_placed;
     let rel = CMFlight.QInvRot(drone.GetWorldOrientation(), at - drone.GetWorldPosition());
     rel.Z -= this.m_bindZ;
     rel.W = 0.0;
@@ -413,17 +411,14 @@ public class CMUDrone extends CMCUnit {
     }
     // the ground under it: measured for the HUD, and a contact only when the drone is in
     // it. There is no minimum height; flying low is the pilot's call.
-    // the lowest point of the body as it is tilted (belly, rotor or wing tip), from its
-    // measured size: the centre alone let the body sink through the ground. The ray starts
-    // a metre up, so a drone already part-way in still finds the surface above it.
-    // measured on the body as shown: the visible body is what touches the road, so the
-    // model and the sight view (which rides on it) stop on the surface together. With the
-    // flight's own steep tilt the belly reach shrank to nothing and the sight view sank to
-    // the road while the capped model was still up off it.
-    let shownUp = CMFlight.QRot(fl.Shown(fl.p.showTilt), new Vector4(0.0, 0.0, 1.0, 0.0));
-    let r0 = fl.p.bottom * AbsF(ClampF(shownUp.Z, -1.0, 1.0));
+    // The lowest point of the body at its real attitude, from its measured size: the belly
+    // when level, more and more the side (half the span) as it tips over. The belly alone
+    // shrank to nothing at a steep pitch and the body sank into the road nose first. The
+    // ray starts a metre up, so a drone already part-way in still finds the surface.
+    let uz = AbsF(ClampF(fl.Up().Z, -1.0, 1.0));
+    let r0 = fl.p.bottom * uz + fl.p.span * SqrtF(MaxF(0.0, 1.0 - uz * uz));
     fl.grounded = false;
-
+    let clear = 1000.0;   // how far the lowest point is above the ground
     if this.Ray(fl.pos + new Vector4(0.0, 0.0, 1.0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       let gz = hit.position.Z;
       this.m_groundFrom = FloatToStringPrec(fl.pos.Z + 1.0 - gz, 2) + " m below the ray start";
@@ -445,10 +440,19 @@ public class CMUDrone extends CMCUnit {
           fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
         }
       }
+      clear = fl.pos.Z - gz - r0;
     } else {
       this.m_ground = -1.0;
       this.m_groundFrom = "no ground found";
     }
+    // The model's lean cap opens up near the ground: the body touching the road is drawn
+    // at its real attitude, pivoting about the centre of mass like the flight, so the third
+    // person model sits on the road where the physics (and the first-person view) does.
+    // A capped, near-level model held at a steeply pitched body's centre floated above the
+    // road (Omar, a23). Within half a metre it blends to the full attitude.
+    let near = ClampF(1.0 - clear / 0.5, 0.0, 1.0);
+    let want = fl.p.showTilt + (90.0 - fl.p.showTilt) * near;
+    this.m_show += (want - this.m_show) * MinF(1.0, this.m_dt * 8.0);
   }
   // stick expo: x^3 blended in, soft near the centre, full at the end
   public static func Expo(x: Float, e: Float) -> Float = x * (1.0 - e) + x * x * x * e
@@ -509,7 +513,8 @@ public class CMUDrone extends CMCUnit {
         let world: WorldPosition;
         WorldPosition.SetVector4(world, root);
         WorldTransform.SetWorldPosition(wt, world);
-        WorldTransform.SetOrientation(wt, fl.Shown(fl.p.showTilt));   // as flown, or the model's lean capped
+        WorldTransform.SetOrientation(wt, fl.Shown(this.m_show));   // as flown, or the model's lean capped
+        this.m_placed = fl.pos;
 
         drone.SetWorldTransform(wt);
         // the sync lands a frame or more later, by when a fast drone has moved on: sent
@@ -635,7 +640,8 @@ public class CMUDrone extends CMCUnit {
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
       + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (static " + IntToString(this.m_hitS) + ", dynamic " + IntToString(this.m_hitD) + ", vehicle " + IntToString(this.m_hitV) + "; ground " + this.m_groundFrom + ")" + ", at " + CMCHits.V(this.m_flight.pos)
       + ", gait " + NameToString(this.m_gait) + ", heading " + FloatToStringPrec(fl.yaw, 0)
-      + ", animation lift " + CMCHits.V(this.m_lift)
+      + ", animation lift " + CMUDrone.V2(this.m_lift)
+      + ", body bone " + CMUDrone.V2(this.m_bone) + " vs flight centre " + CMUDrone.V2(this.m_placed) + " (bone less centre " + CMUDrone.V2(this.m_boneOff) + "), model lean cap " + FloatToStringPrec(this.m_show, 0)
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
@@ -685,6 +691,9 @@ public class CMUDrone extends CMCUnit {
       tracker.Toggle(!on);
     }
   }
+
+  // a vector to the centimetre, for the log
+  public static func V2(v: Vector4) -> String = "(" + FloatToStringPrec(v.X, 2) + ", " + FloatToStringPrec(v.Y, 2) + ", " + FloatToStringPrec(v.Z, 2) + ")"
 
   public static func MethodName(m: Int32) -> String {
     switch m {
