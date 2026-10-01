@@ -148,9 +148,6 @@ public class CMContent extends TKContent {
       case "dronelead":
         cfg.SetDroneHullLead(Equals(CMContent.Str(arg), "1"));
         break;
-      case "dronelag":
-        cfg.SetDroneCamLag(CMContent.Val(arg, 1));
-        break;
       case "despawntest":
         link.DespawnTestMech();
         p.SetMessage("TEST MECH REMOVED");
@@ -394,7 +391,6 @@ public class CMContent extends TKContent {
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
     p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
     if cfg.ShowDebug() {
-      p.Dropdown("DRONE CAMERA FRAME LAG", "How many frames the camera follows a flown drone behind. Its mesh is drawn from where it was a frame earlier, 0 by default; 1 or 2 only to test if the drone jitters in the chase view (applies at once)", IntToString(cfg.DroneCamLag()), "0|1|2", "0|1|2", "dronelag", "");
       p.Dropdown("DRONE SIGHT MOUNT", "Where the first-person eye sits: ON THE BODY turns with the drone (a18), LEVEL stays level on its heading (a43 to a17). Applies within a tenth of a second", IntToString(cfg.DroneSightMount()), "ON THE BODY|LEVEL", "0|1", "dronemount", "");
       p.Check("DRONE HULL A FRAME AHEAD", "The drone's model is placed a frame ahead so it is drawn where its body is (a17); off = drawn a frame behind, as before", cfg.DroneHullLead(), "dronelead", "");
       p.Check("DRONE FRAME LOG", "Logs every frame for four seconds the first time a flown drone passes 8 m/s (where the flight, the drone and the camera each are), to find the chase-view jitter", cfg.DroneFrameLog(), "dronefl", "");

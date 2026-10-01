@@ -211,18 +211,14 @@ public class CMPilotSystem extends ScriptableSystem {
     this.Put(kind + "Rate", "");
   }
 
-  // frames the camera follows a flown drone behind: its mesh is drawn from the transform it
-  // had a frame earlier (0, 1 or 2; 0 by default)
-  public func DroneCamLag() -> Int32 = Clamp(this.Int("droneCamLag2", 0), 0, 2)
-  public func SetDroneCamLag(v: Int32) -> Void { this.PutInt("droneCamLag2", Clamp(v, 0, 2)); }
   // a frame-by-frame log of a fast flight (DIAGNOSTICS): four seconds once over 8 m/s
-  // the first-person lag tests (DIAGNOSTICS, Phase 4): where the sight eye is mounted (0 on
-  // the body, turning with it: a18; 1 level on the heading: a43-a17) and whether the hull is
-  // drawn a frame ahead (a17)
-  public func DroneSightMount() -> Int32 = Clamp(this.Int("droneSightMount", 0), 0, 1)
-  public func SetDroneSightMount(v: Int32) -> Void { this.PutInt("droneSightMount", Clamp(v, 0, 1)); }
-  public func DroneHullLead() -> Bool = this.Flag("droneHullLead", true)
-  public func SetDroneHullLead(on: Bool) -> Void { this.PutFlag("droneHullLead", on); }
+  // first-person tests (DIAGNOSTICS, Phase 4): where the sight eye is mounted (0 on the
+  // body, turning with it: a18; 1 level on the heading: a43-a17, the default) and whether the
+  // hull is drawn a frame ahead (a17; off by default since a21, as before the frame-lag test)
+  public func DroneSightMount() -> Int32 = Clamp(this.Int("droneSightMount2", 1), 0, 1)
+  public func SetDroneSightMount(v: Int32) -> Void { this.PutInt("droneSightMount2", Clamp(v, 0, 1)); }
+  public func DroneHullLead() -> Bool = this.Flag("droneHullLead2", false)
+  public func SetDroneHullLead(on: Bool) -> Void { this.PutFlag("droneHullLead2", on); }
   public func DroneFrameLog() -> Bool = this.Flag("droneFrameLog", true)
   public func SetDroneFrameLog(on: Bool) -> Void { this.PutFlag("droneFrameLog", on); }
 

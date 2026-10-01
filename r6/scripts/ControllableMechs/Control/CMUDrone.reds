@@ -56,15 +56,12 @@ public class CMUDrone extends CMCUnit {
   private let m_c: Vector4;            // the drawn hull's centre, entity frame: the flight's
                                        // centre of mass sits here
   private let m_hidden: Bool;          // its model hidden (the sight view, CONFIG)
-  private let m_anchors: array<Vector4>; // the drawn body's origin, this frame and the last two
-  private let m_mounts: array<Vector4>;  // the sensor on the drawn body, the same frames
   private let m_sight: Bool;           // the sight view is on (from the session, each tick)
   private let m_rigYaw: Float;         // the view's heading, this tick
   private let m_flBodyPrev: Vector4;
   private let m_flCamPrev: Vector4;
   private let m_flCamTick: Vector4;     // the frame log: the engine's camera when this frame began     // the frame log: the camera's place set the frame before
   private let m_flPlacedRoot: Vector4;  // the frame log: where the entity was placed this frame  // the frame log: the body's place the frame before
-  private let m_camLag: Int32;         // frames the camera follows behind (DIAGNOSTICS)
   private let m_flLeft: Int32;         // frame-log lines left (-1 = not started)
   private let m_selfHits: Int32;       // rays that passed through the drone's own body (log)
   private let m_flOn: Bool;
@@ -213,54 +210,38 @@ public class CMUDrone extends CMCUnit {
   }
 
   public func Name() -> String = this.m_name
-  // Where the camera anchors: the drawn body's origin. The drone ticks before the camera
-  // (TickFirst), so this is where it is drawn this frame; no lead or guess.
-
+  // Where the camera anchors: the drawn body's origin, where the body is this frame (the
+  // drone ticks before the camera: TickFirst). The camera frame lag (a37, DIAGNOSTICS > DRONE
+  // CAMERA FRAME LAG) framed it from one or two frames back and was kept in the settings: the
+  // first-person view trailed the drone from then on (Omar, Phase 4); removed in a21.
   public func Ground() -> Vector4 {
     if !IsDefined(this.m_flight) {
       return this.m_seen;
     }
-    // A frame behind (DIAGNOSTICS > DRONE CAMERA FRAME LAG, 1 by default): the drone is an
-    // animated NPC, and its mesh is drawn from the transform it had the frame before, while
-    // the camera is drawn where it is set. Framing the current transform, the drawn drone
-    // trailed the camera by a frame of its motion, and with every change in frame length
-    // that gap changed: the third-person jitter (first person, with nothing of the drone in
-    // view, was smooth). The camera now frames the transform the mesh is drawn from.
-    let n = ArraySize(this.m_anchors);
-    if n == 0 {
-      return this.Anchor();
-    }
-    let i = Max(0, n - 1 - this.m_camLag);
+    let fl = this.m_flight;
     if this.m_hold && this.m_sight {
       // the gunship hold: the sensor ball under the hull, at its centre (the ring's mount
       // reach and height taken back off), free to look anywhere
-      let fl = this.m_flight;
       let v = CMPilotRig.Dir(this.m_rigYaw, 0.0);
       return new Vector4(fl.pos.X - v.X * this.SensorFwd(), fl.pos.Y - v.Y * this.SensorFwd(), fl.pos.Z - fl.p.bottom - 0.25 - this.SensorUp(), 1.0);
     }
-    if this.m_sight && IsDefined(this.m_flight) {
-      // The sensor is mounted on the drone's heading, level (not pitched or rolled with the
-      // model, which put the eye inside the Bombus's shell at its resting lean: a43). It used
-      // to sit on the view's heading: when the view swung faster than the drone could turn
-      // after it, the eye went out to the drone's side, inside a rotor pod, until the body
-      // caught up (Omar: the camera lags behind and plays catch-up). The session's ring adds
-      // the mount's reach on the view's heading, so that is taken back off here.
-      // a17: the mount turns with the body's full attitude, as a sensor bolted to the hull
-      // would. Held level, a hard nose-down lean (the Bombus at 57 deg flat out) tipped the
-      // shell forward over a level eye: the hull hung above and ahead of the view and the
-      // view seemed to trail behind it (Omar's a17 video). The view's own tilt already
-      // follows the body (CamTilt), so the eye now sits where it looks from.
+    let a = this.Anchor();
+    if this.m_sight {
+      // The sensor: level on the drone's heading (a43: not pitched with the model, which put
+      // the eye inside the Bombus's shell at its resting lean; a48: not on the view's
+      // heading, which put it inside a rotor pod while the body turned after the view), or
+      // turning with the body (a18; DIAGNOSTICS > DRONE SIGHT MOUNT). The session's ring adds
+      // the mount's reach on the view's heading and its height, so both are taken back off.
       let fwd = this.SensorFwd();
       let view = CMPilotRig.Dir(this.m_rigYaw, 0.0);
       if this.m_sightLevel {
-        let body = CMPilotRig.Dir(this.m_flight.yaw, 0.0);
-        let a = this.m_anchors[i];
+        let body = CMPilotRig.Dir(fl.yaw, 0.0);
         return new Vector4(a.X + (body.X - view.X) * fwd, a.Y + (body.Y - view.Y) * fwd, a.Z, 1.0);
       }
-      let m = this.m_mounts[i];
+      let m = a + CMFlight.QRot(fl.Shown(this.m_show), new Vector4(0.0, fwd, this.SensorUp(), 0.0));
       return new Vector4(m.X - view.X * fwd, m.Y - view.Y * fwd, m.Z - this.SensorUp(), 1.0);
     }
-    return this.m_anchors[i];
+    return a;
   }
 
   // DIAGNOSTICS > DRONE FRAME LOG: every frame for four seconds, the first time the drone
@@ -340,19 +321,6 @@ public class CMUDrone extends CMCUnit {
     }
   }
 
-  // this frame's drawn origin and sensor, kept for the camera's frame lag
-  private func Remember() -> Void {
-    let fl = this.m_flight;
-    let a = this.Anchor();
-    let m = a + CMFlight.QRot(fl.Shown(this.m_show), new Vector4(0.0, this.SensorFwd(), this.SensorUp(), 0.0));
-    m.W = 1.0;
-    ArrayPush(this.m_anchors, a);
-    ArrayPush(this.m_mounts, m);
-    if ArraySize(this.m_anchors) > 3 {
-      ArrayErase(this.m_anchors, 0);
-      ArrayErase(this.m_mounts, 0);
-    }
-  }
   public func TickFirst() -> Bool = true
   public func Facing() -> Float = IsDefined(this.m_flight) ? this.m_flight.yaw : 0.0
   // the sight view's sensor mount (CONFIG > the drone > OPTICS // SENSOR MOUNT), from the
@@ -444,7 +412,6 @@ public class CMUDrone extends CMCUnit {
     }
     this.Weapons(s, now, dt, hud);
     this.Downwash(now);
-    this.Remember();
     this.Lean(drone, dt);
     if now >= this.m_logAt {
       this.m_logAt = now + 1.0;
@@ -602,7 +569,6 @@ public class CMUDrone extends CMCUnit {
   private func LoadSensor() -> Void {
     let cfg = CMPilotSystem.Get(this.m_game);
     this.m_hideInSight = cfg.DroneHideInSight(this.m_kind);
-    this.m_camLag = cfg.DroneCamLag();
     this.m_sightLevel = cfg.DroneSightMount() == 1;
     this.m_hullLead = cfg.DroneHullLead();
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
