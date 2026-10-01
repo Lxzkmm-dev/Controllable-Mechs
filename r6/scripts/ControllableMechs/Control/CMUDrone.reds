@@ -52,7 +52,12 @@ public class CMUDrone extends CMCUnit {
   private let m_hitV: Int32;
   private let m_hitG: Int32;
   private let m_touchLogged: Bool;
-  private let m_aiOff: Bool;           // its AI controller switched off for the flight           // the Static and Terrain groups, queried by group not preset (log)
+  private let m_aiOff: Bool;           // its AI controller switched off for the flight
+  private let m_lift: Vector4;         // how far its animation holds the body off its origin,
+                                       // past the rig's rest pose (in the body's frame)
+  private let m_liftComp: CName;       // the slot measured for it (on the body bone)
+  private let m_liftSlot: CName;
+  private let m_bindZ: Float;          // the body bone's rest height in the rig
   private let m_probe: Int32;          // the old inline ground ray, kept as a control (log)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
@@ -106,6 +111,7 @@ public class CMUDrone extends CMCUnit {
         ai.Toggle(false);
       }
     }
+    this.FindBody(drone);
     CMCSession.Log("drone: " + this.m_name + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID())
       + (this.m_aiOff ? ", AI off" : ", AI on") + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", move method " + CMUDrone.MethodName(this.m_method));
     return "";
@@ -183,6 +189,7 @@ public class CMUDrone extends CMCUnit {
     }
     this.m_last = actual;
     this.m_dt = dt;
+    this.MeasureLift(drone);
     if this.m_method == 2 {
       this.m_flight.pos = actual + new Vector4(0.0, 0.0, this.m_flight.p.com, 0.0);   // the AI does the moving
     } else {
@@ -223,11 +230,69 @@ public class CMUDrone extends CMCUnit {
   // Where the drone's origin goes: the body turns about its centre of mass (the model's
   // position), and the origin hangs below that along the body's up axis. Turning about the
   // origin itself, at the base of the Bombus and Wyvern, swung the body like a see-saw.
+  // The origin also goes down by however far the drone's animation lifts the body off it,
+  // so the body is drawn where the flight is.
   private func Root() -> Vector4 {
     let fl = this.m_flight;
-    let r = fl.pos - CMFlight.QRot(fl.Shown(fl.p.showTilt), new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com;
+    let q = fl.Shown(fl.p.showTilt);
+    let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com - CMFlight.QRot(q, this.m_lift);
     r.W = 1.0;
     return r;
+  }
+
+  // The drone's body bone, through a slot on it, and its rest height in the rig. Drones
+  // are walking NPCs whose animations hover the body above the origin: with the origin
+  // placed at the flight, the body was drawn that far above it, and the pilot "couldn't
+  // get low" though the flight had touched the road (a21 log: 0.0 m up).
+  private func FindBody(drone: ref<NPCPuppet>) -> Void {
+    this.m_lift = new Vector4(0.0, 0.0, 0.0, 0.0);
+    this.m_liftComp = n"";
+    this.m_bindZ = CMUDrone.BindZ(this.m_kind);
+    let wt: WorldTransform;
+    for comp in [n"fx_slots", n"Item_Attachment_Slot"] {
+      let sc = drone.FindComponentByName(comp) as SlotComponent;
+      if IsDefined(sc) {
+        for slot in [n"Body", n"base", n"Base"] {
+          if !IsNameValid(this.m_liftComp) && sc.GetSlotTransform(slot, wt) {
+            this.m_liftComp = comp;
+            this.m_liftSlot = slot;
+          }
+        }
+      }
+    }
+    CMCSession.Log("drone: body bone " + (IsNameValid(this.m_liftComp) ? "via " + NameToString(this.m_liftComp) + "/" + NameToString(this.m_liftSlot) : "not found, its animation lift isn't corrected") + ", rest height " + FloatToStringPrec(this.m_bindZ, 3) + " m");
+  }
+
+  // the body bone's offset from the origin, in the drone's frame, past its rest pose;
+  // smoothed (the slot reads last frame's pose) and kept within 3 m
+  private func MeasureLift(drone: ref<NPCPuppet>) -> Void {
+    if !IsNameValid(this.m_liftComp) {
+      return;
+    }
+    let sc = drone.FindComponentByName(this.m_liftComp) as SlotComponent;
+    let wt: WorldTransform;
+    if !IsDefined(sc) || !sc.GetSlotTransform(this.m_liftSlot, wt) {
+      return;
+    }
+    let at = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
+    let rel = CMFlight.QInvRot(drone.GetWorldOrientation(), at - drone.GetWorldPosition());
+    rel.Z -= this.m_bindZ;
+    rel.W = 0.0;
+    let len = Vector4.Length(rel);
+    if len > 3.0 {
+      rel = rel * (3.0 / len);
+    }
+    this.m_lift += (rel - this.m_lift) * 0.1;
+    this.m_lift.W = 0.0;
+  }
+
+  // the body bone's height in each rig's rest pose (WolvenKit, 2026-10-01)
+  public static func BindZ(kind: String) -> Float {
+    switch kind {
+      case "bombus": return 0.127;
+      case "octant": return 0.77;
+    }
+    return 0.0;   // griffin, wyvern
   }
 
   // The nearest thing between two points: the static world, dynamic objects (props the
@@ -553,7 +618,8 @@ public class CMUDrone extends CMCUnit {
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
       + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (static " + IntToString(this.m_hitS) + ", dynamic " + IntToString(this.m_hitD) + ", vehicle " + IntToString(this.m_hitV) + "; ground " + this.m_groundFrom + ")" + ", at " + CMCHits.V(this.m_flight.pos)
-      + ", gait " + NameToString(this.m_gait)
+      + ", gait " + NameToString(this.m_gait) + ", heading " + FloatToStringPrec(fl.yaw, 0)
+      + ", animation lift " + CMCHits.V(this.m_lift)
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;

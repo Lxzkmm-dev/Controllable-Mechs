@@ -276,7 +276,10 @@ public class CMFlight {
   private func Angles() -> Void {
     let f = this.Forward();
     let r = this.Right();
-    this.yaw = Rad2Deg(AtanF(-f.X, f.Y));
+    // the heading is the body's twist about the vertical, not where the nose points: the
+    // nose's heading flips 180 deg once it pitches past straight down or up, and the yaw
+    // hold then spun the drone round to face the camera and back (Omar's dive, a21)
+    this.yaw = CMPilotRig.Wrap(Rad2Deg(2.0 * AtanF(this.q.k, this.q.r)));
     this.pitch = Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0)));
     this.roll = Rad2Deg(AsinF(ClampF(-r.Z, -1.0, 1.0)));
   }
@@ -340,26 +343,40 @@ public class CMFlight {
   }
 
   // The orientation the model is drawn with: the flown one, or with its pitch and roll
-  // held within `limit` degrees (the heading always as flown). Omar: the physics stays
+  // held within `limit` degrees of level (the heading always as flown). Omar: the physics stays
   // unlimited, only how far the Bombus model leans is capped, so it doesn't look as if it
   // is planting its face in the floor.
   public func Shown(limit: Float) -> Quaternion {
     if limit >= 89.0 {
       return this.q;
     }
-    let hy = Deg2Rad(this.yaw) * 0.5;
-    let hp = Deg2Rad(ClampF(this.pitch, -limit, limit)) * 0.5;
-    let hr = Deg2Rad(ClampF(this.roll, -limit, limit)) * 0.5;
-    let qy: Quaternion;
-    qy.k = SinF(hy);
-    qy.r = CosF(hy);
-    let qp: Quaternion;
-    qp.i = SinF(hp);
-    qp.r = CosF(hp);
-    let qr: Quaternion;
-    qr.j = SinF(hr);
-    qr.r = CosF(hr);
-    return CMFlight.QMul(CMFlight.QMul(qy, qp), qr);
+    // split into the heading (a twist about the vertical) and the lean (a swing about a
+    // level axis), and shorten the lean to `limit`. Pitch and roll read back as angles
+    // folded at 90 deg, so a drone past vertical was drawn facing the other way.
+    let h = Deg2Rad(this.yaw) * 0.5;
+    let tw: Quaternion;
+    tw.k = SinF(h);
+    tw.r = CosF(h);
+    let twi: Quaternion;
+    twi.k = -tw.k;
+    twi.r = tw.r;
+    let sw = CMFlight.QMul(this.q, twi);
+    if sw.r < 0.0 {
+      sw.i = -sw.i;
+      sw.j = -sw.j;
+      sw.k = -sw.k;
+      sw.r = -sw.r;
+    }
+    let s = SqrtF(sw.i * sw.i + sw.j * sw.j + sw.k * sw.k);
+    let lim = Deg2Rad(MaxF(0.0, limit));
+    if 2.0 * AtanF(s, sw.r) > lim && s > 0.00001 {
+      let k = SinF(lim * 0.5) / s;
+      sw.i *= k;
+      sw.j *= k;
+      sw.k *= k;
+      sw.r = CosF(lim * 0.5);
+    }
+    return CMFlight.QMul(sw, tw);
   }
 
   // the spool of the four rotors on average, for the HUD
