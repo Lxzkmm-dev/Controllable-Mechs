@@ -16,6 +16,8 @@
 //   bottom right the damage schematic (the Octant's, top-down, a layer per part coloured by
 //                its health and greyed when destroyed) and the hull
 // The session drives it through CMPilotHud's calls; the mech's own pieces aren't built.
+// No field may share a name with one of CMPilotHud's (private or not): the scripts compile,
+// but the game then refuses to start ("Failed to initialize scripts data", a49).
 // =============================================================================
 module ControllableMechs
 
@@ -40,7 +42,7 @@ public class CMDroneHud extends CMPilotHud {
   private let m_lrf: ref<inkText>;
   private let m_name: ref<inkText>;
   private let m_role: ref<inkText>;
-  private let m_link: ref<inkText>;
+  private let m_linkT: ref<inkText>;
   private let m_pitchT: ref<inkText>;
   private let m_rollT: ref<inkText>;
   private let m_spoolT: ref<inkText>;
@@ -60,7 +62,7 @@ public class CMDroneHud extends CMPilotHud {
   private let m_schemNames: array<CName>;
   private let m_flashT: Float;
 
-  private let PITCH_PX: Float = 10.0;    // px per degree on the horizon
+  private let HZ_PX: Float = 10.0;    // px per degree on the horizon
   private let HDG_PX: Float = 6.0;       // px per degree on the heading tape
   private let SCHEM_H: Float = 430.0;    // the damage schematic's height on screen
 
@@ -277,8 +279,8 @@ public class CMDroneHud extends CMPilotHud {
     this.Line(hz, 760.0, 400.0, 240.0, 4.0, 1.0);
     this.Line(hz, 760.0, 400.0, 4.0, 24.0, 1.0);
     // +10 deg solid, -10 deg dashed
-    let up = 400.0 - 10.0 * this.PITCH_PX;
-    let dn = 400.0 + 10.0 * this.PITCH_PX;
+    let up = 400.0 - 10.0 * this.HZ_PX;
+    let dn = 400.0 + 10.0 * this.HZ_PX;
     this.Line(hz, 280.0, up, 160.0, 3.0, 0.55);
     this.Line(hz, 760.0, up, 160.0, 3.0, 0.55);
     let x = 280.0;
@@ -337,7 +339,7 @@ public class CMDroneHud extends CMPilotHud {
     let W = this.m_W;
     this.m_name = this.Txt(root, 160.0, 150.0, "DRONE", 40, false);
     this.m_role = this.Txt(root, 160.0, 204.0, "", 30, false);
-    this.m_link = this.Txt(root, 160.0, 248.0, "", 30, false);
+    this.m_linkT = this.Txt(root, 160.0, 248.0, "", 30, false);
     this.m_pitchT = this.Txt(root, W - 520.0, 150.0, "PITCH  +00", 30, false);
     this.m_rollT = this.Txt(root, W - 520.0, 194.0, "ROLL   +00", 30, false);
     this.m_spoolT = this.Txt(root, W - 520.0, 238.0, "SPOOL  00%", 30, false);
@@ -399,7 +401,7 @@ public class CMDroneHud extends CMPilotHud {
     }
     this.m_name.SetText(s.title);
     this.m_role.SetText(s.role + " // SENSOR " + s.sensor);
-    this.m_link.SetText("LINK " + IntToString(RoundF(s.signal * 100.0)) + "%   RNG " + FloatToStringPrec(s.distance / 1000.0, 2) + " KM");
+    this.m_linkT.SetText("LINK " + IntToString(RoundF(s.signal * 100.0)) + "%   RNG " + FloatToStringPrec(s.distance / 1000.0, 2) + " KM");
 
     this.m_lrf.SetText(s.range > 0.0 && s.range < 2000.0 ? "LRF " + CMPilotHud.Pad4(RoundF(s.range)) + " M" : "LRF ---- M");
     this.m_zoomT.SetText(s.zoomed ? "ZOOM" : "");
@@ -434,7 +436,7 @@ public class CMDroneHud extends CMPilotHud {
       return;
     }
     this.m_horizon.SetRotation(-roll);
-    this.m_horizon.SetMargin(inkMargin(this.m_W * 0.5 - 600.0, 1080.0 - 400.0 + ClampF(pitch, -35.0, 35.0) * this.PITCH_PX, 0.0, 0.0));
+    this.m_horizon.SetMargin(inkMargin(this.m_W * 0.5 - 600.0, 1080.0 - 400.0 + ClampF(pitch, -35.0, 35.0) * this.HZ_PX, 0.0, 0.0));
     this.m_pitchT.SetText("PITCH  " + CMDroneHud.Signed(pitch));
     this.m_rollT.SetText("ROLL   " + CMDroneHud.Signed(roll));
     this.m_speedText.SetText(FloatToStringPrec(speed, 1));
