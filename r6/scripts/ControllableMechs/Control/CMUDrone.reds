@@ -170,7 +170,18 @@ public class CMUDrone extends CMCUnit {
   public func SensorFwd() -> Float = 0.35
   public func AimSkip() -> Float = 1.5
   // the body's tilt, shown through the camera (the game won't tilt a drone's body)
-  public func CamTilt() -> Vector4 = IsDefined(this.m_flight) ? new Vector4(this.m_flight.pitch, this.m_flight.roll, 0.0, 0.0) : new Vector4(0.0, 0.0, 0.0, 0.0)
+  // The tilt as the model shows it (its lean capped per type), not the flight's own: with
+  // the flight's, the sight view dived into the road while the model beside it stayed near
+  // level, and the two never matched (Omar, a23 Bombus).
+  public func CamTilt() -> Vector4 {
+    if !IsDefined(this.m_flight) {
+      return new Vector4(0.0, 0.0, 0.0, 0.0);
+    }
+    let q = this.m_flight.Shown(this.m_flight.p.showTilt);
+    let f = CMFlight.QRot(q, new Vector4(0.0, 1.0, 0.0, 0.0));
+    let r = CMFlight.QRot(q, new Vector4(1.0, 0.0, 0.0, 0.0));
+    return new Vector4(Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0))), Rad2Deg(AsinF(ClampF(-r.Z, -1.0, 1.0))), 0.0, 0.0);
+  }
   public func StepWeight() -> Float = 0.0   // no footfalls
   public func CamProfile() -> String = this.m_kind
 
@@ -405,7 +416,12 @@ public class CMUDrone extends CMCUnit {
     // the lowest point of the body as it is tilted (belly, rotor or wing tip), from its
     // measured size: the centre alone let the body sink through the ground. The ray starts
     // a metre up, so a drone already part-way in still finds the surface above it.
-    let r0 = fl.Reach();
+    // measured on the body as shown: the visible body is what touches the road, so the
+    // model and the sight view (which rides on it) stop on the surface together. With the
+    // flight's own steep tilt the belly reach shrank to nothing and the sight view sank to
+    // the road while the capped model was still up off it.
+    let shownUp = CMFlight.QRot(fl.Shown(fl.p.showTilt), new Vector4(0.0, 0.0, 1.0, 0.0));
+    let r0 = fl.p.bottom * AbsF(ClampF(shownUp.Z, -1.0, 1.0));
     fl.grounded = false;
 
     if this.Ray(fl.pos + new Vector4(0.0, 0.0, 1.0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
