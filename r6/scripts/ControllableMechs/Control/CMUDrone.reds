@@ -60,7 +60,10 @@ public class CMUDrone extends CMCUnit {
   private let m_mounts: array<Vector4>;  // the sensor on the drawn body, the same frames
   private let m_sight: Bool;           // the sight view is on (from the session, each tick)
   private let m_rigYaw: Float;         // the view's heading, this tick
-  private let m_flBodyPrev: Vector4;  // the frame log: the body's place the frame before
+  private let m_flBodyPrev: Vector4;
+  private let m_flCamPrev: Vector4;
+  private let m_flCamTick: Vector4;     // the frame log: the engine's camera when this frame began     // the frame log: the camera's place set the frame before
+  private let m_flPlacedRoot: Vector4;  // the frame log: where the entity was placed this frame  // the frame log: the body's place the frame before
   private let m_camLag: Int32;         // frames the camera follows behind (DIAGNOSTICS)
   private let m_flLeft: Int32;         // frame-log lines left (-1 = not started)
   private let m_selfHits: Int32;       // rays that passed through the drone's own body (log)
@@ -275,10 +278,11 @@ public class CMUDrone extends CMCUnit {
       if Vector4.Length(fl.vel) < 8.0 {
         this.m_lastRoot = this.Root();
         this.m_flBodyPrev = fl.pos;
+        this.m_flCamPrev = s.rig.pos;
         return;
       }
       this.m_flLeft = 240;
-      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll | body bone - where the flight wants it (fwd, side, up m) | cam - body bone (fwd, side, up m) | body moved this frame vs its velocity x dt (m; 0 vs >0 = a stale read)");
+      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll | body bone - where the flight wants it (fwd, side, up m) | cam - body bone (fwd, side, up m) | body moved this frame vs its velocity x dt (m; 0 vs >0 = a stale read) | engine's camera - camera set now, - set last frame (along the heading, m) | engine's drone - drone placed now (along the heading, m)");
     }
     if this.m_flLeft == 0 {
       return;
@@ -293,6 +297,19 @@ public class CMUDrone extends CMCUnit {
     let rel = s.rig.pos - a;
     let moved = Vector4.Length(fl.pos - this.m_flBodyPrev);
     this.m_flBodyPrev = fl.pos;
+    // where the engine has the active camera and the drone entity now, against where they
+    // were set this frame and the frame before: a camera drawn a frame late reads ~0 against
+    // last frame's and v x dt behind this frame's
+    let camT: Transform;
+    let camOk = GameInstance.GetCameraSystem(this.m_game).GetActiveCameraWorldTransform(camT);
+    let camE = Transform.GetPosition(camT);
+    let yr0 = Deg2Rad(fl.yaw);
+    let hf = new Vector4(-SinF(yr0), CosF(yr0), 0.0, 0.0);
+    let camNow = camOk ? FloatToStringPrec(Vector4.Dot(camE - s.rig.pos, hf), 3) + " up " + FloatToStringPrec(camE.Z - s.rig.pos.Z, 3) : "n/a";
+    let camLast = camOk ? FloatToStringPrec(Vector4.Dot(camE - this.m_flCamPrev, hf), 3) : "n/a";
+    let camTick = FloatToStringPrec(Vector4.Dot(this.m_flCamTick - this.m_flCamPrev, hf), 3);
+    this.m_flCamPrev = s.rig.pos;
+    let entNow = FloatToStringPrec(Vector4.Dot(drone.GetWorldPosition() - this.m_flPlacedRoot, hf), 3);
     let yr = Deg2Rad(this.m_flight.yaw);
     let fwd = new Vector4(-SinF(yr), CosF(yr), 0.0, 0.0);
     let right = new Vector4(CosF(yr), SinF(yr), 0.0, 0.0);
@@ -316,7 +333,8 @@ public class CMUDrone extends CMCUnit {
       + " | " + FloatToStringPrec(Vector4.Dot(rel, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(rel, right), 3) + " " + FloatToStringPrec(rel.Z, 3)
       + " | " + FloatToStringPrec(CMPilotRig.Wrap(s.rig.yaw - fl.yaw), 2)
       + " | " + FloatToStringPrec(shown.Pitch, 2) + " " + FloatToStringPrec(shown.Roll, 2) + " | " + bone + " | " + camBone
-      + " | " + FloatToStringPrec(moved, 3) + " vs " + FloatToStringPrec(Vector4.Length(fl.vel) * dt, 3));
+      + " | " + FloatToStringPrec(moved, 3) + " vs " + FloatToStringPrec(Vector4.Length(fl.vel) * dt, 3)
+      + " | " + camNow + ", " + camLast + ", at tick start " + camTick + " | " + entNow);
     if this.m_flLeft == 0 {
       CMCSession.Log("frame log: done");
     }
@@ -356,6 +374,12 @@ public class CMUDrone extends CMCUnit {
     }
     dt = MinF(dt, 0.1);
     this.m_frames += 1;
+    if this.m_flLeft > 0 {
+      let ct: Transform;
+      if GameInstance.GetCameraSystem(this.m_game).GetActiveCameraWorldTransform(ct) {
+        this.m_flCamTick = Transform.GetPosition(ct);
+      }
+    }
     let actual = drone.GetWorldPosition();
     this.m_seen = actual;
     this.m_seenAtTick = actual;
@@ -887,6 +911,7 @@ public class CMUDrone extends CMCUnit {
     WorldTransform.SetWorldPosition(wt, world);
     WorldTransform.SetOrientation(wt, q);
     this.m_placed = fl.pos;
+    this.m_flPlacedRoot = r;
     drone.SetWorldTransform(wt);
   }
 
