@@ -239,14 +239,15 @@ public class CMUDrone extends CMCUnit {
   // Where the drone's origin goes: the body turns about its centre of mass (the model's
   // position), and the origin hangs below that along the body's up axis. Turning about the
   // origin itself, at the base of the Bombus and Wyvern, swung the body like a see-saw.
-  // (a23-a26 also lowered it by a measured "animation lift". That measurement came from
-  // fx_slots, a slot component with no skeleton binding, which reports the entity origin
-  // rather than the body bone: it read -0.13 m and so raised the drawn body 0.13 m off the
-  // physics, the Bombus floating in third person. The lift is now logged only.)
+  // The origin also goes down by however far the drone's animation holds its body bone
+  // off its rest pose, so the drawn (skinned) body is where the flight is, for every type.
+  // That is measured through a slot on a skeleton-bound slot component. (a23-a26 read it
+  // from fx_slots, which has no skeleton binding and reports the origin: a wrong -0.13 m
+  // that raised the drawn Bombus 0.13 m off the physics.)
   private func Root() -> Vector4 {
     let fl = this.m_flight;
     let q = fl.Shown(this.m_show);
-    let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com;
+    let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com - CMFlight.QRot(q, this.m_lift);
     r.W = 1.0;
     return r;
   }
@@ -260,12 +261,13 @@ public class CMUDrone extends CMCUnit {
     this.m_liftComp = n"";
     this.m_bindZ = CMUDrone.BindZ(this.m_kind);
     let wt: WorldTransform;
-    // Slot88444 is the Bombus slot component bound to its skeleton (base bone); fx_slots
-    // has no binding and only gives the origin, so it is the last resort (log only)
-    for comp in [n"Slot88444", n"Item_Attachment_Slot", n"fx_slots"] {
+    // skeleton-bound slots on the body bone (the drone entities, WolvenKit): Center on
+    // Item_Attachment_Slot (Bombus, Griffin, Wyvern), base on Slot88444 (Bombus) and Slot8842
+    // (Griffin). Never fx_slots (unbound: it gives the origin).
+    for comp in [n"Item_Attachment_Slot", n"Slot88444", n"Slot8842"] {
       let sc = drone.FindComponentByName(comp) as SlotComponent;
       if IsDefined(sc) {
-        for slot in [n"base", n"Body", n"Base"] {
+        for slot in [n"Center", n"base"] {
           if !IsNameValid(this.m_liftComp) && sc.GetSlotTransform(slot, wt) {
             this.m_liftComp = comp;
             this.m_liftSlot = slot;
@@ -296,6 +298,11 @@ public class CMUDrone extends CMCUnit {
     let len = Vector4.Length(rel);
     if len > 3.0 {
       rel = rel * (3.0 / len);
+    }
+    // the Octant's slots sit on a different skeleton (Spine, Head) whose rest pose isn't
+    // known yet: measured for the log, not applied
+    if Equals(this.m_kind, "octant") {
+      rel = new Vector4(0.0, 0.0, 0.0, 0.0);
     }
     this.m_lift += (rel - this.m_lift) * 0.1;
     this.m_lift.W = 0.0;
