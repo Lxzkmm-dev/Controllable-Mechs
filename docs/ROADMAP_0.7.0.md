@@ -186,7 +186,19 @@ The drones are designed in docs/DRONES_TECHNICAL_DESIGN.md. Items marked **[spik
 6. **Persistence** (per Omar's decision).
 7. **Repairs** (per Omar's decision).
 
-## 9. Open questions for Omar
+## 9. Later (after 0.7.0)
+
+- **Drone battery** (Omar, 2026-10-01: roadmap, not now).
+  - Drain follows the rotors' actual power: hovering is steady, hard climbs and aggressive flying drain faster, and heavier drones (the Octant) drain more.
+  - The HUD gets a battery gauge and low-battery warnings.
+  - **[decide]** What happens at 0%:
+    - (a) a forced slow landing;
+    - (b) the rotors die and it drops;
+    - (c) a warning, then it flies back to V on its own.
+  - **[decide]** How it recharges: over time while recalled, or at once.
+  - Pairs with the ammo bag and reload system planned for the drones' weapons.
+
+## 10. Open questions for Omar
 
 1. The Arasaka crash repro: which mech, how it was spawned, how the limbs were broken, and when the game died.
 2. Bombus FPV: the full acro control scheme (roll with A/D), or a stabilized "angle mode"? And a kamikaze overload: yes or no?
