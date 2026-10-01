@@ -84,6 +84,7 @@ public class CMUDrone extends CMCUnit {
   private let m_flOn: Bool;
   private let m_flT: Float;
   private let m_lastRoot: Vector4;     // where the entity was put last frame
+  private let m_boneRel: Vector4;      // the body bone less the flight centre when the pose was held (log)
   private let m_seenAtTick: Vector4;   // where the engine had it at the start of this tick
   private let m_selfFrames: Int32;
   private let m_hasSelf: Bool;
@@ -275,7 +276,7 @@ public class CMUDrone extends CMCUnit {
         return;
       }
       this.m_flLeft = 240;
-      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll");
+      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll | body bone - where the flight wants it (fwd, side, up m) | cam - body bone (fwd, side, up m)");
     }
     if this.m_flLeft == 0 {
       return;
@@ -292,11 +293,25 @@ public class CMUDrone extends CMCUnit {
     let fwd = new Vector4(-SinF(yr), CosF(yr), 0.0, 0.0);
     let right = new Vector4(CosF(yr), SinF(yr), 0.0, 0.0);
     let shown = Quaternion.ToEulerAngles(fl.Shown(this.m_show));
+    // the drawn body: its skeleton-bound body bone, against where the flight puts the body
+    // (the flight's centre less the hull's centre, plus the bone's rest place) and against
+    // the camera, in the drone's heading frame
+    let bone = "n/a";
+    let camBone = "n/a";
+    let sc = drone.FindComponentByName(Equals(this.m_kind, "octant") ? n"Slot8842" : n"Item_Attachment_Slot") as SlotComponent;
+    let wt: WorldTransform;
+    if IsDefined(sc) && sc.GetSlotTransform(Equals(this.m_kind, "octant") ? n"l_front_01" : n"Center", wt) {
+      let b = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
+      let off = (b - fl.pos) - this.m_boneRel;
+      let cb = s.rig.pos - b;
+      bone = FloatToStringPrec(Vector4.Dot(off, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(off, right), 3) + " " + FloatToStringPrec(off.Z, 3);
+      camBone = FloatToStringPrec(Vector4.Dot(cb, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(cb, right), 3) + " " + FloatToStringPrec(cb.Z, 3);
+    }
     CMCSession.Log("frame " + FloatToStringPrec(this.m_flT, 3) + " | " + FloatToStringPrec(dt * 1000.0, 1) + " | " + FloatToStringPrec(Vector4.Length(fl.vel), 1)
       + " | " + FloatToStringPrec(Vector4.Length(drift), 3)
       + " | " + FloatToStringPrec(Vector4.Dot(rel, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(rel, right), 3) + " " + FloatToStringPrec(rel.Z, 3)
       + " | " + FloatToStringPrec(CMPilotRig.Wrap(s.rig.yaw - fl.yaw), 2)
-      + " | " + FloatToStringPrec(shown.Pitch, 2) + " " + FloatToStringPrec(shown.Roll, 2));
+      + " | " + FloatToStringPrec(shown.Pitch, 2) + " " + FloatToStringPrec(shown.Roll, 2) + " | " + bone + " | " + camBone);
     if this.m_flLeft == 0 {
       CMCSession.Log("frame log: done");
     }
@@ -351,6 +366,9 @@ public class CMUDrone extends CMCUnit {
       this.m_poseFrames += 1;
       this.MeasurePose(drone, 0.2);
       this.UpdateHull();
+      if this.m_poseFrames == 30 {
+        this.m_boneRel = this.m_bone - this.m_placed;   // at rest: the bone's place on the body
+      }
     }
     if this.m_method == 2 {
       this.m_flight.pos = actual + new Vector4(0.0, 0.0, this.m_flight.p.com, 0.0);   // the AI does the moving
