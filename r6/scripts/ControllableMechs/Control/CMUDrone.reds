@@ -872,13 +872,50 @@ public class CMUDrone extends CMCUnit {
     return "NONE";
   }
 
-  // The drone's own model on or off: every mesh component (skinned or rigid) toggled.
+  // The drone's own model on or off: every mesh, skinned and rigid, drawn with none of its
+  // chunks (chunkMask 0), each one's own mask kept to put back. The first try toggled only
+  // MeshComponent, and the Bombus's visible parts are entSkinnedMeshComponents (not a kind of
+  // MeshComponent): nothing was hidden.
+  private let m_hideComps: array<wref<IComponent>>;
+  private let m_hideMasks: array<Uint64>;
+
   private func ShowModel(drone: ref<NPCPuppet>, on: Bool) -> Void {
-    for c in drone.GetComponents() {
-      let m = c as MeshComponent;
-      if IsDefined(m) {
-        m.Toggle(on);
+    if !on {
+      ArrayClear(this.m_hideComps);
+      ArrayClear(this.m_hideMasks);
+      for c in drone.GetComponents() {
+        let sk = c as entSkinnedMeshComponent;
+        if IsDefined(sk) {
+          ArrayPush(this.m_hideComps, c);
+          ArrayPush(this.m_hideMasks, sk.chunkMask);
+          sk.chunkMask = 0ul;
+        } else {
+          let m = c as MeshComponent;
+          if IsDefined(m) {
+            ArrayPush(this.m_hideComps, c);
+            ArrayPush(this.m_hideMasks, m.chunkMask);
+            m.chunkMask = 0ul;
+          }
+        }
       }
+      CMCSession.Log("drone: model hidden in the sight view (" + IntToString(ArraySize(this.m_hideComps)) + " meshes)");
+    } else {
+      let i = 0;
+      while i < ArraySize(this.m_hideComps) {
+        let c = this.m_hideComps[i];
+        let sk = c as entSkinnedMeshComponent;
+        if IsDefined(sk) {
+          sk.chunkMask = this.m_hideMasks[i];
+        } else {
+          let m = c as MeshComponent;
+          if IsDefined(m) {
+            m.chunkMask = this.m_hideMasks[i];
+          }
+        }
+        i += 1;
+      }
+      ArrayClear(this.m_hideComps);
+      ArrayClear(this.m_hideMasks);
     }
     this.m_hidden = !on;
   }
