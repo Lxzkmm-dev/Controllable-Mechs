@@ -240,11 +240,15 @@ public class CMUDrone extends CMCUnit {
       // after it, the eye went out to the drone's side, inside a rotor pod, until the body
       // caught up (Omar: the camera lags behind and plays catch-up). The session's ring adds
       // the mount's reach on the view's heading, so that is taken back off here.
+      // a17: the mount turns with the body's full attitude, as a sensor bolted to the hull
+      // would. Held level, a hard nose-down lean (the Bombus at 57 deg flat out) tipped the
+      // shell forward over a level eye: the hull hung above and ahead of the view and the
+      // view seemed to trail behind it (Omar's a17 video). The view's own tilt already
+      // follows the body (CamTilt), so the eye now sits where it looks from.
       let fwd = this.SensorFwd();
-      let body = CMPilotRig.Dir(this.m_flight.yaw, 0.0);
       let view = CMPilotRig.Dir(this.m_rigYaw, 0.0);
-      let a = this.m_anchors[i];
-      return new Vector4(a.X + (body.X - view.X) * fwd, a.Y + (body.Y - view.Y) * fwd, a.Z, 1.0);
+      let m = this.m_mounts[i];
+      return new Vector4(m.X - view.X * fwd, m.Y - view.Y * fwd, m.Z - this.SensorUp(), 1.0);
     }
     return this.m_anchors[i];
   }
