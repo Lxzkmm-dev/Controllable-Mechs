@@ -1,0 +1,116 @@
+ThermalVision.OpticsUI:
+  $type: GameplayLogicPackageUIData
+  localizedDescription: LocKey#ThermalVision-Optics-Description
+
+ThermalVision.OpticsPackage:
+  $type: GameplayLogicPackage
+  UIData: ThermalVision.OpticsUI
+
+Items.KiroshiOptics$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: Epic }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.AdvancedKiroshiOpticsBare$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: RarePlus }
+    - { tier: Epic }
+    - { tier: EpicPlus }
+    - { tier: Legendary }
+    - { tier: LegendaryPlus }
+    - { tier: LegendaryPlusPlus }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.AdvancedKiroshiOpticsCombined$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: RarePlus }
+    - { tier: Epic }
+    - { tier: EpicPlus }
+    - { tier: Legendary }
+    - { tier: LegendaryPlus }
+    - { tier: LegendaryPlusPlus }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.AdvancedKiroshiOpticsHunter$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: RarePlus }
+    - { tier: Epic }
+    - { tier: EpicPlus }
+    - { tier: Legendary }
+    - { tier: LegendaryPlus }
+    - { tier: LegendaryPlusPlus }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.AdvancedKiroshiOpticsPiercing$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: RarePlus }
+    - { tier: Epic }
+    - { tier: EpicPlus }
+    - { tier: Legendary }
+    - { tier: LegendaryPlus }
+    - { tier: LegendaryPlusPlus }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.AdvancedKiroshiOpticsSensor$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: RarePlus }
+    - { tier: Epic }
+    - { tier: EpicPlus }
+    - { tier: Legendary }
+    - { tier: LegendaryPlus }
+    - { tier: LegendaryPlusPlus }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.AdvancedKiroshiOpticsWallhack$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: RarePlus }
+    - { tier: Epic }
+    - { tier: EpicPlus }
+    - { tier: Legendary }
+    - { tier: LegendaryPlus }
+    - { tier: LegendaryPlusPlus }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.AdvancedKiroshiOptics_Tutorial_$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: RarePlus }
+    - { tier: Epic }
+    - { tier: EpicPlus }
+    - { tier: Legendary }
+    - { tier: LegendaryPlus }
+    - { tier: LegendaryPlusPlus }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.AdvancedKiroshiOptics$(tier):
+  $instances:
+    - { tier: Rare }
+    - { tier: Epic }
+    - { tier: Legendary }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
+
+Items.Iconic_AdvancedKiroshiOpticsBare$(tier):
+  $instances:
+    - { tier: Epic }
+    - { tier: EpicPlus }
+    - { tier: Legendary }
+    - { tier: LegendaryPlus }
+    - { tier: LegendaryPlusPlus }
+  OnEquip:
+    - !append-once ThermalVision.OpticsPackage
