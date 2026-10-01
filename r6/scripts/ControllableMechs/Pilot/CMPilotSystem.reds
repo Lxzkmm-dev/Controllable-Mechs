@@ -211,6 +211,10 @@ public class CMPilotSystem extends ScriptableSystem {
   // were tested and do nothing, so an old setting of either reads as 1
   // the drone treated as a machine, not an NPC, while flown: its AI controller switched off
   // (its hover and altitude logic can hold the model up off the ground). On by default.
+  // frames the camera follows a flown drone behind: its mesh is drawn from the transform it
+  // had a frame earlier (0, 1 or 2; 1 by default)
+  public func DroneCamLag() -> Int32 = Clamp(this.Int("droneCamLag", 1), 0, 2)
+  public func SetDroneCamLag(v: Int32) -> Void { this.PutInt("droneCamLag", Clamp(v, 0, 2)); }
   public func DroneAiOff() -> Bool = this.Flag("droneAiOff", true)
   public func SetDroneAiOff(on: Bool) -> Void { this.PutFlag("droneAiOff", on); }
 

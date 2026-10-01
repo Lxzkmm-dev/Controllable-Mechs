@@ -69,6 +69,11 @@ public class CMUDrone extends CMCUnit {
   private let m_c: Vector4;            // the drawn hull's centre, entity frame: the flight's
                                        // centre of mass sits here
   private let m_hidden: Bool;          // its model hidden (the sight view, CONFIG)
+  private let m_anchors: array<Vector4>; // the drawn body's origin, this frame and the last two
+  private let m_mounts: array<Vector4>;  // the sensor on the drawn body, the same frames
+  private let m_sight: Bool;           // the sight view is on (from the session, each tick)
+  private let m_rigYaw: Float;         // the view's heading, this tick
+  private let m_camLag: Int32;         // frames the camera follows behind (DIAGNOSTICS)
   private let m_hideInSight: Bool;
   private let m_fastHits: Int32;       // contact-ray hits (log)
   private let m_fastOff: Bool;         // the one-query filter found nothing where it should:
@@ -202,9 +207,41 @@ public class CMUDrone extends CMCUnit {
     if !IsDefined(this.m_flight) {
       return this.m_seen;
     }
-    let p = this.Anchor();   // ticked before the camera: where it is drawn this frame
-    p.W = 1.0;
-    return p;
+    // A frame behind (DIAGNOSTICS > DRONE CAMERA FRAME LAG, 1 by default): the drone is an
+    // animated NPC, and its mesh is drawn from the transform it had the frame before, while
+    // the camera is drawn where it is set. Framing the current transform, the drawn drone
+    // trailed the camera by a frame of its motion, and with every change in frame length
+    // that gap changed: the third-person jitter (first person, with nothing of the drone in
+    // view, was smooth). The camera now frames the transform the mesh is drawn from.
+    let n = ArraySize(this.m_anchors);
+    if n == 0 {
+      return this.Anchor();
+    }
+    let i = Max(0, n - 1 - this.m_camLag);
+    if this.m_sight {
+      // the sensor on the drawn body (it turns with the model, so the model can't swing into
+      // the view); the session's ring adds the mount's height and reach on the view heading
+      let up = this.SensorUp();
+      let fwd = this.SensorFwd();
+      let d = CMPilotRig.Dir(this.m_rigYaw, 0.0);
+      let m = this.m_mounts[i];
+      return new Vector4(m.X - d.X * fwd, m.Y - d.Y * fwd, m.Z - up, 1.0);
+    }
+    return this.m_anchors[i];
+  }
+
+  // this frame's drawn origin and sensor, kept for the camera's frame lag
+  private func Remember() -> Void {
+    let fl = this.m_flight;
+    let a = this.Anchor();
+    let m = a + CMFlight.QRot(fl.Shown(this.m_show), new Vector4(0.0, this.SensorFwd(), this.SensorUp(), 0.0));
+    m.W = 1.0;
+    ArrayPush(this.m_anchors, a);
+    ArrayPush(this.m_mounts, m);
+    if ArraySize(this.m_anchors) > 3 {
+      ArrayErase(this.m_anchors, 0);
+      ArrayErase(this.m_mounts, 0);
+    }
   }
   public func TickFirst() -> Bool = true
   public func Facing() -> Float = IsDefined(this.m_flight) ? this.m_flight.yaw : 0.0
@@ -291,6 +328,9 @@ public class CMUDrone extends CMCUnit {
       this.ShowModel(drone, !hide);
     }
     this.Place(drone, now);
+    this.m_sight = s.SightView();
+    this.m_rigYaw = s.rig.yaw;
+    this.Remember();
     this.Lean(drone, dt);
     if now >= this.m_logAt {
       this.m_logAt = now + 1.0;
@@ -448,6 +488,7 @@ public class CMUDrone extends CMCUnit {
   private func LoadSensor() -> Void {
     let cfg = CMPilotSystem.Get(this.m_game);
     this.m_hideInSight = cfg.DroneHideInSight(this.m_kind);
+    this.m_camLag = cfg.DroneCamLag();
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
     this.m_sensFwd = Cast<Float>(cfg.DroneCamFwdCm(this.m_kind)) / 100.0;
   }
