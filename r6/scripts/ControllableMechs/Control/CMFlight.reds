@@ -386,13 +386,15 @@ public abstract class CMDroneProfiles {
         p.mass = 6.0; p.arm = 0.2; p.thrust = 30.0; p.spool = 0.06; p.kq = 0.02; p.agility = 11.0;
         p.tilt = 25.0; p.tiltRate = 140.0; p.yawRate = 200.0; p.climb = 5.0;
         p.cdh = 0.3; p.cdv = 0.45; p.flap = 0.06; p.impact = 6.0; p.radius = 0.3; p.com = 0.13;
-        p.bottom = 0.134; p.span = 0.27;   // mesh lowest point -0.004 m, centre of mass 0.13 up p.ramp = 0.3; p.expo = 0.6; p.showTilt = 25.0;
+        // the mesh's lowest point is 0.004 m below its origin, the centre of mass 0.13 m up
+        p.bottom = 0.134; p.span = 0.27; p.ramp = 0.3; p.expo = 0.6; p.showTilt = 25.0;
         break;
       case "octant":
         p.mass = 180.0; p.arm = 1.0; p.thrust = 900.0; p.spool = 0.14; p.kq = 0.08; p.agility = 4.5;
         p.tilt = 20.0; p.tiltRate = 90.0; p.yawRate = 60.0; p.climb = 3.0;
         p.cdh = 10.7; p.cdv = 16.0; p.flap = 2.0; p.impact = 5.0; p.radius = 1.1; p.com = 0.15;
-        p.bottom = 0.91; p.span = 1.4;     // mesh lowest point -0.76 m, centre of mass 0.15 up p.ramp = 0.2; p.expo = 0.3; p.showTilt = 90.0;
+        // the mesh's lowest point is 0.76 m below its origin, the centre of mass 0.15 m up
+        p.bottom = 0.91; p.span = 1.4; p.ramp = 0.2; p.expo = 0.3; p.showTilt = 90.0;
         break;
       default:   // griffin, wyvern
         p.mass = 40.0; p.arm = 0.45; p.thrust = 190.0; p.spool = 0.10; p.kq = 0.04; p.agility = 9.0;
