@@ -51,7 +51,8 @@ public class CMUDrone extends CMCUnit {
   private let m_hitD: Int32;
   private let m_hitV: Int32;
   private let m_hitG: Int32;
-  private let m_touchLogged: Bool;           // the Static and Terrain groups, queried by group not preset (log)
+  private let m_touchLogged: Bool;
+  private let m_aiOff: Bool;           // its AI controller switched off for the flight           // the Static and Terrain groups, queried by group not preset (log)
   private let m_probe: Int32;          // the old inline ground ray, kept as a control (log)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
@@ -95,14 +96,18 @@ public class CMUDrone extends CMCUnit {
     this.m_gait = n"";
     this.m_lastYaw = this.m_flight.yaw;
     this.Pacify(drone, true);
-    if this.m_method == 3 {
+    // Omar's idea: the game keeps running it as an AI NPC, whose hover and altitude logic
+    // holds the model up. With the setting on (default), its AI controller is off for the
+    // flight (our physics and the entity transform move it; nothing needs its AI).
+    this.m_aiOff = this.m_method == 3 || (this.m_method == 4 && cfg.DroneAiOff());
+    if this.m_aiOff {
       let ai = drone.GetAIControllerComponent();
       if IsDefined(ai) {
         ai.Toggle(false);
       }
     }
     CMCSession.Log("drone: " + this.m_name + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID())
-      + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", move method " + CMUDrone.MethodName(this.m_method));
+      + (this.m_aiOff ? ", AI off" : ", AI on") + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", move method " + CMUDrone.MethodName(this.m_method));
     return "";
   }
 
@@ -111,7 +116,7 @@ public class CMUDrone extends CMCUnit {
     if IsDefined(drone) {
       this.Cancel(drone);
       this.SetGait(drone, n"Walk");   // the drone's own default
-      if this.m_method == 3 {
+      if this.m_aiOff {
         let ai = drone.GetAIControllerComponent();
         if IsDefined(ai) {
           ai.Toggle(true);
@@ -429,7 +434,7 @@ public class CMUDrone extends CMCUnit {
         // the sync lands a frame or more later, by when a fast drone has moved on: sent
         // where it will be, and only once a second (four a second snapped it back at speed:
         // the jitter when flying fast)
-        if now - this.m_cmdAt >= 1.0 {
+        if !this.m_aiOff && now - this.m_cmdAt >= 1.0 {
           let sync = new AITeleportCommand();
           sync.position = root + fl.vel * 0.1;
           sync.rotation = fl.yaw;
@@ -518,6 +523,10 @@ public class CMUDrone extends CMCUnit {
     loco.lookAtAngle = 0.0;
     loco.pathCurvative = 0.0;
     AnimationControllerComponent.ApplyFeature(drone, n"DroneLocomotion", loco);
+    // its animation's hover height held at zero, so the model sits where the body is
+    let alt = new AnimFeature_DroneActionAltitudeOffset();
+    alt.desiredOffset = 0.0;
+    AnimationControllerComponent.ApplyFeature(drone, n"ActionAltitudeOffset", alt);
     this.SetGait(drone, flat < 4.0 ? n"Walk" : (flat < 9.0 ? n"Run" : n"Sprint"));
   }
 

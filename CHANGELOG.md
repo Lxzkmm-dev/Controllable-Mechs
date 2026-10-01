@@ -21,7 +21,11 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **Settles on the ground:** the "freaking out" was the drone sitting on the ground. The altitude hold pressed it down and the contacts kicked back, so it wobbled ±15 deg indefinitely. Now, on the ground with no climb input, it settles: the hold takes the ground height, and rotation is damped hard.
   - **The mech gets the same safety net:** the pilot's aim and rangefinder, the MK.31 own-target ray and the ground check still try the preset first, then fall back to collision groups. That's Static/Terrain for the world (CMGround.World), and AI/Dynamic/Vehicle for movers (CMGround.Movers).
   - **Down onto the road** (Omar: he could not get low enough to touch the floor): the ground contact is only the model's base, not its rotor or wing tips, which held it a rotor's reach up. The Bombus and Wyvern bases are re-measured to their origin. Each touch-down is logged with how far the base sits above the surface. A hard dive into the road is a crash.
-  - **Build:** 0.7.0-a21.
+  - **The drone is no longer run as an NPC while flown** (Omar's idea: the game still treats it as an AI and holds the model up).
+    - Its AI controller is switched off for the flight, and the once-a-second AI sync is skipped.
+    - Its animation's hover height (the ActionAltitudeOffset input) is held at zero.
+    - Both are restored when you disconnect. DIAGNOSTICS has DRONE AI OFF WHILE FLYING (on by default) to compare.
+  - **Build:** 0.7.0-a22.
 - **Drone flight, round 8** (Omar's a18 test: jitter, phasing and V jumping all persist):
   - **Every ray fails, the control too.** The exact 8d130e5 ground ray found nothing at the drone's normal world position, so it isn't the code.
     - The suspect is VAXIS's ULTRA Physics Overhaul, enabled in the active MO2 profile since about the time the rays stopped. It rewrites engine\physics\collision_presets.json; its "World Static" and "World Dynamic" add names such as "Player Collision" that aren't collision groups.

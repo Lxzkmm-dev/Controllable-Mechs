@@ -113,6 +113,9 @@ public class CMContent extends TKContent {
         cfg.ResetDrone(cfg.CfgProfile());
         p.SetMessage("*" + StrUpper(cfg.CfgProfile()) + " FLIGHT SETTINGS RESET");
         break;
+      case "droneaioff":
+        cfg.SetDroneAiOff(Equals(CMContent.Str(arg), "1"));
+        break;
       case "dronemove":
         cfg.SetDroneMove(CMContent.Val(arg, 0));
         break;
@@ -344,6 +347,7 @@ public class CMContent extends TKContent {
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
     p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
     if cfg.ShowDebug() {
+      p.Check("DRONE AI OFF WHILE FLYING (TEST)", "On: the drone's AI controller is switched off while you fly it and its hover-height animation input is held at zero, so the game stops treating it as an NPC that keeps its own altitude. Off: its AI stays on (from the next link-in)", cfg.DroneAiOff(), "droneaioff", "");
       p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "ENTITY TRANSFORM|AI TELEPORT|AI MOVE CARROT", "4|1|2", "dronemove", "");
     }
   }

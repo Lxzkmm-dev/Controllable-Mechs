@@ -193,6 +193,11 @@ public class CMPilotSystem extends ScriptableSystem {
 
   // only AI TELEPORT (1) and AI MOVE CARROT (2) move a drone: the facility teleports (0, 3)
   // were tested and do nothing, so an old setting of either reads as 1
+  // the drone treated as a machine, not an NPC, while flown: its AI controller switched off
+  // (its hover and altitude logic can hold the model up off the ground). On by default.
+  public func DroneAiOff() -> Bool = this.Flag("droneAiOff", true)
+  public func SetDroneAiOff(on: Bool) -> Void { this.PutFlag("droneAiOff", on); }
+
   public func DroneMove() -> Int32 {
     let m = this.Int("droneMove", 4);
     return m == 1 || m == 2 ? m : 4;
