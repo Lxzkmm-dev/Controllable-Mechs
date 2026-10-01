@@ -296,12 +296,8 @@ public class CMCSession extends ScriptableSystem {
       return why;
     }
 
-    let cfg = CMPilotSystem.Get(this.GetGameInstance());
-    // the chase camera of this unit's profile (the mech's, or its drone type's)
-    let prof = unit.CamProfile();
-    this.m_chaseUp = Cast<Float>(cfg.ChaseUpCm(prof)) / 100.0;
-    this.m_chaseDist = Cast<Float>(cfg.ChaseDistCm(prof)) / 100.0;
-    this.m_chaseSide = Equals(prof, "mech") ? cfg.ChaseSide() : Cast<Float>(cfg.ChaseSideCm(prof)) / 100.0 * (cfg.ShoulderLeft(prof) ? -1.0 : 1.0);
+    this.LoadChase();
+    CMCSession.Log("chase camera (" + unit.CamProfile() + "): " + FloatToStringPrec(this.m_chaseDist, 2) + " m behind, " + FloatToStringPrec(this.m_chaseUp, 2) + " m up, " + FloatToStringPrec(this.m_chaseSide, 2) + " m to the side");
     this.rig.Init(unit.Ground(), this.CamUp(), this.CamFwd(), unit.Facing());
     this.Sync();
     this.rig.SetChase(this.m_chase);
@@ -555,7 +551,23 @@ public class CMCSession extends ScriptableSystem {
     this.ScheduleFrame();
   }
 
+  // The chase camera of this unit's profile (the mech's, or its drone type's), read again
+  // ten times a second: it was read once at link-in, so CONFIG changes made while flying
+  // (or from the terminal) never showed (Omar: the Wyvern and Griffin camera settings
+  // didn't apply)
+  private func LoadChase() -> Void {
+    if !IsDefined(this.m_unit) {
+      return;
+    }
+    let cfg = CMPilotSystem.Get(this.GetGameInstance());
+    let prof = this.m_unit.CamProfile();
+    this.m_chaseUp = Cast<Float>(cfg.ChaseUpCm(prof)) / 100.0;
+    this.m_chaseDist = Cast<Float>(cfg.ChaseDistCm(prof)) / 100.0;
+    this.m_chaseSide = Equals(prof, "mech") ? cfg.ChaseSide() : Cast<Float>(cfg.ChaseSideCm(prof)) / 100.0 * (cfg.ShoulderLeft(prof) ? -1.0 : 1.0);
+  }
+
   private func SlowTick(now: Float) -> Bool {
+    this.LoadChase();
     let game = this.GetGameInstance();
     let player = GetPlayer(game);
     if !IsDefined(player) {

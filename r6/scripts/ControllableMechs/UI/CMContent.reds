@@ -294,7 +294,7 @@ public class CMContent extends TKContent {
     p.Slider("SIDE OFFSET", "Off the centre line, toward the shoulder (0 = dead centre)", "", "0|156|2|" + IntToString(CMContent.CmToIn(cfg.ChaseSideCm(prof))) + "| in", "chaseside", "");
     p.Dropdown("SHOULDER", "Which side the camera sits on", cfg.ShoulderLeft(prof) ? "1" : "0", "RIGHT|LEFT", "0|1", "shoulder", "");
     p.Item("DEFAULTS", drone ? "This drone's own framing, centred" : "Distance 20 ft, height 146 in, side offset 71 in, right shoulder", "", "RESET", "chasereset", "", true);
-    p.SetTip("From the next link-in. The camera pulls in when a wall, pole or container is between it and the unit. The view's up and down tilt is the mouse.");
+    p.SetTip("Applies at once, even while linked. The camera pulls in when a wall, pole or container is between it and the unit. The view's up and down tilt is the mouse.");
   }
 
   // a drone type's flight: how much it levels itself, how far and how fast it tilts
