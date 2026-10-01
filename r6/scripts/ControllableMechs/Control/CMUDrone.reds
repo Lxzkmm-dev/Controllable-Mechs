@@ -65,6 +65,7 @@ public class CMUDrone extends CMCUnit {
   private let m_probe: Int32;          // the old inline ground ray, kept as a control (log)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
+  private let m_climb: Float;          // the climb keys this frame (-1..1)
 
   private let SUBSTEP: Float = 0.008;  // s, the flight model's step
 
@@ -216,6 +217,7 @@ public class CMUDrone extends CMCUnit {
     let f = CMUDrone.Expo(this.m_stickF, this.m_flight.p.expo);
     let side = CMUDrone.Expo(this.m_stickS, this.m_flight.p.expo);
     let climb = (s.Key(CMCKey.Up()) ? 1.0 : 0.0) - (s.Key(CMCKey.Down()) ? 1.0 : 0.0);
+    this.m_climb = climb;
     let from = this.m_flight.pos;
     // the flight model in small steps
     let left = dt;
@@ -441,6 +443,14 @@ public class CMUDrone extends CMCUnit {
         }
       }
       clear = fl.pos.Z - gz - r0;
+      // Settling: released within 30 cm of the ground with no climb key and barely moving,
+      // the height hold aims at the ground instead of where the keys were let go, so the
+      // drone lands on the road. It used to hold the height Ctrl was released at and hover
+      // a hand's width up, which looked like the third-person model floating above where
+      // the first-person view sat (a25 log: 0.3 m up, the model exactly at the physics).
+      if !fl.grounded && clear < 0.3 && this.m_climb <= 0.05 && this.m_climb >= -0.05 && Vector4.Length(fl.vel) < 1.5 && fl.holding {
+        fl.holdZ = gz + r0;
+      }
     } else {
       this.m_ground = -1.0;
       this.m_groundFrom = "no ground found";
@@ -642,6 +652,7 @@ public class CMUDrone extends CMCUnit {
       + ", gait " + NameToString(this.m_gait) + ", heading " + FloatToStringPrec(fl.yaw, 0)
       + ", animation lift " + CMUDrone.V2(this.m_lift)
       + ", body bone " + CMUDrone.V2(this.m_bone) + " vs flight centre " + CMUDrone.V2(this.m_placed) + " (bone less centre " + CMUDrone.V2(this.m_boneOff) + "), model lean cap " + FloatToStringPrec(this.m_show, 0)
+      + (this.m_ground >= 0.0 ? ", above the road: sight-view eye " + FloatToStringPrec(this.Root().Z + this.SensorUp() - (fl.pos.Z - this.m_ground), 2) + " m, model centre " + FloatToStringPrec(this.m_bone.Z - (fl.pos.Z - this.m_ground), 2) + " m, model bottom about " + FloatToStringPrec(this.m_bone.Z - fl.p.bottom - (fl.pos.Z - this.m_ground), 2) + " m" : "")
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
