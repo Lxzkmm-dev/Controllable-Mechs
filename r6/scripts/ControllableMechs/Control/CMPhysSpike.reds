@@ -38,6 +38,16 @@ public class CMPhysSpike extends ScriptableSystem {
   private let m_errMax: Float;
   private let m_errN: Int32;
   private let m_frames: Int32;
+  private let m_q: Quaternion;         // the body's attitude last frame (its spin is measured)
+  private let m_qOk: Bool;
+  private let m_resp: array<Float>;    // R4: the spin each push variant gave (rad/s)
+  private let m_best: Int32;           // R4: the variant that turns it (-1 until known)
+  private let m_tiltSum: Float;
+  private let m_tiltN: Int32;
+  private let TILT_TIME: Float = 30.0;
+  private let TWIST: Float = 1.0;      // N m, the calibration twist
+  private let LEVER: Float = 0.25;     // m, half the couple's span
+  private let INERTIA: Float = 0.6;    // kg m2, the box about a horizontal axis (about)
   private let MASS: Float = 20.0;      // the .ent's mass (the body can't be asked)
   private let WATCH: Float = 8.0;      // s of logging after a drop or a kick
   private let HOVER: Float = 30.0;
@@ -213,6 +223,9 @@ public class CMPhysSpike extends ScriptableSystem {
     if !IsDefined(e) {
       return "!DROP A BOX FIRST";
     }
+    if !IsDefined(this.Fresh(e)) {
+      return "!NO BODY HANDLE";
+    }
     this.m_holdZ = e.GetWorldPosition().Z + 2.0;
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
@@ -220,6 +233,123 @@ public class CMPhysSpike extends ScriptableSystem {
     CMPhysSpike.Log("R3 hover: holding at z " + FloatToStringPrec(this.m_holdZ, 2) + " for " + FloatToStringPrec(this.HOVER, 0) + " s on impulses alone");
     this.Start(1);
     return "*HOVERING FOR 30 S: IT SHOULD RISE 2 M AND HOLD";
+  }
+
+  // R4: hover, and hold a 20 deg lean with off-centre pushes (the body has no torque call).
+  // How AddLinearImpulse places an offset push isn't documented, so the first 12 s try
+  // three readings with a fixed one-second twist each and measure the spin each gives:
+  //   0  originInCOM true,  offset relative to the centre
+  //   1  originInCOM false, offset relative to the centre
+  //   2  originInCOM false, offset as a world position
+  // then the lean is held with whichever turned it most.
+  public func TiltTest() -> String {
+    let e = this.Box();
+    if !IsDefined(e) {
+      return "!DROP A BOX FIRST";
+    }
+    this.m_holdZ = e.GetWorldPosition().Z + 2.0;
+    this.m_errSum = 0.0;
+    this.m_errMax = 0.0;
+    this.m_errN = 0;
+    this.m_tiltSum = 0.0;
+    this.m_tiltN = 0;
+    this.m_best = -1;
+    this.m_resp = [0.0, 0.0, 0.0];
+    CMPhysSpike.Log("R4 tilt: hovering at z " + FloatToStringPrec(this.m_holdZ, 2) + "; 12 s finding how an offset push turns it, then holding a 20 deg lean to world +X");
+    this.Start(2);
+    return "*TILT TEST: IT RISES, TWITCHES THREE TIMES, THEN LEANS 20 DEG AND HOLDS";
+  }
+
+  // a body handle that works: taken again whenever the last one isn't simulated (a1: one
+  // taken the frame the box spawned, before it was placed, never worked)
+  private func Fresh(e: ref<Entity>) -> ref<PhysicalBodyInterface> {
+    if IsDefined(this.m_body) && this.m_body.IsSimulated() {
+      return this.m_body;
+    }
+    let c = e.FindComponentByName(n"proxy_body") as ColliderComponent;
+    if IsDefined(c) {
+      this.m_body = c.CreatePhysicalBodyInterface();
+    }
+    return this.m_body;
+  }
+
+  private func Tilt(body: ref<PhysicalBodyInterface>, q: Quaternion, w: Vector4, age: Float, h: Float) -> Void {
+    let up = CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0));
+    if age < 12.0 {
+      let k = Min(2, FloorF(age / 4.0));
+      let inPhase = age - Cast<Float>(k) * 4.0;
+      if inPhase < 1.0 {
+        this.Couple(body, new Vector4(this.TWIST, 0.0, 0.0, 0.0), k, h);
+      } else {
+        if inPhase < 1.15 {
+          this.m_resp[k] = MaxF(this.m_resp[k], Vector4.Length(w));
+        }
+        // settle back to level with the same variant (if it turns it, it levels it too)
+        let back = (CMFlight.Cross(up, new Vector4(0.0, 0.0, 1.0, 0.0)) * 30.0 - w * 8.0) * this.INERTIA;
+        this.Couple(body, back, k, h);
+      }
+      return;
+    }
+    if this.m_best < 0 {
+      this.m_best = 0;
+      let i = 1;
+      while i < 3 {
+        if this.m_resp[i] > this.m_resp[this.m_best] {
+          this.m_best = i;
+        }
+        i += 1;
+      }
+      CMPhysSpike.Log("R4 calibration: spin after a 1 s twist of " + FloatToStringPrec(this.TWIST, 1) + " N m: variant 0 " + FloatToStringPrec(this.m_resp[0], 2) + ", 1 " + FloatToStringPrec(this.m_resp[1], 2) + ", 2 " + FloatToStringPrec(this.m_resp[2], 2) + " rad/s; holding the lean with variant " + IntToString(this.m_best));
+    }
+    // hold a 20 deg lean toward world +X: a spring on the angle, a damper on the spin
+    let want = new Vector4(SinF(Deg2Rad(20.0)), 0.0, CosF(Deg2Rad(20.0)), 0.0);
+    let tq = (CMFlight.Cross(up, want) * 40.0 - w * 9.0) * this.INERTIA;
+    this.Couple(body, tq, this.m_best, h);
+    if age > 17.0 {
+      this.m_tiltSum += Rad2Deg(AcosF(ClampF(Vector4.Dot(up, want), -1.0, 1.0)));
+      this.m_tiltN += 1;
+    }
+  }
+
+  // a pure turning push (torque tq, N m, over h s): two opposite pushes LEVER either side
+  // of the centre, at right angles to the axis, through push variant k (TiltTest)
+  private func Couple(body: ref<PhysicalBodyInterface>, tq: Vector4, k: Int32, h: Float) -> Void {
+    let n = Vector4.Length(tq);
+    if n < 0.0001 {
+      return;
+    }
+    let axis = tq / n;
+    let other = AbsF(axis.Z) < 0.9 ? new Vector4(0.0, 0.0, 1.0, 0.0) : new Vector4(1.0, 0.0, 0.0, 0.0);
+    let r = Vector4.Normalize(CMFlight.Cross(axis, other)) * this.LEVER;
+    let j = CMFlight.Cross(tq, r) * (h / (2.0 * this.LEVER * this.LEVER));
+    if k == 0 {
+      body.AddLinearImpulse(j, true, r);
+      body.AddLinearImpulse(-j, true, -r);
+    } else {
+      if k == 1 {
+        body.AddLinearImpulse(j, false, r);
+        body.AddLinearImpulse(-j, false, -r);
+      } else {
+        let c = body.GetTransform().position;
+        body.AddLinearImpulse(j, false, c + r);
+        body.AddLinearImpulse(-j, false, c - r);
+      }
+    }
+  }
+
+  public static func QId() -> Quaternion {
+    let q: Quaternion;
+    q.r = 1.0;
+    return q;
+  }
+
+  public static func QConj(q: Quaternion) -> Quaternion {
+    let o: Quaternion;
+    o.i = -q.i;
+    o.j = -q.j;
+    o.k = -q.k;
+    o.r = q.r;
+    return o;
   }
 
   public func Remove() -> String {
@@ -299,14 +429,29 @@ public class CMPhysSpike extends ScriptableSystem {
     this.m_prevAt = now;
     this.m_frames += 1;
     let age = now - this.m_started;
-    if this.m_mode == 1 {
+    let body = this.Fresh(e);
+    let q = IsDefined(body) ? body.GetTransform().orientation : CMPhysSpike.QId();
+    let w = new Vector4(0.0, 0.0, 0.0, 0.0);
+    if dt > 0.0001 && this.m_qOk {
+      // the spin, from the turn since last frame (2 x the turn quaternion's vector / dt)
+      let dq = CMFlight.QMul(q, CMPhysSpike.QConj(this.m_q));
+      let s = dq.r < 0.0 ? -2.0 : 2.0;
+      w = new Vector4(dq.i * s / dt, dq.j * s / dt, dq.k * s / dt, 0.0);
+    }
+    this.m_q = q;
+    this.m_qOk = true;
+    if this.m_mode >= 1 && IsDefined(body) {
       // gravity, cancelled over this frame, and the height hold (a spring and a damper on
-      // the measured climb rate), as one impulse through the centre of mass
+      // the measured climb rate), as one impulse through the centre of mass, through a body
+      // handle taken after the box was placed (a2: the event route moves only vehicles)
       let h = MinF(dt, 0.05);
       let err = this.m_holdZ - p.Z;
       let up = this.MASS * (9.81 + err * 6.0 - this.m_vel.Z * 4.0) * h;
       let drift = new Vector4(-this.m_vel.X * this.MASS * 2.0 * h, -this.m_vel.Y * this.MASS * 2.0 * h, up, 0.0);
-      this.Push(e, drift);
+      body.AddLinearImpulse(drift, true);
+      if this.m_mode == 2 {
+        this.Tilt(body, q, w, age, h);
+      }
       if age > 3.0 {
         // settled: how well it holds
         this.m_errSum += AbsF(err);
@@ -316,11 +461,15 @@ public class CMPhysSpike extends ScriptableSystem {
     }
     if now >= this.m_logAt {
       this.m_logAt = now + 0.5;
-      CMPhysSpike.Log((this.m_mode == 1 ? "R3 " : "watch ") + FloatToStringPrec(age, 1) + " s: entity " + CMCHits.V(p) + ", speed " + FloatToStringPrec(Vector4.Length(this.m_vel), 2) + " m/s (climb " + FloatToStringPrec(this.m_vel.Z, 2) + ")" + (this.m_mode == 1 ? ", off the hold by " + FloatToStringPrec(this.m_holdZ - p.Z, 3) + " m" : "") + "; body handle " + CMCHits.V(bodyAt) + (bodySim ? " simulated" : " not simulated") + ", " + IntToString(this.m_frames) + " frames");
+      CMPhysSpike.Log((this.m_mode == 2 ? "R4 lean " + FloatToStringPrec(Rad2Deg(AcosF(ClampF(CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)).Z, -1.0, 1.0))), 1) + " deg, spin " + FloatToStringPrec(Vector4.Length(w), 2) + " rad/s, " : (this.m_mode == 1 ? "R3 " : "watch ")) + FloatToStringPrec(age, 1) + " s: entity " + CMCHits.V(p) + ", speed " + FloatToStringPrec(Vector4.Length(this.m_vel), 2) + " m/s (climb " + FloatToStringPrec(this.m_vel.Z, 2) + ")" + (this.m_mode >= 1 ? ", off the hold by " + FloatToStringPrec(this.m_holdZ - p.Z, 3) + " m" : "") + "; body handle " + CMCHits.V(bodyAt) + (bodySim ? " simulated" : " not simulated") + ", " + IntToString(this.m_frames) + " frames");
     }
-    let limit = this.m_mode == 1 ? this.HOVER : this.WATCH;
+    let limit = this.m_mode == 2 ? this.TILT_TIME : (this.m_mode == 1 ? this.HOVER : this.WATCH);
     if age >= limit {
-      if this.m_mode == 1 {
+      if this.m_mode == 2 {
+        let avgT = this.m_tiltN > 0 ? this.m_tiltSum / Cast<Float>(this.m_tiltN) : -1.0;
+        CMPhysSpike.Log("R4 " + (this.m_tiltN > 0 && avgT < 3.0 ? "PASS" : "RESULT") + ": with variant " + IntToString(this.m_best) + ", the tilt was off its 20 deg by " + FloatToStringPrec(avgT, 2) + " deg on average over " + IntToString(this.m_tiltN) + " frames");
+      }
+      if this.m_mode >= 1 {
         let avg = this.m_errN > 0 ? this.m_errSum / Cast<Float>(this.m_errN) : -1.0;
         CMPhysSpike.Log("R3 " + (this.m_errN > 0 && this.m_errMax < 0.1 ? "PASS" : "RESULT") + ": held within " + FloatToStringPrec(avg, 3) + " m on average, " + FloatToStringPrec(this.m_errMax, 3) + " m at most, over " + IntToString(this.m_errN) + " frames (it now drops)");
       } else {
