@@ -193,18 +193,18 @@ public class CMUDrone extends CMCUnit {
   }
 
   public func Name() -> String = this.m_name
-  // Where the camera anchors. The session moves the camera before this frame's flight
-  // step, so the drone's last placement was a frame behind the drone that is about to be
-  // drawn, and that gap swung with every change in frame time: the jitter at speed. The
-  // anchor is led by a frame of the drone's velocity instead, to where it is drawn.
+  // Where the camera anchors: the drawn body's origin. The drone ticks before the camera
+  // (TickFirst), so this is where it is drawn this frame; no lead or guess.
+
   public func Ground() -> Vector4 {
     if !IsDefined(this.m_flight) {
       return this.m_seen;
     }
-    let p = this.Anchor() + this.m_flight.vel * this.m_dt;
+    let p = this.Anchor();   // ticked before the camera: where it is drawn this frame
     p.W = 1.0;
     return p;
   }
+  public func TickFirst() -> Bool = true
   public func Facing() -> Float = IsDefined(this.m_flight) ? this.m_flight.yaw : 0.0
   // the sight view's sensor mount (CONFIG > the drone > OPTICS // SENSOR MOUNT), from the
   // drawn body's origin; by default at its nose, at its centre's height (the mesh scan)

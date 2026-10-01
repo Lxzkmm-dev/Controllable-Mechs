@@ -47,6 +47,8 @@ public abstract class CMCUnit extends IScriptable {
   public func StepWeight() -> Float = 1.0
   // whose chase camera settings it uses (CONFIG > PROFILE): mech, bombus, griffin, wyvern, octant
   public func CamProfile() -> String = "mech"
+  // moved before the camera each frame (the camera then frames where it really is drawn)
+  public func TickFirst() -> Bool = false
 
   public func Name() -> String = "UNIT"
 }

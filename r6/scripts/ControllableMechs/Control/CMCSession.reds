@@ -526,6 +526,17 @@ public class CMCSession extends ScriptableSystem {
       this.m_opticsHeld = optics;
       this.SetOptics(optics);
     }
+    // A drone moves first and the camera frames where it now is. With the camera first, it
+    // had to guess where the drone would be (a frame of its velocity at the last frame's
+    // length); the frame lengths differ, so at speed the drawn drone landed a few
+    // centimetres off the guess every frame: the third-person jitter.
+    let first = this.m_unit.TickFirst();
+    if first {
+      this.m_unit.Tick(this, dt, now);
+      if this.m_state != 2 || !IsDefined(this.m_unit) {
+        return;
+      }
+    }
     this.rig.Update(dt, this.m_unit.Ground(), this.CamUp(), this.CamFwd(), this.zoom);
     if this.ChaseNow() {
       // over one shoulder, so the hull never covers the reticle (CONFIG > CHASE CAMERA)
@@ -539,7 +550,9 @@ public class CMCSession extends ScriptableSystem {
       this.m_hud.Tags(dt);
     }
     this.UpdateAim();
-    this.m_unit.Tick(this, dt, now);
+    if !first {
+      this.m_unit.Tick(this, dt, now);
+    }
 
     this.m_slow += dt;
     if this.m_slow >= 0.1 {
