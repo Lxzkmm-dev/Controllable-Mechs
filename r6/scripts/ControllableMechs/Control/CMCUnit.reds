@@ -35,6 +35,10 @@ public abstract class CMCUnit extends IScriptable {
 
   // the secondary weapon key (G) was pressed
   public func Secondary(s: ref<CMCSession>) -> Void {}
+  // the select key (B): true when the unit picks its own weapon (else it is the fire mode)
+  public func Select(s: ref<CMCSession>) -> Bool = false
+  // the hold key (H): a unit's hold mode (the drone's gunship hold)
+  public func Hold(s: ref<CMCSession>) -> Void {}
 
   // a hit the unit took (after the damage pipeline): where it landed, for part damage
   public func TakeHit(s: ref<CMCSession>, hit: ref<gameHitEvent>) -> Void {}

@@ -143,6 +143,13 @@ public class CMPilotRig {
     this.m_lead = lead;
   }
 
+  // how far the view may look down and up (deg; the drone's gunship hold looks far down)
+  public func SetPitchLimits(lo: Float, hi: Float) -> Void {
+    this.m_pitchMin = lo;
+    this.m_pitchMax = hi;
+    this.aimPitch = ClampF(this.aimPitch, lo, hi);
+  }
+
   // mouse deltas, already scaled to degrees
   public func Look(dYaw: Float, dPitch: Float) -> Void {
     this.aimYaw = CMPilotRig.Wrap(this.aimYaw + dYaw);

@@ -12,7 +12,8 @@
 //                impact (hidden until the weapons are in)
 //   top left     the drone, its role and sensor; the link and range
 //   top right    pitch, roll, rotor spool
-//   bottom left  weapons: primary and secondary, the selected one boxed
+//   bottom left  weapons: up to three lines, the selected one boxed bright; the hold
+//                mode's banner (GUNSHIP) under the heading tape
 //   bottom right the damage schematic (the Octant's, top-down, a layer per part coloured by
 //                its health and greyed when destroyed) and the hull
 // The session drives it through CMPilotHud's calls; the mech's own pieces aren't built.
@@ -50,6 +51,9 @@ public class CMDroneHud extends CMPilotHud {
   private let m_sec: ref<inkText>;
   private let m_priBox: ref<inkCanvas>;
   private let m_secBox: ref<inkCanvas>;
+  private let m_ter: ref<inkText>;
+  private let m_terBox: ref<inkCanvas>;
+  private let m_holdT: ref<inkText>;
   private let m_heat: ref<inkRectangle>;
   private let m_hullT: ref<inkText>;
   private let m_hullBar: ref<inkRectangle>;
@@ -347,14 +351,20 @@ public class CMDroneHud extends CMPilotHud {
     this.m_warnT.SetTintColor(CMPilotHud.Red());
   }
 
+  // three weapon lines (the third hidden when the drone has two), the selected one bright
   private func BuildWeapons(root: ref<inkCanvas>) -> Void {
-    this.m_priBox = this.Frame(root, 150.0, 1760.0, 760.0, 66.0, 1.0);
-    this.m_secBox = this.Frame(root, 150.0, 1840.0, 760.0, 66.0, 1.0);
-    this.m_pri = this.Txt(root, 176.0, 1768.0, "", 38, false);
-    this.m_sec = this.Txt(root, 176.0, 1848.0, "", 38, false);
+    this.m_priBox = this.Frame(root, 150.0, 1680.0, 760.0, 66.0, 1.0);
+    this.m_secBox = this.Frame(root, 150.0, 1760.0, 760.0, 66.0, 1.0);
+    this.m_terBox = this.Frame(root, 150.0, 1840.0, 760.0, 66.0, 1.0);
+    this.m_pri = this.Txt(root, 176.0, 1688.0, "", 38, false);
+    this.m_sec = this.Txt(root, 176.0, 1768.0, "", 38, false);
+    this.m_ter = this.Txt(root, 176.0, 1848.0, "", 38, false);
     // the secondary's heat, along the bottom of its box
-    this.m_heat = CMPilotHud.Bar(root, 152.0, 1898.0, 0.0, 6.0, CMPilotHud.Caution(), 1.0);
-    this.Txt(root, 176.0, 1930.0, "[LMB] FIRE   [B] SELECT   [RMB] ZOOM   [T] SENSOR", 26, false).SetOpacity(0.55);
+    this.m_heat = CMPilotHud.Bar(root, 152.0, 1818.0, 0.0, 6.0, CMPilotHud.Caution(), 1.0);
+    this.Txt(root, 176.0, 1930.0, "[LMB] FIRE   [B] SELECT   [G] MISSILE   [H] GUNSHIP   [RMB] ZOOM   [T] SENSOR", 26, false).SetOpacity(0.55);
+    // the hold mode's banner, under the heading
+    this.m_holdT = this.Txt(root, this.m_W * 0.5, 244.0, "", 34, true);
+    this.m_holdT.SetTintColor(CMPilotHud.Caution());
   }
 
   // the damage schematic, its parts from the atlas (tools/drones/schematic.py: each part's
@@ -409,8 +419,13 @@ public class CMDroneHud extends CMPilotHud {
     // weapons: the selected one boxed bright
     this.m_pri.SetText(s.priText);
     this.m_sec.SetText(s.secText);
-    this.m_priBox.SetOpacity(s.secSelected ? 0.25 : 1.0);
-    this.m_secBox.SetOpacity(s.secSelected ? 1.0 : 0.25);
+    this.m_ter.SetText(s.terText);
+    this.m_ter.SetVisible(StrLen(s.terText) > 0);
+    this.m_terBox.SetVisible(StrLen(s.terText) > 0);
+    this.m_priBox.SetOpacity(s.weapon == 0 ? 1.0 : 0.25);
+    this.m_secBox.SetOpacity(s.weapon == 1 ? 1.0 : 0.25);
+    this.m_terBox.SetOpacity(s.weapon == 2 ? 1.0 : 0.25);
+    this.m_holdT.SetText(s.holdText);
     this.m_heat.SetSize(Vector2(756.0 * ClampF(s.secHeat, 0.0, 1.0), 6.0));
     this.m_heat.SetTintColor(s.secHeat >= 1.0 ? CMPilotHud.Red() : CMPilotHud.Caution());
     // hull and parts

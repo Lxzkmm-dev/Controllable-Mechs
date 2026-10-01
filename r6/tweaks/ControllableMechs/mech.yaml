@@ -10,8 +10,9 @@ Attacks.CM_Missile:
   statModifiers: []
   statusEffects: []
 
-# The Octant's weapons (CMUDrone): the mortar's blast and each machine-gun round's hit,
-# both small area attacks whose damage is added from script with V as the instigator.
+# The Octant's weapons (CMUDrone): each mortar round's blast, and a machine-gun round's
+# hit on what it struck (a tight area at the hit point, only when the round's ray struck
+# something; the missile uses CM_Missile). Damage is added from script, V the instigator.
 Attacks.CM_Mortar:
   $base: Attacks.BaseProjectileAoEAttack
   effectTag: explosion_round_charged

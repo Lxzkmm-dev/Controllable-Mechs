@@ -991,9 +991,18 @@ public class CMCSession extends ScriptableSystem {
         break;
       case EInputKey.IK_B:
         if press {
-          this.SetFireMode(CMFireMode.Next(this.m_fireMode));
+          if !IsDefined(this.m_unit) || !this.m_unit.Select(this) {
+            this.SetFireMode(CMFireMode.Next(this.m_fireMode));
+          }
           this.m_slow = 1.0;
           this.FlashTag(CMPilotHud.TagMode());
+        }
+        break;
+      case EInputKey.IK_H:
+        // the unit's hold mode (a drone's gunship hold)
+        if press && IsDefined(this.m_unit) {
+          this.m_unit.Hold(this);
+          this.m_slow = 1.0;
         }
         break;
       case EInputKey.IK_Backslash:
