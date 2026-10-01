@@ -76,6 +76,7 @@ public class CMUDrone extends CMCUnit {
   private let m_bone: Vector4;         // the body bone, last measured (world, log)
   private let m_boneOff: Vector4;      // it less the flight's centre when last placed (log)
   private let m_placed: Vector4;       // the flight's centre at the last placement
+  private let m_leadDt: Float;         // how far ahead the hull is placed (this frame's length; 0 until flying)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
 
@@ -397,6 +398,7 @@ public class CMUDrone extends CMCUnit {
     if NotEquals(hide, this.m_hidden) {
       this.ShowModel(drone, !hide);
     }
+    this.m_leadDt = this.m_proxyLive ? dt : 0.0;
     this.Place(drone, now);
     this.m_sight = s.SightView();
     this.m_rigYaw = s.rig.yaw;
@@ -842,12 +844,35 @@ public class CMUDrone extends CMCUnit {
   private func Place(drone: ref<NPCPuppet>, now: Float) -> Void {
     // the entity's own transform set each frame (Codeware) on its physics body's place, with
     // the body's full orientation (its AI is off for the flight: nothing else moves it)
+    // Led by one frame of its motion: an NPC's mesh is drawn from the transform it was given
+    // the frame before, so placed where the body is now it was drawn a frame behind it (a16
+    // frame logs: the body bone 0.20-0.25 m behind the flight at 10-14 m/s, v x dt, on every
+    // drone), while the camera is where the body is now. With a sensor close to the hull (the
+    // Bombus 0.34 m, the Wyvern 0.59 m forward) the trailing hull, its guns and their flashes
+    // slid back round the eye: the first-person lag (Omar, Phase 4; not on the Griffin or
+    // the Octant, whose sensors sit 0.79 and 2.1 m forward). Led by the velocity and the spin
+    // for this frame's length, the hull is drawn where the body is when the frame shows.
     let fl = this.m_flight;
+    let k = this.m_leadDt;
+    let q = fl.Shown(this.m_show);
+    let ang = Vector4.Length(fl.w) * k;
+    if this.m_show >= 89.0 && ang > 0.00001 {
+      let ax = fl.w * (1.0 / Vector4.Length(fl.w));
+      let s = SinF(ang * 0.5);
+      let dq: Quaternion;
+      dq.i = ax.X * s;
+      dq.j = ax.Y * s;
+      dq.k = ax.Z * s;
+      dq.r = CosF(ang * 0.5);
+      q = CMFlight.QMul(q, dq);   // body-frame spin: turned on the body's own axes
+    }
+    let r = fl.pos + fl.vel * k - CMFlight.QRot(q, this.m_c) - CMFlight.QRot(q, this.m_tt);
+    r.W = 1.0;
     let wt: WorldTransform;
     let world: WorldPosition;
-    WorldPosition.SetVector4(world, this.Root());
+    WorldPosition.SetVector4(world, r);
     WorldTransform.SetWorldPosition(wt, world);
-    WorldTransform.SetOrientation(wt, fl.Shown(this.m_show));
+    WorldTransform.SetOrientation(wt, q);
     this.m_placed = fl.pos;
     drone.SetWorldTransform(wt);
   }
