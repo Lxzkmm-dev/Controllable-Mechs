@@ -184,6 +184,17 @@ public class CMPilotSystem extends ScriptableSystem {
   // how far the drone's model is drawn leaning (90 = as flown; the physics is never capped)
   public func DroneShowTilt(kind: String, def: Int32) -> Int32 = Clamp(this.Int(kind + "ShowTilt", def), 10, 90)
   public func SetDroneShowTilt(kind: String, v: Int32) -> Void { this.PutInt(kind + "ShowTilt", Clamp(v, 10, 90)); }
+  // each drone type's sight-view sensor mount (cm): above and ahead of the body's origin,
+  // defaulting to its nose at its centre height (scanned from its mesh, CMDroneHull)
+  public func DroneCamUpCm(kind: String) -> Int32 = Clamp(this.Int(kind + "CamUpCm", CMDroneHull.SensorUpCm(kind)), 0, 300)
+  public func SetDroneCamUpCm(kind: String, v: Int32) -> Void { this.PutInt(kind + "CamUpCm", Clamp(v, 0, 300)); }
+  public func DroneCamFwdCm(kind: String) -> Int32 = Clamp(this.Int(kind + "CamFwdCm", CMDroneHull.SensorFwdCm(kind)), 0, 400)
+  public func SetDroneCamFwdCm(kind: String, v: Int32) -> Void { this.PutInt(kind + "CamFwdCm", Clamp(v, 0, 400)); }
+  public func ResetDroneCam(kind: String) -> Void {
+    this.Put(kind + "CamUpCm", "");
+    this.Put(kind + "CamFwdCm", "");
+  }
+
   public func ResetDrone(kind: String) -> Void {
     this.Put(kind + "ShowTilt", "");
     this.Put(kind + "Level", "");

@@ -109,6 +109,16 @@ public class CMContent extends TKContent {
       case "drate":
         cfg.SetDroneRate(cfg.CfgProfile(), CMContent.Val(arg, 180));
         break;
+      case "dcamup":
+        cfg.SetDroneCamUpCm(cfg.CfgProfile(), CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.DroneCamUpCm(cfg.CfgProfile())))));
+        break;
+      case "dcamfwd":
+        cfg.SetDroneCamFwdCm(cfg.CfgProfile(), CMContent.InToCm(CMContent.Val(arg, CMContent.CmToIn(cfg.DroneCamFwdCm(cfg.CfgProfile())))));
+        break;
+      case "dcamreset":
+        cfg.ResetDroneCam(cfg.CfgProfile());
+        p.SetMessage("*" + StrUpper(cfg.CfgProfile()) + " SENSOR MOUNT RESET");
+        break;
       case "dreset":
         cfg.ResetDrone(cfg.CfgProfile());
         p.SetMessage("*" + StrUpper(cfg.CfgProfile()) + " FLIGHT SETTINGS RESET");
@@ -307,6 +317,11 @@ public class CMContent extends TKContent {
     p.Slider("MODEL LEAN LIMIT", "How far the drone's model is drawn leaning; the flight itself is never capped (90 = drawn as flown)", "", "10|90|5|" + IntToString(cfg.DroneShowTilt(kind, RoundF(base.showTilt))) + "|deg", "dshowtilt", "");
     p.Item("DEFAULTS", "Self-levelling " + IntToString(CMDroneProfiles.DefaultLevel(kind)) + "%, tilt " + IntToString(RoundF(base.tilt)) + " deg, rate " + IntToString(RoundF(base.tiltRate)) + " deg/s, model lean " + IntToString(RoundF(base.showTilt)) + " deg", "", "RESET", "dreset", "", true);
     p.SetTip("At low self-levelling it will loop and roll right over; upside down its thrust drives it down.");
+    p.Heading(StrUpper(kind) + " // OPTICS // SENSOR MOUNT");
+    p.Slider("HEIGHT", "Sight view: above the drone's base (its centre by default)", "", "0|118|1|" + IntToString(CMContent.CmToIn(cfg.DroneCamUpCm(kind))) + "| in", "dcamup", "");
+    p.Slider("FORWARD", "Sight view: ahead of the drone's centre (its nose by default)", "", "0|157|1|" + IntToString(CMContent.CmToIn(cfg.DroneCamFwdCm(kind))) + "| in", "dcamfwd", "");
+    p.Item("DEFAULTS", "At the nose, centre height: " + IntToString(CMContent.CmToIn(CMDroneHull.SensorUpCm(kind))) + " in up, " + IntToString(CMContent.CmToIn(CMDroneHull.SensorFwdCm(kind))) + " in forward", "", "RESET", "dcamreset", "", true);
+    p.SetTip("Applies at once, even while linked.");
     this.ChaseSettings(p, cfg, kind);
   }
 
