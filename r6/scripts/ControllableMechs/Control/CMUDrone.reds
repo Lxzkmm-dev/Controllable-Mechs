@@ -75,6 +75,13 @@ public class CMUDrone extends CMCUnit {
   private let m_rigYaw: Float;         // the view's heading, this tick
   private let m_camLag: Int32;         // frames the camera follows behind (DIAGNOSTICS)
   private let m_visTest: Int32;        // which NPC systems are off while flown (DIAGNOSTICS)
+  // Its own collision: the Octant's shell and thrusters (and the Griffin's body) are physical
+  // meshes our rays hit, so every ray out from its centre struck its own shell and pushed
+  // it: the slide on take-over. Each contact ray's distance to its own shell is learned in
+  // the first frames (m_self, -1 = nothing of its own on that ray); a hit there is its own.
+  private let m_self: array<Float>;
+  private let m_selfFrames: Int32;
+  private let m_hasSelf: Bool;
   private let m_hideInSight: Bool;
   private let m_fastHits: Int32;       // contact-ray hits (log)
   private let m_fastOff: Bool;         // the one-query filter found nothing where it should:
@@ -121,6 +128,9 @@ public class CMUDrone extends CMCUnit {
     this.m_tt = new Vector4(0.0, 0.0, 0.0, 0.0);
     this.m_poseOk = false;
     this.m_poseFrames = 0;
+    this.m_selfFrames = 0;
+    this.m_hasSelf = false;
+    ArrayClear(this.m_self);
     this.MeasurePose(drone, 1.0);
     this.UpdateHull();
     this.LoadSensor();
@@ -634,31 +644,9 @@ public class CMUDrone extends CMCUnit {
   private func Collide(drone: ref<NPCPuppet>, from: Vector4) -> Void {
     let fl = this.m_flight;
     let r = fl.p.radius;
-    let move = fl.pos - from;
-    let len = Vector4.Length(move);
     let hit: TraceResult;
-    if len > 0.0005 {
-      let dir = move / len;
-      // How far the body reaches along the way it moves: its radius sideways, its real
-      // lowest point (belly, or a side as it tips) up and down. The sweep used the radius
-      // in every direction, so a drone settling onto the road stopped a whole radius up:
-      // the Bombus 0.30 m with its belly 0.13 m below its centre, every type floating a
-      // hand's width over the road while the first-person view sat at its centre (a27).
-      let ext = this.Extent(dir);
-      if this.Ray(from, fl.pos + dir * ext, hit) {
-        let at = Cast<Vector4>(hit.position);
-        let n = CMUDrone.Normal(hit, dir);
-        fl.pos = at - dir * ext;
-        fl.pos.W = 1.0;
-        // floors are slid along with grip, walls give a little bounce; the height hold
-        // takes the new height (it pulled back down into rising ground: the bobbing)
-        let floorish = n.Z > 0.6;
-        this.Impact(drone, fl.Contact(n, n * -ext, floorish ? 0.0 : 0.25, 0.3));
-        if floorish && fl.holding {
-          fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
-        }
-      }
-    }
+    // (the step is swept by its leading contact points, Sweep(); a ray from the centre
+    // crossed the drone's own shell on the way out)
     // the ground under it: measured for the HUD, and a contact only when the drone is in
     // it. There is no minimum height; flying low is the pilot's call.
     // The lowest point of the body at its real attitude: the lowest of its contact points
@@ -668,9 +656,11 @@ public class CMUDrone extends CMCUnit {
     let r0 = MaxF(0.02, -low.Z);
     fl.grounded = false;
     let clear = 1000.0;   // how far the lowest point is above the ground
-    if this.Ray(fl.pos + new Vector4(0.0, 0.0, 1.0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
+    // a drone with a shell of its own looks for the ground from just under its lowest point
+    let top = this.m_hasSelf ? fl.pos.Z + low.Z - 0.02 : fl.pos.Z + 1.0;
+    if this.Ray(new Vector4(fl.pos.X, fl.pos.Y, top, 1.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       let gz = hit.position.Z;
-      this.m_groundFrom = FloatToStringPrec(fl.pos.Z + 1.0 - gz, 2) + " m below the ray start";
+      this.m_groundFrom = FloatToStringPrec(top - gz, 2) + " m below the ray start";
       this.m_ground = fl.pos.Z - gz;
       if fl.pos.Z < gz + r0 + 0.02 {
         fl.grounded = Vector4.Length(fl.vel) < 2.0;
@@ -804,9 +794,10 @@ public class CMUDrone extends CMCUnit {
       let now = fl.pos + r;
       let move = now - was;
       let len = Vector4.Length(move);
-      if len > 0.01 {
+      // leading points only: a trailing point's path runs back through the drone's own body
+      if len > 0.01 && Vector4.Dot(r, move) > 0.0 && this.m_selfFrames >= 10 {
         let dir = move / len;
-        if this.RayFast(was, now + dir * 0.02, hit) {
+        if this.RayFast(was, now + dir * 0.02, hit) && Vector4.Distance(was, Cast<Vector4>(hit.position)) > 0.02 {
           let at = Cast<Vector4>(hit.position);
           let n = CMUDrone.Normal(hit, dir);
           let depth = Vector4.Dot(at - now, n);
@@ -837,6 +828,42 @@ public class CMUDrone extends CMCUnit {
     return n;
   }
 
+  // The first ten frames of a flight (it is hovering where its AI left it): each contact
+  // ray's nearest hit is taken as the drone's own shell. No contacts are made meanwhile.
+  private func LearnSelf() -> Void {
+    let fl = this.m_flight;
+    let hit: TraceResult;
+    if ArraySize(this.m_self) != ArraySize(this.m_pts) {
+      ArrayClear(this.m_self);
+      for p in this.m_pts {
+        ArrayPush(this.m_self, -1.0);
+      }
+    }
+    let i = 0;
+    for p in this.m_pts {
+      let r = CMFlight.QRot(fl.q, p - this.m_c);
+      let len = Vector4.Length(r);
+      if len > 0.02 && this.RayFast(fl.pos, fl.pos + r + (r / len) * 0.02, hit) {
+        let d = Vector4.Distance(fl.pos, Cast<Vector4>(hit.position));
+        if this.m_self[i] < 0.0 || d < this.m_self[i] {
+          this.m_self[i] = d;
+        }
+      }
+      i += 1;
+    }
+    this.m_selfFrames += 1;
+    if this.m_selfFrames == 10 {
+      let n = 0;
+      for d in this.m_self {
+        if d >= 0.0 {
+          n += 1;
+        }
+      }
+      this.m_hasSelf = n > 0;
+      CMCSession.Log("drone: its own shell found on " + IntToString(n) + " of " + IntToString(ArraySize(this.m_self)) + " contact rays" + (this.m_hasSelf ? " (ignored on those; the ground ray starts under it)" : ""));
+    }
+  }
+
   // stick expo: x^3 blended in, soft near the centre, full at the end
   public static func Expo(x: Float, e: Float) -> Float = x * (1.0 - e) + x * x * x * e
 
@@ -849,13 +876,21 @@ public class CMUDrone extends CMCUnit {
   private func Contacts(drone: ref<NPCPuppet>) -> Void {
     let fl = this.m_flight;
     let hit: TraceResult;
+    if this.m_selfFrames < 10 {
+      this.LearnSelf();
+      return;
+    }
+    let i = -1;
     for p in this.m_pts {
+      i += 1;
       let r = CMFlight.QRot(fl.q, p - this.m_c);
       let len = Vector4.Length(r);
       if len > 0.02 {
         let dir = r / len;
         let tip = fl.pos + r;
-        if this.RayFast(fl.pos, tip + dir * 0.02, hit) {
+        let mine = i < ArraySize(this.m_self) ? this.m_self[i] : -1.0;
+        // something nearer than its own shell on this ray is the world inside it
+        if this.RayFast(fl.pos, tip + dir * 0.02, hit) && (mine < 0.0 || Vector4.Distance(fl.pos, Cast<Vector4>(hit.position)) < mine - 0.03) {
           let at = Cast<Vector4>(hit.position);
           let n = CMUDrone.Normal(hit, dir);
           let depth = Vector4.Dot(at - tip, n);
