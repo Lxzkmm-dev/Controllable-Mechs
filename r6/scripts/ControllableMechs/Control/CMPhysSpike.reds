@@ -350,6 +350,25 @@ public class CMPhysSpike extends ScriptableSystem {
     }
   }
 
+  // PLUGIN: MNC Physics v0's inspection (its log: red4ext/logs/mncphysics-*.log), and the
+  // body handle's own bytes when a box is out
+  public func PluginInspect() -> String {
+    if !CMPhysPlugin.Present() {
+      CMPhysSpike.Log("plugin: MNC Physics is not loaded");
+      return "!MNC PHYSICS PLUGIN NOT LOADED";
+    }
+    let msg = CMPhysPlugin.Inspect();
+    CMPhysSpike.Log("plugin: MNC Physics v" + IntToString(CMPhysPlugin.Version()) + ": " + msg);
+    let e = this.Box();
+    if IsDefined(e) {
+      let body = this.Fresh(e);
+      if IsDefined(body) {
+        CMPhysSpike.Log("plugin: box body " + CMPhysPlugin.BodyBits(body));
+      }
+    }
+    return "*" + StrUpper(msg) + ": SEE RED4EXT'S MNCPHYSICS LOG";
+  }
+
   public static func QId() -> Quaternion {
     let q: Quaternion;
     q.r = 1.0;
