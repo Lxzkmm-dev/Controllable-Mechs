@@ -162,7 +162,7 @@ public class CMUDrone extends CMCUnit {
     this.m_proxySpawned = false;
     this.m_proxyBody = null;
     if link.IsPhysicsTest(drone) {
-      if CMPhysStep.Present() && CMPhysPlugin.HasVelocity() && (Equals(this.m_kind, "octant") || Equals(this.m_kind, "wyvern")) {
+      if CMPhysStep.Present() && CMPhysPlugin.HasVelocity() {
         this.m_phys = true;
         this.m_name += " V3";
         this.StartPhys(drone, s.Now());
@@ -1993,6 +1993,7 @@ public class CMUDrone extends CMCUnit {
   private let m_physVel: Vector4;
   private let m_physLogAt: Float;
   private let m_physKnock: Float;      // the biggest change of velocity in a frame since the last log
+  private let m_physSkinned: array<wref<IComponent>>;  // its own physical skinned meshes (the Griffin's body)
   private let m_podBodies: array<ref<PhysicalBodyInterface>>;  // its own physical meshes' bodies
                                        // (the Octant's thruster pods), kept from pushing the body
 
@@ -2012,6 +2013,14 @@ public class CMUDrone extends CMCUnit {
         }
       }
     }
+    // a physical skinned mesh (the Griffin's body) has no script-declared body accessor: its
+    // CreatePhysicalBodyInterface through Codeware's Reflection
+    for c in this.m_physSkinned {
+      let sb = CMUDrone.SkinnedBody(c);
+      if IsDefined(sb) {
+        ArrayPush(this.m_podBodies, sb);
+      }
+    }
     // the pods go off first; the body is spawned a quarter second later (TryProxy), once the
     // plugin has taken them off at its physics steps, so nothing of its own is inside it
     this.PodsOff();
@@ -2023,7 +2032,19 @@ public class CMUDrone extends CMCUnit {
 
   private func SpawnProxy(now: Float) -> Void {
     let spec = new DynamicEntitySpec();
-    spec.templatePath = Equals(this.m_kind, "octant") ? r"mnc\\physics\\proxy_octant.ent" : r"mnc\\physics\\proxy_wyvern.ent";
+    switch this.m_kind {
+      case "octant":
+        spec.templatePath = r"mnc\\physics\\proxy_octant.ent";
+        break;
+      case "bombus":
+        spec.templatePath = r"mnc\\physics\\proxy_bombus.ent";
+        break;
+      case "griffin":
+        spec.templatePath = r"mnc\\physics\\proxy_griffin.ent";
+        break;
+      default:
+        spec.templatePath = r"mnc\\physics\\proxy_wyvern.ent";
+    }
     spec.position = this.m_flight.pos;
     let face: EulerAngles;
     face.Yaw = this.m_flight.yaw;
@@ -2131,7 +2152,7 @@ public class CMUDrone extends CMCUnit {
     CMPhysPlugin.SetSpin(body, CMFlight.QRot(fl.q, wb));
     CMPhysStep.SetForce(body, fl.outForce, new Vector4(0.0, 0.0, 0.0, 0.0));
     // the Wind Framework's prop drag leaves it alone (MNC's flight model has the air)
-    CMPhysWind.IgnoreNear(Equals(this.m_kind, "octant") ? 7310 : 7311, fl.pos, fl.p.span + 1.0);
+    CMPhysWind.IgnoreNear(7310 + CMUDrone.KindIndex(this.m_kind), fl.pos, fl.p.span + 1.0);
     if now >= this.m_physLogAt {
       this.m_physLogAt = now + 1.0;
       CMCSession.Log("drone V3: at " + CMCHits.V(fl.pos) + ", speed " + FloatToStringPrec(Vector4.Length(v), 1) + " m/s, spin " + FloatToStringPrec(Vector4.Length(fl.w), 2) + " rad/s, rotor force " + CMCHits.V(fl.outForce) + " N, " + FloatToStringPrec(this.m_ground, 1) + " m up, biggest knock " + FloatToStringPrec(this.m_physKnock, 1) + " m/s; " + CMPhysStep.Info(body) + (ArraySize(this.m_podBodies) > 0 ? "; pods (" + IntToString(ArraySize(this.m_podBodies)) + ", collision " + (CMPhysColl.Present() ? "off" : "NOT HANDLED: needs MNC Physics 3.1") + "): first " + CMPhysStep.Info(this.m_podBodies[0]) : ""));
@@ -2161,6 +2182,7 @@ public class CMUDrone extends CMCUnit {
     if !on {
       ArrayClear(this.m_physOffColliders);
       ArrayClear(this.m_physOffMeshes);
+      ArrayClear(this.m_physSkinned);
       for c in drone.GetComponents() {
         if c.IsA(n"entColliderComponent") || c.IsA(n"entSimpleColliderComponent") {
           if c.IsEnabled() {
@@ -2170,6 +2192,10 @@ public class CMUDrone extends CMCUnit {
         } else {
           if c.IsA(n"entPhysicalMeshComponent") && CMUDrone.MeshCollision(c, false) {
             ArrayPush(this.m_physOffMeshes, c);
+          } else {
+            if c.IsA(n"entPhysicalSkinnedMeshComponent") {
+              ArrayPush(this.m_physSkinned, c);   // (the Griffin's body: its body is taken off in StartPhys)
+            }
           }
         }
       }
@@ -2187,6 +2213,30 @@ public class CMUDrone extends CMCUnit {
     }
     ArrayClear(this.m_physOffColliders);
     ArrayClear(this.m_physOffMeshes);
+  }
+
+  // a physical skinned mesh's body (body 0), through Reflection; none if it won't give one
+  private static func SkinnedBody(c: ref<IComponent>) -> ref<PhysicalBodyInterface> {
+    let cls = Reflection.GetClass(n"entPhysicalSkinnedMeshComponent");
+    let fn = IsDefined(cls) ? cls.GetFunction(n"CreatePhysicalBodyInterface") : null;
+    if !IsDefined(fn) {
+      return null;
+    }
+    let ok = false;
+    let args: array<Variant>;
+    let params = fn.GetParameters();
+    if ArraySize(params) > 0 {
+      if Equals(params[0].GetType().GetName(), n"Uint32") {
+        ArrayPush(args, ToVariant(0u));
+      } else {
+        ArrayPush(args, ToVariant(0));
+      }
+    }
+    let v = fn.Call(c, args, ok);
+    if !ok || !IsDefined(v) {
+      return null;
+    }
+    return FromVariant<ref<PhysicalBodyInterface>>(v);
   }
 
   // PhysicalMeshComponent.ToggleCollision: in the engine's type info with its parameter, but
@@ -2484,6 +2534,15 @@ public class CMUDrone extends CMCUnit {
       return "octant";
     }
     return "wyvern";
+  }
+
+  public static func KindIndex(kind: String) -> Int32 {
+    switch kind {
+      case "octant": return 0;
+      case "wyvern": return 1;
+      case "griffin": return 2;
+    }
+    return 3;
   }
 
   public static func TypeName(kind: String) -> String {

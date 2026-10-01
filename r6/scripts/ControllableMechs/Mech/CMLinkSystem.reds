@@ -208,13 +208,10 @@ public class CMLinkSystem extends ScriptableSystem {
   }
 
   // a test drone: "bombus", "griffin", "wyvern" or "octant", 2.5 m above the ground point.
-  // physics: a V3 drone (the Octant and the Wyvern, with MNC Physics version 3): flown as a
-  // real PhysX body instead of the 6-DOF flight model (CMUDrone). Optional, so callers that
-  // pass only the kind (Night City Empires) get the normal drone.
+  // physics: a V3 drone (with MNC Physics version 3): flown as a real PhysX body instead of
+  // the 6-DOF flight model (CMUDrone). Optional, so callers that pass only the kind (Night
+  // City Empires) get the normal drone.
   public func SpawnTestDrone(kind: String, opt physics: Bool) -> String {
-    if physics && !Equals(kind, "octant") && !Equals(kind, "wyvern") {
-      return "!V3 PHYSICS IS FOR THE OCTANT AND THE WYVERN";
-    }
     if !this.HasTestMech() {
       this.m_testPhysics = physics;   // (a unit already out keeps its own kind)
     }

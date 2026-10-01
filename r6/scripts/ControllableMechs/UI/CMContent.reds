@@ -327,7 +327,7 @@ public class CMContent extends TKContent {
       p.SetTip("Spawns one 46 ft in front of you and links it, in that livery.");
       p.Buttons("SPAWN A DRONE (TEST)", "", "", "BOMBUS|GRIFFIN|WYVERN|OCTANT", "spawndrone|spawndrone|spawndrone|spawndrone", "bombus|griffin|wyvern|octant");
       if CMPhysStep.Present() {
-        p.Buttons("SPAWN A V3 DRONE (PHYSICS)", "Flown as a real PhysX body (MNC Physics plugin): real collisions, it shoves cars and props and is shoved back. Separate from the drones above, which keep the 6-DOF flight model", "", "WYVERN V3|OCTANT V3", "spawndronev3|spawndronev3", "wyvern|octant");
+        p.Buttons("SPAWN A V3 DRONE (PHYSICS)", "Flown as a real PhysX body (MNC Physics plugin): real collisions, it shoves cars and props and is shoved back. Separate from the drones above, which keep the 6-DOF flight model", "", "BOMBUS V3|GRIFFIN V3|WYVERN V3|OCTANT V3", "spawndronev3|spawndronev3|spawndronev3|spawndronev3", "bombus|griffin|wyvern|octant");
       } else {
         p.Item("V3 DRONES (PHYSICS)", "Need the MNC Physics plugin, version 3 (red4ext\\plugins\\MNCPhysics)", "", "", "", "", false);
       }
