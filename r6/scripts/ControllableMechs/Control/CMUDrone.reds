@@ -50,7 +50,8 @@ public class CMUDrone extends CMCUnit {
   private let m_hitS: Int32;           // per query type: static, dynamic, vehicle (log)
   private let m_hitD: Int32;
   private let m_hitV: Int32;
-  private let m_hitG: Int32;           // the Static and Terrain groups, queried by group not preset (log)
+  private let m_hitG: Int32;
+  private let m_touchLogged: Bool;           // the Static and Terrain groups, queried by group not preset (log)
   private let m_probe: Int32;          // the old inline ground ray, kept as a control (log)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
@@ -343,6 +344,12 @@ public class CMUDrone extends CMCUnit {
       this.m_ground = fl.pos.Z - gz;
       if fl.pos.Z < gz + r0 + 0.02 {
         fl.grounded = Vector4.Length(fl.vel) < 2.0;
+        if !this.m_touchLogged {
+          this.m_touchLogged = true;
+          CMCSession.Log("drone: touched the ground, base " + FloatToStringPrec(fl.pos.Z - r0 - gz, 2) + " m above the surface the ray found");
+        }
+      } else {
+        this.m_touchLogged = false;
       }
       if fl.pos.Z < gz + r0 {
         fl.pos.Z = gz + r0;
