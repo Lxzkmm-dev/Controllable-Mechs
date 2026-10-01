@@ -377,7 +377,7 @@ public class CMCSession extends ScriptableSystem {
     this.m_cam = cam;
     this.ApplyCamera();
     cam.Activate(0.35, true);
-    this.m_hud = new CMPilotHud();
+    this.m_hud = this.m_unit.NewHud();
     this.m_hud.Build();
     this.m_hud.StartBoot();
     this.m_state = 2;

@@ -1344,6 +1344,18 @@ public class CMPilotHudState {
   public let lostR: Bool;
   public let parts: array<Float>; // each CMPart's integrity, 0-1 (the torso is the hull)
   public let warning: String;
+  // a drone's display (CMDroneHud)
+  public let role: String;        // its role and sensor line
+  public let alt: Float;          // m above the ground (-1 unknown)
+  public let vs: Float;           // vertical speed, m/s
+  public let pitch: Float;
+  public let roll: Float;
+  public let spool: Float;        // the rotors' spool, 0-1
+  public let priText: String;     // the weapons' lines
+  public let secText: String;
+  public let secSelected: Bool;
+  public let secHeat: Float;      // the secondary's heat, 0-1 (1 = overheated)
+  public let droneParts: array<Float>;   // each schematic part's health, 0-1
 }
 
 // one part on the damage schematic
