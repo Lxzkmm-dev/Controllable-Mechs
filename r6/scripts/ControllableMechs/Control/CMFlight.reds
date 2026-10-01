@@ -60,6 +60,9 @@ public class CMFlight {
   public let holding: Bool;
   public let grounded: Bool;       // resting on the ground (set by the unit's contacts)
   public let groundGain: Float;    // ground effect: the rotors' thrust near the ground, x (1 = none)
+  public let external: Bool;       // PhysX integrates (a V3 drone): Step only works out the forces
+  public let outForce: Vector4;    // external: rotors + air, world N (no gravity)
+  public let outTorque: Vector4;   // external: body-frame N m (no gyroscopic term)
   public let wind: Vector4;        // the air's own motion here (m/s, world; CMWind): drag and
                                    // the blades' flapping act on the speed through the air
   public let p: ref<CMFlightProfile>;
@@ -142,8 +145,8 @@ public class CMFlight {
   public func Right() -> Vector4 = CMFlight.QRot(this.q, new Vector4(1.0, 0.0, 0.0, 0.0))
 
   // inertia per body axis (pitch and roll alike, yaw)
-  private func Ix() -> Float = this.p.mass * this.p.arm * this.p.arm * 0.5
-  private func Iz() -> Float = this.p.mass * this.p.arm * this.p.arm * 0.8
+  public func Ix() -> Float = this.p.mass * this.p.arm * this.p.arm * 0.5
+  public func Iz() -> Float = this.p.mass * this.p.arm * this.p.arm * 0.8
 
   // one step. fwd/side: the keys (-1..1), c: climb (-1..1), view: the yaw the view looks at
   public func Step(dt: Float, fwd: Float, side: Float, c: Float, view: Float) -> Void {
@@ -254,6 +257,20 @@ public class CMFlight {
     bx -= ix * damp * this.w.X;
     by -= ix * damp * this.w.Y;
     bz -= iz * (this.grounded ? 4.0 : 1.0) * this.w.Z;
+    if this.external {
+      // PhysX moves the body (MNC Physics v3, a V3 drone): what the rotors and the air do to
+      // it, for the plugin to apply before every physics step. Gravity, the gyroscopic term
+      // and the integration are PhysX's own; the state (pos, q, vel, w) is read back from
+      // the body by the unit each frame.
+      let fe = CMFlight.QRot(this.q, new Vector4(0.0, 0.0, t0 + t1 + t2 + t3, 0.0));
+      let dragE = new Vector4(-0.6 * p.cdh * vb.X * AbsF(vb.X), -0.6 * p.cdh * vb.Y * AbsF(vb.Y), -0.6 * p.cdv * vb.Z * AbsF(vb.Z), 0.0);
+      fe += CMFlight.QRot(this.q, dragE);
+      fe -= air * (0.05 * m);
+      this.outForce = fe;
+      this.outTorque = new Vector4(bx, by, bz, 0.0);
+      this.Angles();
+      return;
+    }
     // Euler's equation, with the gyroscopic term
     let gx = this.w.Y * (iz * this.w.Z) - this.w.Z * (ix * this.w.Y);
     let gy = this.w.Z * (ix * this.w.X) - this.w.X * (iz * this.w.Z);
@@ -290,6 +307,11 @@ public class CMFlight {
     this.pos.Y += this.vel.Y * dt;
     this.pos.Z += this.vel.Z * dt;
     this.pos.W = 1.0;
+    this.Angles();
+  }
+
+  // the angles again after the state was set from outside (a V3 drone's body)
+  public func Sync() -> Void {
     this.Angles();
   }
 

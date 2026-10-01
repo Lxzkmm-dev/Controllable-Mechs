@@ -129,6 +129,9 @@ public class CMContent extends TKContent {
       case "spawndrone":
         p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg)));
         break;
+      case "spawndronev3":
+        p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg), true));
+        break;
       case "cfgprofile":
         cfg.SetCfgProfile(CMContent.Val(arg, 0));
         break;
@@ -323,6 +326,11 @@ public class CMContent extends TKContent {
       p.Buttons("SPAWN A MINOTAUR", "", "", "MILITECH|ARASAKA|NCPD|KURT'S", "spawntest|spawntest|spawntest|spawntest", "mch_003__minotaur_militech_01|mch_003__minotaur_arasaka_01|mch_003__minotaur_police_01|mch_003__minotaur_kurt");
       p.SetTip("Spawns one 46 ft in front of you and links it, in that livery.");
       p.Buttons("SPAWN A DRONE (TEST)", "", "", "BOMBUS|GRIFFIN|WYVERN|OCTANT", "spawndrone|spawndrone|spawndrone|spawndrone", "bombus|griffin|wyvern|octant");
+      if CMPhysStep.Present() {
+        p.Buttons("SPAWN A V3 DRONE (PHYSICS)", "Flown as a real PhysX body (MNC Physics plugin): real collisions, it shoves cars and props and is shoved back. Separate from the drones above, which keep the 6-DOF flight model", "", "WYVERN V3|OCTANT V3", "spawndronev3|spawndronev3", "wyvern|octant");
+      } else {
+        p.Item("V3 DRONES (PHYSICS)", "Need the MNC Physics plugin, version 3 (red4ext\\plugins\\MNCPhysics)", "", "", "", "", false);
+      }
     }
     // dev tools for part damage, while DIAGNOSTICS is on (repairs are a planned mechanic)
     if CMPilotSystem.Get(this.game).ShowDebug() && link.IsLinked() && Equals(link.UnitKind(), "MECH") {

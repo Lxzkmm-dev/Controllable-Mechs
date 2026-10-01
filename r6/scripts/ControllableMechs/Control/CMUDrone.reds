@@ -20,6 +20,7 @@
 module ControllableMechs.Control
 
 import ControllableMechs.*
+import Codeware.*
 
 public class CMUDrone extends CMCUnit {
   private let m_game: GameInstance;
@@ -154,6 +155,21 @@ public class CMUDrone extends CMCUnit {
     let start = drone.GetWorldPosition() + CMFlight.QRot(drone.GetWorldOrientation(), this.m_tt + this.m_c);
     this.m_flight = CMFlight.Make(prof, start, CMPilotRig.YawOf(drone.GetWorldForward()));
     this.m_flight.level = Cast<Float>(cfg.DroneLevel(this.m_kind)) / 100.0;
+    // a V3 drone (spawned as V3 in MOTOR POOL): its physics body is asked for now; the
+    // 6-DOF model flies it until the body is live
+    this.m_phys = false;
+    this.m_proxyLive = false;
+    this.m_proxySpawned = false;
+    this.m_proxyBody = null;
+    if link.IsPhysicsTest(drone) {
+      if CMPhysStep.Present() && CMPhysPlugin.HasVelocity() && (Equals(this.m_kind, "octant") || Equals(this.m_kind, "wyvern")) {
+        this.m_phys = true;
+        this.m_name += " V3";
+        this.StartPhys(drone, s.Now());
+      } else {
+        CMCSession.Log("drone V3: MNC Physics version 3 isn't loaded (or this kind has no body); flying on the 6-DOF model");
+      }
+    }
     this.m_prevQ = this.m_flight.q;
     this.m_hidden = false;
     this.m_show = prof.showTilt;
@@ -200,6 +216,7 @@ public class CMUDrone extends CMCUnit {
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
     this.DropShots();
     this.StopWash();
+    this.StopPhys(this.m_drone);
     if this.m_hold {
       // the chase view it was in before the hold, for next time
       this.m_hold = false;
@@ -437,25 +454,33 @@ public class CMUDrone extends CMCUnit {
     // ground effect: the rotors' cushion near the ground (its height from the last frame)
     this.m_flight.SetGround(this.m_ground);
     this.UpdateWind(now, dt);
-    // the flight model in small steps
-    let left = dt;
-    while left > 0.0001 {
-      let h = MinF(this.SUBSTEP, left);
-      this.m_flight.Step(h, f, side, climb, heading);
-      left -= h;
+    if this.m_phys && !this.m_proxyLive {
+      this.TryProxy(now);
     }
-    this.Collide(drone, from);
-    let fastBefore = this.m_fastHits;
-    this.Sweep(drone, from);
-    this.Contacts(drone);
-    // a self-check: sitting on the ground (the per-group ground ray says so) its lowest
-    // contact point must hit; if the one-query filter never does (as the preset queries
-    // once returned nothing), the contact rays go back to the per-group queries
-    if !this.m_fastOff && this.m_ground >= 0.0 && this.m_ground < -this.Lowest().Z + 0.01 {
-      this.m_fastMiss = this.m_fastHits > fastBefore ? 0 : this.m_fastMiss + 1;
-      if this.m_fastMiss > 60 {
-        this.m_fastOff = true;
-        CMCSession.Log("drone: the one-query contact rays found nothing on the ground; per-group rays from now on");
+    if this.m_proxyLive {
+      // a V3 drone: PhysX flies and collides its body; the flight model gives the forces
+      this.PhysFly(s, drone, f, side, climb, heading, dt, now);
+    } else {
+      // the flight model in small steps
+      let left = dt;
+      while left > 0.0001 {
+        let h = MinF(this.SUBSTEP, left);
+        this.m_flight.Step(h, f, side, climb, heading);
+        left -= h;
+      }
+      this.Collide(drone, from);
+      let fastBefore = this.m_fastHits;
+      this.Sweep(drone, from);
+      this.Contacts(drone);
+      // a self-check: sitting on the ground (the per-group ground ray says so) its lowest
+      // contact point must hit; if the one-query filter never does (as the preset queries
+      // once returned nothing), the contact rays go back to the per-group queries
+      if !this.m_fastOff && this.m_ground >= 0.0 && this.m_ground < -this.Lowest().Z + 0.01 {
+        this.m_fastMiss = this.m_fastHits > fastBefore ? 0 : this.m_fastMiss + 1;
+        if this.m_fastMiss > 60 {
+          this.m_fastOff = true;
+          CMCSession.Log("drone: the one-query contact rays found nothing on the ground; per-group rays from now on");
+        }
       }
     }
     this.m_prevQ = this.m_flight.q;
@@ -713,8 +738,12 @@ public class CMUDrone extends CMCUnit {
   // counts (Codeware: TraceResult.GetHitEntity).
   private func IsSelf(hit: TraceResult) -> Bool {
     let e = TraceResult.GetHitEntity(hit);
+    if !IsDefined(e) {
+      return false;
+    }
     let drone = this.m_drone;
-    return IsDefined(e) && IsDefined(drone) && e.GetEntityID() == drone.GetEntityID();
+    // a V3 drone's physics body (invisible) is its own too
+    return (IsDefined(drone) && e.GetEntityID() == drone.GetEntityID()) || (this.m_proxySpawned && e.GetEntityID() == this.m_proxyId);
   }
 
   private func RayFast(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
@@ -1939,6 +1968,216 @@ public class CMUDrone extends CMCUnit {
       CMCHits.Blame(drone, 0.6);
     }
     attack.StartAttack();
+  }
+
+  // ---- V3: a real PhysX body (MNC Physics version 3; the Octant and the Wyvern, spawned as
+  // V3 from MOTOR POOL; Omar, 2026-10-01). The drone NPC stays the drone (its health,
+  // targeting, hits and kills, its look) and is placed on an invisible physics body every
+  // frame (mnc\physics\proxy_<kind>.ent: a box round its hull, its flight profile's mass).
+  // PhysX moves and collides the body: it shoves cars and props and is shoved back, with
+  // the game's own gravity. Each frame the flight model reads the body's real state (place,
+  // attitude, velocity, spin), works out what the rotors and the air do (CMFlight.external)
+  // and the plugin applies that force before every physics step; the drone turns with its
+  // own inertia from the spin the body has now (so a knock's spin is kept), set through the
+  // body's own spin. The NPC's own physical parts stop colliding while it flies (they would
+  // shove the body: the old self-collision), and get it back after. Until the body is live,
+  // and if it is lost, the 6-DOF flight model flies it.
+  private let m_phys: Bool;
+  private let m_proxyId: EntityID;
+  private let m_proxySpawned: Bool;
+  private let m_proxyLive: Bool;
+  private let m_proxyAt: Float;
+  private let m_proxyBody: ref<PhysicalBodyInterface>;
+  private let m_physOffColliders: array<wref<IComponent>>;
+  private let m_physOffMeshes: array<wref<IComponent>>;
+  private let m_physVel: Vector4;
+  private let m_physLogAt: Float;
+  private let m_physKnock: Float;      // the biggest change of velocity in a frame since the last log
+
+  private func StartPhys(drone: ref<NPCPuppet>, now: Float) -> Void {
+    this.PhysCollisions(drone, false);
+    let spec = new DynamicEntitySpec();
+    spec.templatePath = Equals(this.m_kind, "octant") ? r"mnc\\physics\\proxy_octant.ent" : r"mnc\\physics\\proxy_wyvern.ent";
+    spec.position = this.m_flight.pos;
+    let face: EulerAngles;
+    face.Yaw = this.m_flight.yaw;
+    spec.orientation = EulerAngles.ToQuat(face);
+    spec.persistState = false;
+    spec.persistSpawn = false;
+    spec.alwaysSpawned = true;
+    spec.tags = [n"MNCPhysDrone"];
+    this.m_proxyId = GameInstance.GetDynamicEntitySystem().CreateEntity(spec);
+    this.m_proxySpawned = true;
+    this.m_proxyLive = false;
+    this.m_proxyAt = now;
+    this.m_physKnock = 0.0;
+    CMCSession.Log("drone V3: physics body asked for at " + CMCHits.V(spec.position) + " (" + NameToString(StringToName(Equals(this.m_kind, "octant") ? "proxy_octant" : "proxy_wyvern")) + "), " + IntToString(ArraySize(this.m_physOffColliders)) + " of its colliders and " + IntToString(ArraySize(this.m_physOffMeshes)) + " physical meshes off");
+  }
+
+  // the body, once it is placed and simulated: the flight hands its motion over to it
+  private func TryProxy(now: Float) -> Void {
+    let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
+    if !IsDefined(e) || Vector4.Length(e.GetWorldPosition()) < 1.0 {
+      if now - this.m_proxyAt > 10.0 {
+        CMCSession.Log("drone V3: the physics body never appeared in 10 s; flying on the 6-DOF model");
+        this.m_phys = false;
+      }
+      return;
+    }
+    let body = this.PhysBody(e);
+    if !IsDefined(body) || !body.IsSimulated() {
+      return;
+    }
+    let fl = this.m_flight;
+    this.m_proxyLive = true;
+    fl.external = true;
+    this.m_physVel = fl.vel;
+    CMPhysPlugin.SetVelocity(body, fl.vel);
+    CMPhysPlugin.SetSpin(body, CMFlight.QRot(fl.q, fl.w));
+    CMCSession.Log("drone V3: physics body live after " + FloatToStringPrec(now - this.m_proxyAt, 2) + " s, at " + CMCHits.V(e.GetWorldPosition()) + "; PhysX flies it now");
+  }
+
+  // a working handle on the body (taken again whenever it isn't simulated)
+  private func PhysBody(e: ref<Entity>) -> ref<PhysicalBodyInterface> {
+    if IsDefined(this.m_proxyBody) && this.m_proxyBody.IsSimulated() {
+      return this.m_proxyBody;
+    }
+    let c = e.FindComponentByName(n"proxy_body") as ColliderComponent;
+    if IsDefined(c) {
+      this.m_proxyBody = c.CreatePhysicalBodyInterface();
+    }
+    return this.m_proxyBody;
+  }
+
+  private func PhysFly(s: ref<CMCSession>, drone: ref<NPCPuppet>, f: Float, side: Float, climb: Float, heading: Float, dt: Float, now: Float) -> Void {
+    let fl = this.m_flight;
+    let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
+    let body = IsDefined(e) ? this.PhysBody(e) : null;
+    if !IsDefined(body) {
+      // the body is gone: the 6-DOF model takes over where the drone is
+      CMCSession.Log("drone V3: the physics body was lost; flying on the 6-DOF model");
+      this.m_proxyLive = false;
+      this.m_phys = false;
+      fl.external = false;
+      return;
+    }
+    // the body's real state
+    fl.pos = e.GetWorldPosition();
+    fl.pos.W = 1.0;
+    fl.q = e.GetWorldOrientation();
+    let v = CMPhysStep.Velocity(body);
+    fl.vel = v;
+    fl.w = CMFlight.QInvRot(fl.q, CMPhysStep.Spin(body));
+    fl.Sync();
+    // a knock: a sudden change of velocity (a crash, or something hit it)
+    let dv = Vector4.Length(v - this.m_physVel);
+    this.m_physVel = v;
+    this.m_physKnock = MaxF(this.m_physKnock, dv);
+    if dv > fl.p.impact {
+      this.Impact(drone, dv);
+    }
+    this.PhysGround();
+    // what the rotors and the air do (the flight model, forces only)
+    fl.Step(dt, f, side, climb, heading);
+    // it turns with its own inertia, from the spin it has now
+    let t = fl.outTorque;
+    let wb = fl.w + new Vector4(t.X / fl.Ix() * dt, t.Y / fl.Ix() * dt, t.Z / fl.Iz() * dt, 0.0);
+    CMPhysPlugin.SetSpin(body, CMFlight.QRot(fl.q, wb));
+    CMPhysStep.SetForce(body, fl.outForce, new Vector4(0.0, 0.0, 0.0, 0.0));
+    // the Wind Framework's prop drag leaves it alone (MNC's flight model has the air)
+    CMPhysWind.IgnoreNear(Equals(this.m_kind, "octant") ? 7310 : 7311, fl.pos, fl.p.span + 1.0);
+    if now >= this.m_physLogAt {
+      this.m_physLogAt = now + 1.0;
+      CMCSession.Log("drone V3: at " + CMCHits.V(fl.pos) + ", speed " + FloatToStringPrec(Vector4.Length(v), 1) + " m/s, spin " + FloatToStringPrec(Vector4.Length(fl.w), 2) + " rad/s, rotor force " + CMCHits.V(fl.outForce) + " N, " + FloatToStringPrec(this.m_ground, 1) + " m up, biggest knock " + FloatToStringPrec(this.m_physKnock, 1) + " m/s; " + CMPhysStep.Info(body));
+      this.m_physKnock = 0.0;
+    }
+  }
+
+  // the ground under it (the HUD, the ground effect, the height hold's settling); PhysX
+  // does the touching
+  private func PhysGround() -> Void {
+    let fl = this.m_flight;
+    let hit: TraceResult;
+    let top = fl.pos.Z + 1.0;
+    if this.Ray(new Vector4(fl.pos.X, fl.pos.Y, top, 1.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
+      this.m_ground = fl.pos.Z - hit.position.Z;
+      this.m_groundFrom = "V3 ground ray";
+      fl.grounded = this.m_ground < fl.p.bottom + 0.08 && Vector4.Length(fl.vel) < 2.0;
+    } else {
+      this.m_ground = -1.0;
+      fl.grounded = false;
+    }
+    this.m_show = 90.0;   // drawn as flown: the body is real
+  }
+
+  // the NPC's own colliders and physical meshes, off while it flies as V3 (back on after)
+  private func PhysCollisions(drone: ref<NPCPuppet>, on: Bool) -> Void {
+    if !on {
+      ArrayClear(this.m_physOffColliders);
+      ArrayClear(this.m_physOffMeshes);
+      for c in drone.GetComponents() {
+        if c.IsA(n"entColliderComponent") || c.IsA(n"entSimpleColliderComponent") {
+          if c.IsEnabled() {
+            c.Toggle(false);
+            ArrayPush(this.m_physOffColliders, c);
+          }
+        } else {
+          if c.IsA(n"entPhysicalMeshComponent") && CMUDrone.MeshCollision(c, false) {
+            ArrayPush(this.m_physOffMeshes, c);
+          }
+        }
+      }
+      return;
+    }
+    for c in this.m_physOffColliders {
+      if IsDefined(c) {
+        c.Toggle(true);
+      }
+    }
+    for c in this.m_physOffMeshes {
+      if IsDefined(c) {
+        CMUDrone.MeshCollision(c, true);
+      }
+    }
+    ArrayClear(this.m_physOffColliders);
+    ArrayClear(this.m_physOffMeshes);
+  }
+
+  // PhysicalMeshComponent.ToggleCollision: in the engine's type info with its parameter, but
+  // not declared to scripts; called through Codeware's Reflection
+  private static func MeshCollision(c: ref<IComponent>, on: Bool) -> Bool {
+    let cls = Reflection.GetClass(n"entPhysicalMeshComponent");
+    let fn = IsDefined(cls) ? cls.GetFunction(n"ToggleCollision") : null;
+    if !IsDefined(fn) {
+      return false;
+    }
+    let ok = false;
+    fn.Call(c, [ToVariant(on)], ok);
+    return ok;
+  }
+
+  private func StopPhys(drone: ref<NPCPuppet>) -> Void {
+    if !this.m_proxySpawned {
+      return;
+    }
+    let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
+    if IsDefined(e) {
+      let body = this.PhysBody(e);
+      if IsDefined(body) {
+        CMPhysStep.Release(body);
+      }
+    }
+    GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_proxyId);
+    this.m_proxySpawned = false;
+    this.m_proxyLive = false;
+    this.m_proxyBody = null;
+    if IsDefined(this.m_flight) {
+      this.m_flight.external = false;
+    }
+    if IsDefined(drone) {
+      this.PhysCollisions(drone, true);
+    }
+    CMCSession.Log("drone V3: physics body removed, the drone's own collisions back on");
   }
 
   // ---- the downwash: low over the ground, the rotors kick up dust (the game's AV dust

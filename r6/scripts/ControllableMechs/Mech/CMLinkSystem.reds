@@ -36,6 +36,7 @@ public class CMLinkSystem extends ScriptableSystem {
   private let m_cmd: ref<AICommand>;
   private let m_generation: Int32;   // bumps on every link / unlink / session: stale ticks drop out
   private let m_testID: EntityID;    // the test Minotaur, if one is out
+  private let m_testPhysics: Bool;   // the test unit is a V3 (physics) drone
   private let m_listening: Bool;
   private let m_stationed: Bool;     // posted somewhere (Night City Empires' HQ): no range limit
 
@@ -200,11 +201,23 @@ public class CMLinkSystem extends ScriptableSystem {
   // _police_01, _kurt), or none for the record's own. Optional: Night City Empires calls this
   // with no argument.
   public func SpawnTestMech(opt appearance: CName) -> String {
+    if !this.HasTestMech() {
+      this.m_testPhysics = false;
+    }
     return this.SpawnTest([t"Character.q003_militech_mech", t"Character.q114_arasaka_netnest_mech_friendly_quest", t"Character.Mech_NPC_Base"], appearance, 0.0, "*MINOTAUR INBOUND", "!NO MINOTAUR RECORD IN THIS GAME VERSION");
   }
 
-  // a test drone: "bombus", "griffin", "wyvern" or "octant", 2.5 m above the ground point
-  public func SpawnTestDrone(kind: String) -> String {
+  // a test drone: "bombus", "griffin", "wyvern" or "octant", 2.5 m above the ground point.
+  // physics: a V3 drone (the Octant and the Wyvern, with MNC Physics version 3): flown as a
+  // real PhysX body instead of the 6-DOF flight model (CMUDrone). Optional, so callers that
+  // pass only the kind (Night City Empires) get the normal drone.
+  public func SpawnTestDrone(kind: String, opt physics: Bool) -> String {
+    if physics && !Equals(kind, "octant") && !Equals(kind, "wyvern") {
+      return "!V3 PHYSICS IS FOR THE OCTANT AND THE WYVERN";
+    }
+    if !this.HasTestMech() {
+      this.m_testPhysics = physics;   // (a unit already out keeps its own kind)
+    }
     let records: array<TweakDBID>;
     switch kind {
       case "bombus":
@@ -219,7 +232,12 @@ public class CMLinkSystem extends ScriptableSystem {
       default:
         records = [t"Character.bls_se_militech_drone_octant_medium", t"Character.border_patrol_octant", t"Character.arasaka_drone_octant_easy4"];
     }
-    return this.SpawnTest(records, n"", 2.5, "*" + StrUpper(kind) + " INBOUND", "!NO " + StrUpper(kind) + " RECORD IN THIS GAME VERSION");
+    return this.SpawnTest(records, n"", 2.5, "*" + StrUpper(kind) + (physics ? " V3 (PHYSICS)" : "") + " INBOUND", "!NO " + StrUpper(kind) + " RECORD IN THIS GAME VERSION");
+  }
+
+  // the test drone out now is a V3 (physics) drone: `unit` is it, and it was spawned as V3
+  public func IsPhysicsTest(unit: ref<Entity>) -> Bool {
+    return this.m_testPhysics && IsDefined(unit) && unit.GetEntityID() == this.m_testID;
   }
 
   // the first of `records` this game has, spawned in front of V (`lift` metres up) and

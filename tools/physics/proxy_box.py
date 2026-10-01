@@ -9,8 +9,15 @@ a kinematic, rig-mounted prop, into a free rigid body:
   - its mesh is bound to the collider, so it is drawn wherever the body is.
 Only the game's own mesh is referenced (by path); no game asset is copied.
 
-usage: python proxy_box.py <cardboard_box_01_h.ent.json> <out proxy_box.ent.json>
-then:  WolvenKit.CLI convert deserialize <out json>  (gives proxy_box.ent)
+usage: python proxy_box.py <cardboard_box_01_h.ent.json> <out .ent.json>
+           [--mass KG] [--half X Y Z] [--no-mesh] [--centre]
+then:  WolvenKit.CLI convert deserialize <out json>  (gives the .ent)
+
+The V3 drones' bodies (MNC Physics v3, CMUDrone) are made the same way with no mesh (the
+real drone NPC is the visible part, placed on the body every frame) and the box centred on
+the entity's origin (the flight's centre of mass):
+  proxy_octant.ent  --mass 180 --half 1.35 1.70 0.95 --no-mesh --centre
+  proxy_wyvern.ent  --mass 40  --half 0.30 0.50 0.30 --no-mesh --centre
 """
 import copy
 import json
@@ -18,6 +25,7 @@ import sys
 
 MASS = 20.0
 HALF = (0.30, 0.22, 0.20)   # m, the box collider's half extents (the mesh's rough size)
+CENTRE = False              # box centred on the origin (else resting on it)
 COLLIDER = "proxy_body"
 KEEP = ("entMeshComponent", "entColliderComponent")
 
@@ -51,7 +59,7 @@ def box_collider(src):
     d.pop("radius", None)
     d["halfExtents"] = {"$type": "Vector3", "X": HALF[0], "Y": HALF[1], "Z": HALF[2]}
     d["isObstacle"] = 0
-    d["localToBody"]["position"].update({"X": 0, "Y": 0, "Z": HALF[2]})
+    d["localToBody"]["position"].update({"X": 0, "Y": 0, "Z": 0 if CENTRE else HALF[2]})
     return d
 
 
@@ -82,7 +90,25 @@ def fix(comps):
 
 
 def main():
+    global MASS, HALF, CENTRE, KEEP
     src, dst = sys.argv[1], sys.argv[2]
+    args = sys.argv[3:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--mass":
+            MASS = float(args[i + 1])
+            i += 2
+        elif args[i] == "--half":
+            HALF = (float(args[i + 1]), float(args[i + 2]), float(args[i + 3]))
+            i += 4
+        elif args[i] == "--no-mesh":
+            KEEP = ("entColliderComponent",)
+            i += 1
+        elif args[i] == "--centre":
+            CENTRE = True
+            i += 1
+        else:
+            raise SystemExit("unknown option " + args[i])
     with open(src, encoding="utf-8") as f:
         j = json.load(f)
     root = j["Data"]["RootChunk"]
