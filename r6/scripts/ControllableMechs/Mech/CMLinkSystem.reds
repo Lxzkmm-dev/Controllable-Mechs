@@ -37,6 +37,7 @@ public class CMLinkSystem extends ScriptableSystem {
   private let m_generation: Int32;   // bumps on every link / unlink / session: stale ticks drop out
   private let m_testID: EntityID;    // the test Minotaur, if one is out
   private let m_listening: Bool;
+  private let m_stationed: Bool;     // posted somewhere (Night City Empires' HQ): no range limit
 
   private let LINK_RANGE: Float = 60.0;    // how far V can be from a robot to link it
   // past this the link drops (the pilot session uses the same range)
@@ -68,6 +69,7 @@ public class CMLinkSystem extends ScriptableSystem {
   private func Clear() -> Void {
     this.m_generation += 1;
     this.m_linked = false;
+    this.m_stationed = false;
     this.m_order = CMOrder.None();
     this.m_cmd = null;
   }
@@ -110,6 +112,20 @@ public class CMLinkSystem extends ScriptableSystem {
   // Link
   // ---------------------------------------------------------------------------
   public func IsLinked() -> Bool = this.m_linked && IsDefined(this.Unit())
+
+  // A stationed unit (Night City Empires posts the linked mech at V's HQ) keeps its link at
+  // any distance while its order is Hold and V isn't piloting it: the 1 s check skips the
+  // range test, keeps the alive test, and keeps the link while the unit is streamed out
+  // with distance. Any other order, a new link or an unlink ends it.
+  public func SetStationed(on: Bool) -> Void { this.m_stationed = on && this.m_linked; }
+  public func IsStationed() -> Bool = this.m_stationed
+  private func StationedNow() -> Bool {
+    if !this.m_stationed || this.m_order != CMOrder.Hold() {
+      return false;
+    }
+    let session = CMCSession.Get(this.GetGameInstance());
+    return !(IsDefined(session) && session.IsActive());
+  }
   public func Order() -> Int32 = this.m_order
   public func SetOrder(order: Int32) -> Void { this.m_order = order; }
 
@@ -426,6 +442,7 @@ public class CMLinkSystem extends ScriptableSystem {
       return;
     }
     this.CancelCmd(unit);
+    this.m_stationed = false;   // sent somewhere: no longer posted
     ai.SendCommand(cmd);
     this.m_cmd = cmd;
     this.m_order = order;
@@ -490,11 +507,17 @@ public class CMLinkSystem extends ScriptableSystem {
     }
     let unit = this.Unit();
     let player = GetPlayer(this.GetGameInstance());
+    let stationed = this.StationedNow();
+    if stationed && !IsDefined(unit) {
+      // streamed out with the distance: still posted, checked again when it is back
+      this.Schedule();
+      return;
+    }
     if !IsDefined(unit) || !ScriptedPuppet.IsAlive(unit) {
       this.Drop(player, "ROBOT LINK LOST");
       return;
     }
-    if this.Distance() > this.Range() {
+    if !stationed && this.Distance() > this.Range() {
       this.Drop(player, CMLinkSystem.KindName(unit) + " OUT OF SIGNAL RANGE");
       return;
     }

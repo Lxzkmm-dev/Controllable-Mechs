@@ -60,6 +60,7 @@ public class CMUDrone extends CMCUnit {
   // turned by its rotation.
   private let m_tq: Quaternion;        // rest pose -> drawn, rotation
   private let m_tt: Vector4;           // rest pose -> drawn, translation (the hover lift)
+  private let m_tqSeen: Quaternion;    // the measured turn (log only)
   private let m_poseOk: Bool;          // measured at least once
   private let m_poseFrom: String;      // which slot (log)
   private let m_poseFrames: Int32;     // frames measured; held after 30
@@ -110,6 +111,7 @@ public class CMUDrone extends CMCUnit {
     // drawn body's centre, so taking over doesn't make it jump
     this.m_hull = CMDroneHull.Points(this.m_kind);
     this.m_tq = CMUDrone.QIdentity();
+    this.m_tqSeen = CMUDrone.QIdentity();
     this.m_tt = new Vector4(0.0, 0.0, 0.0, 0.0);
     this.m_poseOk = false;
     this.m_poseFrames = 0;
@@ -147,7 +149,7 @@ public class CMUDrone extends CMCUnit {
         ai.Toggle(false);
       }
     }
-    CMCSession.Log("drone: drawn pose " + (this.m_poseOk ? "via " + this.m_poseFrom : "not measured") + ", lift " + CMUDrone.V2(this.m_tt) + ", turned " + CMUDrone.V2(CMUDrone.QEuler(this.m_tq)) + " deg, " + IntToString(ArraySize(this.m_hull)) + " contact points, centre " + CMUDrone.V2(this.m_c) + ", sensor " + FloatToStringPrec(this.m_sensUp, 2) + " up " + FloatToStringPrec(this.m_sensFwd, 2) + " fwd");
+    CMCSession.Log("drone: drawn pose " + (this.m_poseOk ? "via " + this.m_poseFrom : "not measured") + ", lift " + CMUDrone.V2(this.m_tt) + ", turned " + CMUDrone.V2(CMUDrone.QEuler(this.m_tqSeen)) + " deg, " + IntToString(ArraySize(this.m_hull)) + " contact points, centre " + CMUDrone.V2(this.m_c) + ", sensor " + FloatToStringPrec(this.m_sensUp, 2) + " up " + FloatToStringPrec(this.m_sensFwd, 2) + " fwd");
     CMCSession.Log("drone: " + this.m_name + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID())
       + (this.m_aiOff ? ", AI off" : ", AI on") + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", move method " + CMUDrone.MethodName(this.m_method));
     return "";
@@ -414,7 +416,10 @@ public class CMUDrone extends CMCUnit {
     }
     this.m_tt += (t - this.m_tt) * k;
     this.m_tt.W = 0.0;
-    this.m_tq = CMUDrone.QBlend(this.m_tq, rot, k);
+    // the turn is logged, not applied: in flight it is only the hover animation's sway
+    // (Wyvern -5..-10, Octant -20..+13 deg, depending on the moment of take-over; a33 log),
+    // and held into the hull it tilted the contact points for the whole flight
+    this.m_tqSeen = CMUDrone.QBlend(this.m_tqSeen, rot, k);
     this.m_poseOk = true;
   }
 
@@ -953,7 +958,7 @@ public class CMUDrone extends CMCUnit {
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
       + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (static " + IntToString(this.m_hitS) + ", dynamic " + IntToString(this.m_hitD) + ", vehicle " + IntToString(this.m_hitV) + "; ground " + this.m_groundFrom + ")" + ", at " + CMCHits.V(this.m_flight.pos)
       + ", gait " + NameToString(this.m_gait) + ", heading " + FloatToStringPrec(fl.yaw, 0)
-      + ", drawn pose lift " + CMUDrone.V2(this.m_tt) + " turned " + CMUDrone.V2(CMUDrone.QEuler(this.m_tq))
+      + ", drawn pose lift " + CMUDrone.V2(this.m_tt) + " turned " + CMUDrone.V2(CMUDrone.QEuler(this.m_tqSeen))
       + ", body bone " + CMUDrone.V2(this.m_bone) + " vs flight centre " + CMUDrone.V2(this.m_placed) + " (bone less centre " + CMUDrone.V2(this.m_boneOff) + "), model lean cap " + FloatToStringPrec(this.m_show, 0)
       + heights
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
