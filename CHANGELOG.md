@@ -11,6 +11,15 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 - **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone flight, round 8** (Omar's a18 test: jitter, phasing and V jumping all persist):
+  - **Every ray fails, the control too.** The exact 8d130e5 ground ray found nothing at the drone's normal world position, so it isn't the code.
+    - The suspect is VAXIS's ULTRA Physics Overhaul, enabled in the active MO2 profile since about the time the rays stopped. It rewrites engine\physics\collision_presets.json; its "World Static" and "World Dynamic" add names such as "Player Collision" that aren't collision groups.
+    - The rays now also query the world by collision group (Static, Terrain) rather than preset, and log those hits separately.
+  - **Jitter at speed:** the camera moved before the frame's flight step, so it anchored to the drone's last placement, a frame behind and swinging with frame time. The anchor is now led by a frame of velocity.
+  - **V's jump:** no jump decision ever fired, so the Space press reaches V another way.
+    - Swallowed actions are now consumed at the input listener.
+    - Climb and vault (Space at a ledge or low wall) are refused too.
+  - **Build:** 0.7.0-a19.
 - **Drone flight, round 7** (Omar's a17 test: the model lean limit feels great, and V no longer crouches, but V still jumps, drones still phase through everything, and there is jitter at speed):
   - **The rays still find nothing:** a17 logged 0 hits out of about 300 rays a second.
     - Each query type (static, dynamic, vehicle) is now counted separately.

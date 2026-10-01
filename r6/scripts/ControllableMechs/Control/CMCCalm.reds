@@ -261,3 +261,27 @@ protected const func EnterCondition(const stateContext: ref<StateContext>, const
   }
   return wrappedMethod(stateContext, scriptInterface);
 }
+// Space at a ledge or low wall is a climb or a vault, not a jump: refused as well
+@wrapMethod(ClimbDecisions)
+protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
+  let player = scriptInterface.executionOwner as PlayerPuppet;
+  if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    if wrappedMethod(stateContext, scriptInterface) && CMPilotSystem.Get(player.GetGame()).ShowDebug() {
+      CMCHits.Trace(player.GetGame(), "operator: a ClimbDecisions move was refused");
+    }
+    return false;
+  }
+  return wrappedMethod(stateContext, scriptInterface);
+}
+// Space at a ledge or low wall is a climb or a vault, not a jump: refused as well
+@wrapMethod(VaultDecisions)
+protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
+  let player = scriptInterface.executionOwner as PlayerPuppet;
+  if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    if wrappedMethod(stateContext, scriptInterface) && CMPilotSystem.Get(player.GetGame()).ShowDebug() {
+      CMCHits.Trace(player.GetGame(), "operator: a VaultDecisions move was refused");
+    }
+    return false;
+  }
+  return wrappedMethod(stateContext, scriptInterface);
+}

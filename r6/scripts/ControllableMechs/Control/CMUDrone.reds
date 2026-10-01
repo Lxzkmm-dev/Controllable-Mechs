@@ -50,6 +50,7 @@ public class CMUDrone extends CMCUnit {
   private let m_hitS: Int32;           // per query type: static, dynamic, vehicle (log)
   private let m_hitD: Int32;
   private let m_hitV: Int32;
+  private let m_hitG: Int32;           // the Static and Terrain groups, queried by group not preset (log)
   private let m_probe: Int32;          // the old inline ground ray, kept as a control (log)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
@@ -140,8 +141,18 @@ public class CMUDrone extends CMCUnit {
   }
 
   public func Name() -> String = this.m_name
-  // the camera rides the drone as it really is, not the model a frame ahead of it
-  public func Ground() -> Vector4 = this.m_seen
+  // Where the camera anchors. The session moves the camera before this frame's flight
+  // step, so the drone's last placement was a frame behind the drone that is about to be
+  // drawn, and that gap swung with every change in frame time: the jitter at speed. The
+  // anchor is led by a frame of the drone's velocity instead, to where it is drawn.
+  public func Ground() -> Vector4 {
+    if !IsDefined(this.m_flight) {
+      return this.m_seen;
+    }
+    let p = this.Root() + this.m_flight.vel * this.m_dt;
+    p.W = 1.0;
+    return p;
+  }
   public func Facing() -> Float = IsDefined(this.m_flight) ? this.m_flight.yaw : 0.0
   public func SensorUp() -> Float = 0.1
   public func SensorFwd() -> Float = 0.35
@@ -229,6 +240,14 @@ public class CMUDrone extends CMCUnit {
     // takes in characters, and these rays start inside the drone itself
     let gotD = sq.SyncRaycastByCollisionGroup(from, to, n"Dynamic", hd, true, false);
     let gotV = sq.SyncRaycastByCollisionGroup(from, to, n"Vehicle", hv, true, false);
+    // the world again by collision group rather than the "World Static" preset: a mod that
+    // rewrites the engine's collision presets (VAXIS does) can leave preset queries
+    // finding nothing, while the groups still answer
+    let hg: TraceResult;
+    let gotG = sq.SyncRaycastByCollisionGroup(from, to, n"Static", hg, true, false);
+    if !gotG {
+      gotG = sq.SyncRaycastByCollisionGroup(from, to, n"Terrain", hg, true, false);
+    }
     let best = 1000000.0;
     let found = false;
     if gotS {
@@ -242,8 +261,16 @@ public class CMUDrone extends CMCUnit {
       found = true;
     }
     if gotV && CMUDrone.Dist2(from, hv) < best {
+      best = CMUDrone.Dist2(from, hv);
       hit = hv;
       found = true;
+    }
+    if gotG && CMUDrone.Dist2(from, hg) < best {
+      hit = hg;
+      found = true;
+    }
+    if gotG {
+      this.m_hitG += 1;
     }
     if gotS {
       this.m_hitS += 1;
@@ -501,7 +528,7 @@ public class CMUDrone extends CMCUnit {
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
-      + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (static " + IntToString(this.m_hitS) + ", dynamic " + IntToString(this.m_hitD) + ", vehicle " + IntToString(this.m_hitV) + ", control " + IntToString(this.m_probe) + "; ground " + this.m_groundFrom + ")" + ", at " + CMCHits.V(this.m_flight.pos)
+      + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (static " + IntToString(this.m_hitS) + ", dynamic " + IntToString(this.m_hitD) + ", vehicle " + IntToString(this.m_hitV) + ", by group " + IntToString(this.m_hitG) + ", control " + IntToString(this.m_probe) + "; ground " + this.m_groundFrom + ")" + ", at " + CMCHits.V(this.m_flight.pos)
       + ", gait " + NameToString(this.m_gait)
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;
@@ -513,6 +540,7 @@ public class CMUDrone extends CMCUnit {
     this.m_hitS = 0;
     this.m_hitD = 0;
     this.m_hitV = 0;
+    this.m_hitG = 0;
     this.m_probe = 0;
   }
 

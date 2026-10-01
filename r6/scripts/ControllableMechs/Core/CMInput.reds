@@ -73,6 +73,8 @@ protected cb func OnGameAttached() -> Bool {
 protected cb func OnAction(action: ListenerAction, consumer: ListenerActionConsumer) -> Bool {
   if IsDefined(this.m_cmcSession) {
     if this.m_cmcSession.OnGameAction(ListenerAction.GetName(action), ListenerAction.GetType(action), ListenerAction.GetValue(action)) {
+      // consumed, so no other listener (V's own movement) acts on it as well
+      ListenerActionConsumer.ConsumeSingleAction(consumer);
       return true;
     }
   }
