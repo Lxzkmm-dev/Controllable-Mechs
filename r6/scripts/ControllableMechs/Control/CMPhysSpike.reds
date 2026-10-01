@@ -46,7 +46,9 @@ public class CMPhysSpike extends ScriptableSystem {
   private let m_tiltSum: Float;
   private let m_tiltN: Int32;
   private let TILT_TIME: Float = 30.0;
-  private let TWIST: Float = 1.0;      // N m, the calibration twist
+  private let m_sign: Float;           // R4: +1 if the couple turns it the way asked, else -1
+  private let m_inertia: Float;        // R4: measured, kg m2
+  private let TWIST: Float = 0.3;      // N m, the calibration twist
   private let LEVER: Float = 0.25;     // m, half the couple's span
   private let INERTIA: Float = 0.6;    // kg m2, the box about a horizontal axis (about)
   private let MASS: Float = 20.0;      // the .ent's mass (the body can't be asked)
@@ -277,17 +279,21 @@ public class CMPhysSpike extends ScriptableSystem {
   private func Tilt(body: ref<PhysicalBodyInterface>, q: Quaternion, w: Vector4, age: Float, h: Float) -> Void {
     let up = CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0));
     if age < 12.0 {
+      // per variant: half a second of twist about world +X (the spin it gave, signed, is
+      // measured at its end), then half a second back the other way, so the box is left
+      // about as it was whichever way the push turned out to turn it (a5: one-way twists
+      // and a levelling with guessed sign and inertia left it spinning at 5-8 rad/s)
       let k = Min(2, FloorF(age / 4.0));
       let inPhase = age - Cast<Float>(k) * 4.0;
-      if inPhase < 1.0 {
+      if inPhase < 0.5 {
         this.Couple(body, new Vector4(this.TWIST, 0.0, 0.0, 0.0), k, h);
-      } else {
-        if inPhase < 1.15 {
-          this.m_resp[k] = MaxF(this.m_resp[k], Vector4.Length(w));
+        if inPhase > 0.4 && AbsF(w.X) > AbsF(this.m_resp[k]) {
+          this.m_resp[k] = w.X;
         }
-        // settle back to level with the same variant (if it turns it, it levels it too)
-        let back = (CMFlight.Cross(up, new Vector4(0.0, 0.0, 1.0, 0.0)) * 30.0 - w * 8.0) * this.INERTIA;
-        this.Couple(body, back, k, h);
+      } else {
+        if inPhase < 1.0 {
+          this.Couple(body, new Vector4(-this.TWIST, 0.0, 0.0, 0.0), k, h);
+        }
       }
       return;
     }
@@ -295,16 +301,22 @@ public class CMPhysSpike extends ScriptableSystem {
       this.m_best = 0;
       let i = 1;
       while i < 3 {
-        if this.m_resp[i] > this.m_resp[this.m_best] {
+        if AbsF(this.m_resp[i]) > AbsF(this.m_resp[this.m_best]) {
           this.m_best = i;
         }
         i += 1;
       }
-      CMPhysSpike.Log("R4 calibration: spin after a 1 s twist of " + FloatToStringPrec(this.TWIST, 1) + " N m: variant 0 " + FloatToStringPrec(this.m_resp[0], 2) + ", 1 " + FloatToStringPrec(this.m_resp[1], 2) + ", 2 " + FloatToStringPrec(this.m_resp[2], 2) + " rad/s; holding the lean with variant " + IntToString(this.m_best));
+      let r = this.m_resp[this.m_best];
+      // the spin a 0.5 s twist gave: inertia = twist x time / spin; the sign says whether
+      // the couple turns it the way it was asked
+      this.m_sign = r < 0.0 ? -1.0 : 1.0;
+      this.m_inertia = ClampF(this.TWIST * 0.5 / MaxF(0.01, AbsF(r)), 0.01, 5.0);
+      CMPhysSpike.Log("R4 calibration: spin about +X after a 0.5 s twist of " + FloatToStringPrec(this.TWIST, 1) + " N m: variant 0 " + FloatToStringPrec(this.m_resp[0], 2) + ", 1 " + FloatToStringPrec(this.m_resp[1], 2) + ", 2 " + FloatToStringPrec(this.m_resp[2], 2) + " rad/s; variant " + IntToString(this.m_best) + ", inertia " + FloatToStringPrec(this.m_inertia, 3) + " kg m2, sign " + FloatToStringPrec(this.m_sign, 0));
     }
-    // hold a 20 deg lean toward world +X: a spring on the angle, a damper on the spin
+    // hold a 20 deg lean toward world +X: a spring on the angle, a damper on the spin, sized
+    // to the measured inertia (about 4 rad/s, well damped)
     let want = new Vector4(SinF(Deg2Rad(20.0)), 0.0, CosF(Deg2Rad(20.0)), 0.0);
-    let tq = (CMFlight.Cross(up, want) * 40.0 - w * 9.0) * this.INERTIA;
+    let tq = (CMFlight.Cross(up, want) * 16.0 - w * 6.4) * (this.m_inertia * this.m_sign);
     this.Couple(body, tq, this.m_best, h);
     if age > 17.0 {
       this.m_tiltSum += Rad2Deg(AcosF(ClampF(Vector4.Dot(up, want), -1.0, 1.0)));
