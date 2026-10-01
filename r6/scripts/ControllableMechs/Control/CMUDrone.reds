@@ -44,6 +44,8 @@ public class CMUDrone extends CMCUnit {
   private let m_gait: CName;           // the drone locomotion wrapper on (Walk, Run, Sprint)
   private let m_lastYaw: Float;
   private let m_ground: Float;         // metres above the ground, last measured
+  private let m_stickF: Float;         // the keys as a stick: ramped in, with expo
+  private let m_stickS: Float;
 
   private let SUBSTEP: Float = 0.008;  // s, the flight model's step
 
@@ -164,8 +166,16 @@ public class CMUDrone extends CMCUnit {
       this.m_errMax = MaxF(this.m_errMax, err);
       this.m_errN += 1;
     }
-    let f = (s.Key(CMCKey.W()) ? 1.0 : 0.0) - (s.Key(CMCKey.S()) ? 1.0 : 0.0);
-    let side = (s.Key(CMCKey.D()) ? 1.0 : 0.0) - (s.Key(CMCKey.A()) ? 1.0 : 0.0);
+    // keys are on or off; a stick isn't: each key ramps the stick in over the type's ramp
+    // time, and expo softens the start of its travel, so W eases the drone over instead
+    // of slamming it to full tilt
+    let keyF = (s.Key(CMCKey.W()) ? 1.0 : 0.0) - (s.Key(CMCKey.S()) ? 1.0 : 0.0);
+    let keyS = (s.Key(CMCKey.D()) ? 1.0 : 0.0) - (s.Key(CMCKey.A()) ? 1.0 : 0.0);
+    let k = MinF(1.0, dt / MaxF(0.01, this.m_flight.p.ramp));
+    this.m_stickF += (keyF - this.m_stickF) * k;
+    this.m_stickS += (keyS - this.m_stickS) * k;
+    let f = CMUDrone.Expo(this.m_stickF, this.m_flight.p.expo);
+    let side = CMUDrone.Expo(this.m_stickS, this.m_flight.p.expo);
     let climb = (s.Key(CMCKey.Up()) ? 1.0 : 0.0) - (s.Key(CMCKey.Down()) ? 1.0 : 0.0);
     let from = this.m_flight.pos;
     // the flight model in small steps
@@ -176,6 +186,7 @@ public class CMUDrone extends CMCUnit {
       left -= h;
     }
     this.Collide(drone, from);
+    this.PushOut(drone);
     this.Place(drone, now);
     this.Lean(drone, dt);
     if now >= this.m_logAt {
@@ -205,7 +216,9 @@ public class CMUDrone extends CMCUnit {
       best = Vector4.Distance(from, Cast<Vector4>(h.position));
       hit = h;
     }
-    if sq.SyncRaycastByCollisionPreset(from, to, n"World Dynamic", h, true) {
+    // the Dynamic group (movable props), not the "World Dynamic" preset: that one also
+    // takes in characters, and these rays start inside the drone itself
+    if sq.SyncRaycastByCollisionGroup(from, to, n"Dynamic", h, true, false) {
       let dd = Vector4.Distance(from, Cast<Vector4>(h.position));
       if best < 0.0 || dd < best {
         best = dd;
@@ -269,6 +282,37 @@ public class CMUDrone extends CMCUnit {
       this.m_ground = -1.0;
     }
   }
+  // stick expo: x^3 blended in, soft near the centre, full at the end
+  public static func Expo(x: Float, e: Float) -> Float = x * (1.0 - e) + x * x * x * e
+
+  // Out of anything it is inside: four rays out from the centre (front, back, left, right)
+  // against the world, dynamic objects and vehicles. Whatever is closer than the drone's
+  // radius pushes it out along the surface and is a contact, so a car driving into it or
+  // a wall it ended up in moves it instead of passing through.
+  private func PushOut(drone: ref<NPCPuppet>) -> Void {
+    let fl = this.m_flight;
+    let r = fl.p.radius;
+    let fwd = CMPilotRig.Dir(fl.yaw, 0.0);
+    let right = CMPilotRig.Dir(fl.yaw - 90.0, 0.0);
+    let dirs: array<Vector4> = [fwd, fwd * -1.0, right, right * -1.0];
+    let hit: TraceResult;
+    for d in dirs {
+      if this.Ray(fl.pos, fl.pos + d * r, hit) {
+        let at = Cast<Vector4>(hit.position);
+        let depth = r - Vector4.Distance(fl.pos, at);
+        if depth > 0.0 {
+          let n = Vector4.Normalize(Cast<Vector4>(hit.normal));
+          if Vector4.Dot(n, d) > 0.0 {
+            n = d * -1.0;   // a back-facing hit: push straight back along the ray
+          }
+          fl.pos += n * depth;
+          fl.pos.W = 1.0;
+          this.Impact(drone, fl.Contact(n, d * r, 0.2, 0.3));
+        }
+      }
+    }
+  }
+
   // a collision this fast (m/s): past the type's limit it costs health, more the harder
   // it hits; a crash can destroy the drone (a crashed drone is lost)
   private func Impact(drone: ref<NPCPuppet>, speed: Float) -> Void {
