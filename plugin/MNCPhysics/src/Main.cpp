@@ -37,7 +37,7 @@ namespace
 RED4ext::v1::PluginHandle g_handle = nullptr;
 const RED4ext::v1::Sdk* g_sdk = nullptr;
 
-constexpr int32_t VERSION = 4; // v3.1: collision off for a body's shapes
+constexpr int32_t VERSION = 5; // v3.2: a component's body (physical skinned meshes)
 
 void Log(const std::string& aText)
 {
@@ -470,6 +470,82 @@ void StepInfo(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CStr
     }
 }
 
+// ---- v3.2: a component's physics body, for components scripts can't ask -------------
+// entPhysicalSkinnedMeshComponent.CreatePhysicalBodyInterface is registered with no return
+// type, so scripts (and Codeware's Reflection) get nothing back. Its native still makes the
+// body handle; called here with a result slot of the handle type, it is read back. The
+// Griffin's body and wings are such meshes (kinematic, inside its physics body: a12 threw it
+// into the ground at 23 m/s the moment the body went live, like the Octant's pods in a10).
+bool ExecuteGuarded(RED4ext::CBaseFunction* aFunc, RED4ext::CStack* aStack)
+{
+    __try
+    {
+        return aFunc->Execute(aStack);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return false;
+    }
+}
+
+void ComponentBody(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame,
+                   RED4ext::Handle<RED4ext::IScriptable>* aOut, int64_t)
+{
+    RED4ext::Handle<RED4ext::IScriptable> comp;
+    int32_t index = 0;
+    RED4ext::GetParameter(aFrame, &comp);
+    RED4ext::GetParameter(aFrame, &index);
+    aFrame->code++; // ParamEnd
+    RED4ext::Handle<RED4ext::IScriptable> body;
+    std::string why = "no component";
+    if (comp && comp.instance)
+    {
+        auto rtti = RED4ext::CRTTISystem::Get();
+        auto cls = comp->GetType();
+        auto func = cls ? cls->GetFunction("CreatePhysicalBodyInterface") : nullptr;
+        auto handleType = rtti->GetType("handle:entPhysicalBodyInterface");
+        if (!func)
+        {
+            why = std::string(cls ? cls->GetName().ToString() : "?") + " has no CreatePhysicalBodyInterface";
+        }
+        else if (!handleType)
+        {
+            why = "no handle type";
+        }
+        else
+        {
+            uint32_t idx = static_cast<uint32_t>(index < 0 ? 0 : index);
+            RED4ext::CStackType arg;
+            const bool takesIndex = func->params.Size() > 0;
+            if (takesIndex)
+            {
+                arg.type = func->params[0]->type;
+                arg.value = &idx;
+            }
+            RED4ext::CStackType result;
+            result.type = handleType;
+            result.value = &body;
+            RED4ext::CStack stack(comp.instance, takesIndex ? &arg : nullptr, takesIndex ? 1u : 0u, &result);
+            const bool ran = ExecuteGuarded(func, &stack);
+            uint32_t proxy = 0, bodyIndex = 0;
+            const bool live = body && BodyIds(body, proxy, bodyIndex);
+            why = std::string(cls->GetName().ToString()) + (ran ? " ran" : " FAILED") + ", " +
+                  (body ? (live ? "body proxy " + std::to_string(proxy) + " index " + std::to_string(bodyIndex)
+                                : "a handle that is not a live body")
+                        : "no handle back");
+            if (body && !live)
+            {
+                body.Reset();
+            }
+        }
+    }
+    Log("component body: " + why);
+    if (aOut)
+    {
+        *aOut = body;
+    }
+}
+
 template<typename T>
 void Global(const char* aName, RED4ext::ScriptingFunction_t<T> aFunc, const char* aReturn,
             std::initializer_list<std::pair<const char*, const char*>> aParams)
@@ -524,6 +600,8 @@ void PostRegisterTypes()
     Global("MNCPhysics_Release", &ReleaseBody, "Bool", {{"handle:entPhysicalBodyInterface", "body"}});
     Global("MNCPhysics_SetCollision", &SetCollision, "Bool",
            {{"handle:entPhysicalBodyInterface", "body"}, {"Bool", "on"}});
+    Global("MNCPhysics_ComponentBody", &ComponentBody, "handle:entPhysicalBodyInterface",
+           {{"handle:entIComponent", "component"}, {"Int32", "index"}});
     Global("MNCPhysics_StepVelocity", &StepVelocity, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
     Global("MNCPhysics_StepSpin", &StepSpin, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
     Global("MNCPhysics_StepInfo", &StepInfo, "String", {{"handle:entPhysicalBodyInterface", "body"}});

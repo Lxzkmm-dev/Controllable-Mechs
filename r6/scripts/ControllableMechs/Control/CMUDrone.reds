@@ -1508,6 +1508,7 @@ public class CMUDrone extends CMCUnit {
   private let m_proxySpawned: Bool;
   private let m_proxyLive: Bool;
   private let m_proxyAt: Float;
+  private let m_proxyLiveAt: Float;    // when the body went live (knocks do no damage while it settles)
   private let m_proxyBody: ref<PhysicalBodyInterface>;
   private let m_physOffColliders: array<wref<IComponent>>;
   private let m_physOffMeshes: array<wref<IComponent>>;
@@ -1536,11 +1537,20 @@ public class CMUDrone extends CMCUnit {
     }
     // a physical skinned mesh (the Griffin's body) has no script-declared body accessor: its
     // CreatePhysicalBodyInterface through Codeware's Reflection
+    // (MNC Physics v3.2 hands it over: the native makes it, scripts just get nothing back)
+    let skinned = 0;
     for c in this.m_physSkinned {
-      let sb = CMUDrone.SkinnedBody(c);
+      let sb = CMPhysBodies.Of(c);
+      if !IsDefined(sb) {
+        sb = CMUDrone.SkinnedBody(c);
+      }
       if IsDefined(sb) {
         ArrayPush(this.m_podBodies, sb);
+        skinned += 1;
       }
+    }
+    if ArraySize(this.m_physOffMeshes) + ArraySize(this.m_physSkinned) > 0 {
+      CMCSession.Log("drone body: its own physical parts: " + IntToString(ArraySize(this.m_physOffMeshes)) + " meshes, " + IntToString(ArraySize(this.m_physSkinned)) + " skinned meshes (" + IntToString(skinned) + " bodies taken" + (ArraySize(this.m_physSkinned) > skinned ? (CMPhysBodies.Present() ? "; some gave no body" : "; NEEDS MNC PHYSICS 3.2") : "") + "); " + IntToString(ArraySize(this.m_podBodies)) + " kept from pushing the body");
     }
     // the pods go off first; the body is spawned a quarter second later (TryProxy), once the
     // plugin has taken them off at its physics steps, so nothing of its own is inside it
@@ -1608,6 +1618,7 @@ public class CMUDrone extends CMCUnit {
     }
     let fl = this.m_flight;
     this.m_proxyLive = true;
+    this.m_proxyLiveAt = now;
     this.m_physVel = fl.vel;
     CMPhysPlugin.SetVelocity(body, fl.vel);
     CMPhysPlugin.SetSpin(body, CMFlight.QRot(fl.q, fl.w));
@@ -1668,8 +1679,15 @@ public class CMUDrone extends CMCUnit {
     let dv = Vector4.Length(v - this.m_physVel);
     this.m_physVel = v;
     this.m_physKnock = MaxF(this.m_physKnock, dv);
+    // a knock does damage once the body has settled: in its first half second a push from
+    // anything it was spawned into is logged, not taken as a crash (a12's Griffin died to
+    // its own parts at link-in)
     if dv > fl.p.impact {
-      this.Impact(drone, dv);
+      if now - this.m_proxyLiveAt >= 0.5 {
+        this.Impact(drone, dv);
+      } else {
+        CMCSession.Log("drone body: knocked at " + FloatToStringPrec(dv, 1) + " m/s while settling (no damage)");
+      }
     }
     this.PhysGround();
     // what the rotors and the air do (the flight model, forces only)
@@ -1805,8 +1823,6 @@ public class CMUDrone extends CMCUnit {
       }
     }
     ArrayClear(this.m_podBodies);
-    if IsDefined(this.m_flight) {
-    }
     if IsDefined(drone) {
       this.PhysCollisions(drone, true);
     }

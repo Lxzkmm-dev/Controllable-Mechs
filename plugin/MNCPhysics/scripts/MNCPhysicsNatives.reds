@@ -20,3 +20,6 @@ public static native func MNCPhysics_SetCollision(body: ref<PhysicalBodyInterfac
 public static native func MNCPhysics_StepVelocity(body: ref<PhysicalBodyInterface>) -> Vector4
 public static native func MNCPhysics_StepSpin(body: ref<PhysicalBodyInterface>) -> Vector4
 public static native func MNCPhysics_StepInfo(body: ref<PhysicalBodyInterface>) -> String
+// v3.2 (plugin version 5): a component's physics body where scripts get none back (the
+// physical skinned meshes' CreatePhysicalBodyInterface has no return type); null if none
+public static native func MNCPhysics_ComponentBody(component: ref<IComponent>, index: Int32) -> ref<PhysicalBodyInterface>
