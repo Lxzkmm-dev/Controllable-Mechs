@@ -139,7 +139,7 @@ def main():
             "com": com,
             "bounds": [[min(p[i] for p in pts) for i in range(3)], [max(p[i] for p in pts) for i in range(3)]],
             "hull": [[round(c, 3) for c in p] for p in h],
-            "sensor": {"up": round(com, 2), "fwd": round(nose + 0.05, 2)},
+            "sensor": {"up": round(com, 2), "fwd": round(nose + 0.10, 2)},
         }
         wireframe(tris, (0, 1), 512, os.path.join(docs, kind + "_top.png"))
         wireframe(tris, (1, 2), 512, os.path.join(docs, kind + "_side.png"))

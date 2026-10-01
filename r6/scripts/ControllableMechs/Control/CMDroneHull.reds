@@ -37,10 +37,10 @@ public abstract class CMDroneHull {
 
   public static func SensorFwdCm(kind: String) -> Int32 {
     switch kind {
-      case "bombus": return 29;
-      case "griffin": return 74;
-      case "wyvern": return 54;
-      case "octant": return 174;
+      case "bombus": return 34;
+      case "griffin": return 79;
+      case "wyvern": return 59;
+      case "octant": return 179;
     }
     return 35;
   }

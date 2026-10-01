@@ -249,9 +249,19 @@ public class CMUDrone extends CMCUnit {
       return this.Anchor();
     }
     let i = Max(0, n - 1 - this.m_camLag);
-    // (a37 also mounted the sight view's sensor on the drawn body, turning with it. With the
-    // Bombus's resting nose-down lean that swung the eye back inside its shell: Omar, a43.
-    // The sensor is level on the heading again, as before a37.)
+    if this.m_sight && IsDefined(this.m_flight) {
+      // The sensor is mounted on the drone's heading, level (not pitched or rolled with the
+      // model, which put the eye inside the Bombus's shell at its resting lean: a43). It used
+      // to sit on the view's heading: when the view swung faster than the drone could turn
+      // after it, the eye went out to the drone's side, inside a rotor pod, until the body
+      // caught up (Omar: the camera lags behind and plays catch-up). The session's ring adds
+      // the mount's reach on the view's heading, so that is taken back off here.
+      let fwd = this.SensorFwd();
+      let body = CMPilotRig.Dir(this.m_flight.yaw, 0.0);
+      let view = CMPilotRig.Dir(this.m_rigYaw, 0.0);
+      let a = this.m_anchors[i];
+      return new Vector4(a.X + (body.X - view.X) * fwd, a.Y + (body.Y - view.Y) * fwd, a.Z, 1.0);
+    }
     return this.m_anchors[i];
   }
 
