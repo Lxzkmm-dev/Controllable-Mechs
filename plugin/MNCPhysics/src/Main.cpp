@@ -35,7 +35,7 @@ namespace
 RED4ext::v1::PluginHandle g_handle = nullptr;
 const RED4ext::v1::Sdk* g_sdk = nullptr;
 
-constexpr int32_t VERSION = 1;
+constexpr int32_t VERSION = 2;
 
 void Log(const std::string& aText)
 {
@@ -195,6 +195,170 @@ void BodyBits(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CStr
     }
 }
 
+// ---- v1: the body's buffered physics state (from the Wind Framework session's map of
+// the 2.31 executable, docs PHYSICS_RE_FINDINGS.md; checked here against the disassembly
+// of the engine's own SetLinearVelocity thunk). A body handle holds the physics proxy id
+// at +0x40 and the body index at +0x44; the engine's setters lock the proxy, write one
+// state field and unlock; its getters read through the proxy manager.
+struct ProxyAccess
+{
+    void* buf;
+    void* aux;
+    uint32_t proxyId;
+};
+
+using Lock_t = ProxyAccess* (*)(void* aOut, uint32_t aProxyId);
+using Write_t = void (*)(uint32_t aProxyId, void* aBuf, void* aAux, uint32_t aBodyIndex, uint32_t aShapeIndex,
+                         uint32_t aStateId, const void* aData, uint32_t aSize, bool aFlag);
+using Unlock_t = void (*)(ProxyAccess* aAccess);
+using Readable_t = bool (*)(void* aManager, uint32_t aProxyId);
+using GetVec_t = RED4ext::Vector3* (*)(RED4ext::Vector3* aOut, uint32_t aProxyId, uint32_t aBodyIndex);
+
+constexpr uint32_t STATE_LINEAR_VELOCITY = 4;
+constexpr uint32_t STATE_ANGULAR_VELOCITY = 5;
+constexpr uint32_t STATE_IS_SLEEPING = 0x0D;
+
+// the proxy id and body index of a script body handle, if it is one and is live
+bool BodyIds(const RED4ext::Handle<RED4ext::IScriptable>& aBody, uint32_t& aProxy, uint32_t& aIndex)
+{
+    if (!aBody || !aBody.instance)
+    {
+        return false;
+    }
+    static auto bodyClass = RED4ext::CRTTISystem::Get()->GetClass("entPhysicalBodyInterface");
+    if (!bodyClass || aBody->GetType() != bodyClass)
+    {
+        return false;
+    }
+    const auto raw = reinterpret_cast<const uint8_t*>(aBody.instance);
+    std::memcpy(&aProxy, raw + 0x40, sizeof(aProxy));
+    std::memcpy(&aIndex, raw + 0x44, sizeof(aIndex));
+    if (aProxy == 0)
+    {
+        return false;
+    }
+    static RED4ext::UniversalRelocPtr<void*> manager(37956006);
+    static RED4ext::UniversalRelocFunc<Readable_t> readable(3901166127);
+    void* m = manager;
+    return m && readable(m, aProxy);
+}
+
+bool WriteState(uint32_t aProxy, uint32_t aIndex, uint32_t aState, const void* aData, uint32_t aSize)
+{
+    static RED4ext::UniversalRelocFunc<Lock_t> lock(1210388152);
+    static RED4ext::UniversalRelocFunc<Write_t> write(1403400784);
+    static RED4ext::UniversalRelocFunc<Unlock_t> unlock(200045);
+    alignas(16) uint8_t scratch[0x40] = {};
+    auto access = lock(scratch, aProxy);
+    if (!access)
+    {
+        return false;
+    }
+    const bool ok = access->buf != nullptr;
+    if (ok)
+    {
+        write(access->proxyId, access->buf, access->aux, aIndex, 0, aState, aData, aSize, false);
+    }
+    unlock(access);
+    return ok;
+}
+
+void SetVec(RED4ext::CStackFrame* aFrame, bool* aOut, uint32_t aState)
+{
+    RED4ext::Handle<RED4ext::IScriptable> body;
+    RED4ext::Vector4 v{};
+    RED4ext::GetParameter(aFrame, &body);
+    RED4ext::GetParameter(aFrame, &v);
+    aFrame->code++; // ParamEnd
+    uint32_t proxy = 0, index = 0;
+    bool ok = false;
+    if (BodyIds(body, proxy, index))
+    {
+        const RED4ext::Vector3 v3{v.X, v.Y, v.Z};
+        ok = WriteState(proxy, index, aState, &v3, sizeof(v3));
+    }
+    if (aOut)
+    {
+        *aOut = ok;
+    }
+}
+
+void GetVec(RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, uint32_t aHash)
+{
+    RED4ext::Handle<RED4ext::IScriptable> body;
+    RED4ext::GetParameter(aFrame, &body);
+    aFrame->code++; // ParamEnd
+    RED4ext::Vector4 result{0.f, 0.f, 0.f, 0.f};
+    uint32_t proxy = 0, index = 0;
+    if (BodyIds(body, proxy, index))
+    {
+        RED4ext::UniversalRelocFunc<GetVec_t> get(aHash);
+        RED4ext::Vector3 v3{};
+        get(&v3, proxy, index);
+        result = {v3.X, v3.Y, v3.Z, 0.f};
+    }
+    if (aOut)
+    {
+        *aOut = result;
+    }
+}
+
+void SetLinearVelocity(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    SetVec(aFrame, aOut, STATE_LINEAR_VELOCITY);
+}
+
+void SetAngularVelocity(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    SetVec(aFrame, aOut, STATE_ANGULAR_VELOCITY);
+}
+
+void GetLinearVelocity(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, int64_t)
+{
+    GetVec(aFrame, aOut, 1360335866);
+}
+
+void GetAngularVelocity(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, int64_t)
+{
+    GetVec(aFrame, aOut, 1763775593);
+}
+
+void SetSleeping(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    RED4ext::Handle<RED4ext::IScriptable> body;
+    bool sleeping = false;
+    RED4ext::GetParameter(aFrame, &body);
+    RED4ext::GetParameter(aFrame, &sleeping);
+    aFrame->code++; // ParamEnd
+    uint32_t proxy = 0, index = 0;
+    bool ok = false;
+    if (BodyIds(body, proxy, index))
+    {
+        const uint8_t value = sleeping ? 1 : 0;
+        ok = WriteState(proxy, index, STATE_IS_SLEEPING, &value, sizeof(value));
+    }
+    if (aOut)
+    {
+        *aOut = ok;
+    }
+}
+
+template<typename T>
+void Global(const char* aName, RED4ext::ScriptingFunction_t<T> aFunc, const char* aReturn,
+            std::initializer_list<std::pair<const char*, const char*>> aParams)
+{
+    auto f = RED4ext::CGlobalFunction::Create(aName, aName, aFunc);
+    for (auto& p : aParams)
+    {
+        f->AddParam(p.first, p.second);
+    }
+    if (aReturn)
+    {
+        f->SetReturnType(aReturn);
+    }
+    RED4ext::CRTTISystem::Get()->RegisterFunction(f);
+}
+
 void RegisterTypes()
 {
 }
@@ -218,7 +382,16 @@ void PostRegisterTypes()
         f->SetReturnType("String");
         rtti->RegisterFunction(f);
     }
-    Log("MNC Physics v" + std::to_string(VERSION) + " registered (inspect only)");
+    Global("MNCPhysics_SetLinearVelocity", &SetLinearVelocity, "Bool",
+           {{"handle:entPhysicalBodyInterface", "body"}, {"Vector4", "velocity"}});
+    Global("MNCPhysics_SetAngularVelocity", &SetAngularVelocity, "Bool",
+           {{"handle:entPhysicalBodyInterface", "body"}, {"Vector4", "spin"}});
+    Global("MNCPhysics_GetLinearVelocity", &GetLinearVelocity, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
+    Global("MNCPhysics_GetAngularVelocity", &GetAngularVelocity, "Vector4",
+           {{"handle:entPhysicalBodyInterface", "body"}});
+    Global("MNCPhysics_SetSleeping", &SetSleeping, "Bool",
+           {{"handle:entPhysicalBodyInterface", "body"}, {"Bool", "sleeping"}});
+    Log("MNC Physics v" + std::to_string(VERSION) + " registered: velocity and spin setters/getters, sleep");
 }
 
 // the plugin's own scripts, next to the DLL: compiled only while the plugin is loaded
