@@ -80,6 +80,11 @@ public class CMUDrone extends CMCUnit {
   // it: the slide on take-over. Each contact ray's distance to its own shell is learned in
   // the first frames (m_self, -1 = nothing of its own on that ray); a hit there is its own.
   private let m_self: array<Float>;
+  private let m_flLeft: Int32;         // frame-log lines left (-1 = not started)
+  private let m_flOn: Bool;
+  private let m_flT: Float;
+  private let m_lastRoot: Vector4;     // where the entity was put last frame
+  private let m_seenAtTick: Vector4;   // where the engine had it at the start of this tick
   private let m_selfFrames: Int32;
   private let m_hasSelf: Bool;
   private let m_hideInSight: Bool;
@@ -129,6 +134,9 @@ public class CMUDrone extends CMCUnit {
     this.m_poseOk = false;
     this.m_poseFrames = 0;
     this.m_selfFrames = 0;
+    this.m_flLeft = -1;
+    this.m_flOn = cfg.DroneFrameLog();
+    this.m_flT = 0.0;
     this.m_hasSelf = false;
     ArrayClear(this.m_self);
     this.MeasurePose(drone, 1.0);
@@ -250,6 +258,50 @@ public class CMUDrone extends CMCUnit {
     return this.m_anchors[i];
   }
 
+  // DIAGNOSTICS > DRONE FRAME LOG: every frame for four seconds, the first time the drone
+  // passes 8 m/s. Per frame: its length; the flight's centre; how far the engine had the
+  // entity from where it was put the frame before (anything else moving it); where it was
+  // put now; the camera's position relative to the drawn origin, and its heading against
+  // the drone's. A jitter shows as whichever of these jumps from frame to frame.
+  public func FrameLog(s: ref<CMCSession>, dt: Float) -> Void {
+    let drone = this.m_drone;
+    if !this.m_flOn || !IsDefined(drone) || !IsDefined(this.m_flight) {
+      return;
+    }
+    let fl = this.m_flight;
+    if this.m_flLeft < 0 {
+      if Vector4.Length(fl.vel) < 8.0 {
+        this.m_lastRoot = this.Root();
+        return;
+      }
+      this.m_flLeft = 240;
+      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll");
+    }
+    if this.m_flLeft == 0 {
+      return;
+    }
+    this.m_flLeft -= 1;
+    this.m_flT += dt;
+    let root = this.Root();
+    let drift = this.m_seenAtTick - this.m_lastRoot;
+    drift.W = 0.0;
+    this.m_lastRoot = root;
+    let a = this.Ground();
+    let rel = s.rig.pos - a;
+    let yr = Deg2Rad(this.m_flight.yaw);
+    let fwd = new Vector4(-SinF(yr), CosF(yr), 0.0, 0.0);
+    let right = new Vector4(CosF(yr), SinF(yr), 0.0, 0.0);
+    let shown = Quaternion.ToEulerAngles(fl.Shown(this.m_show));
+    CMCSession.Log("frame " + FloatToStringPrec(this.m_flT, 3) + " | " + FloatToStringPrec(dt * 1000.0, 1) + " | " + FloatToStringPrec(Vector4.Length(fl.vel), 1)
+      + " | " + FloatToStringPrec(Vector4.Length(drift), 3)
+      + " | " + FloatToStringPrec(Vector4.Dot(rel, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(rel, right), 3) + " " + FloatToStringPrec(rel.Z, 3)
+      + " | " + FloatToStringPrec(CMPilotRig.Wrap(s.rig.yaw - fl.yaw), 2)
+      + " | " + FloatToStringPrec(shown.Pitch, 2) + " " + FloatToStringPrec(shown.Roll, 2));
+    if this.m_flLeft == 0 {
+      CMCSession.Log("frame log: done");
+    }
+  }
+
   // this frame's drawn origin and sensor, kept for the camera's frame lag
   private func Remember() -> Void {
     let fl = this.m_flight;
@@ -285,6 +337,7 @@ public class CMUDrone extends CMCUnit {
     this.m_frames += 1;
     let actual = drone.GetWorldPosition();
     this.m_seen = actual;
+    this.m_seenAtTick = actual;
     // a stall: the model moved on but the drone stayed put this frame
     if Vector4.Length(this.m_flight.vel) > 0.5 && Vector4.Distance(actual, this.m_last) < 0.002 {
       this.m_stalls += 1;

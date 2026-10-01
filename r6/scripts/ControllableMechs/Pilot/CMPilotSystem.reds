@@ -218,8 +218,11 @@ public class CMPilotSystem extends ScriptableSystem {
   // what of the drone's own NPC machinery is switched off while flown (a test of the third-
   // person jitter): 0 nothing, 1 its movement (MoveComponent, motion planner, DroneComponent),
   // 2 its animation (the skeleton and controller: drawn in the rest pose), 3 both
-  public func DroneVisualTest() -> Int32 = Clamp(this.Int("droneVisualTest", 1), 0, 3)
-  public func SetDroneVisualTest(v: Int32) -> Void { this.PutInt("droneVisualTest", Clamp(v, 0, 3)); }
+  public func DroneVisualTest() -> Int32 = Clamp(this.Int("droneVisualTest2", 0), 0, 3)
+  public func SetDroneVisualTest(v: Int32) -> Void { this.PutInt("droneVisualTest2", Clamp(v, 0, 3)); }
+  // a frame-by-frame log of a fast flight (DIAGNOSTICS): four seconds once over 8 m/s
+  public func DroneFrameLog() -> Bool = this.Flag("droneFrameLog", true)
+  public func SetDroneFrameLog(on: Bool) -> Void { this.PutFlag("droneFrameLog", on); }
   public func DroneAiOff() -> Bool = this.Flag("droneAiOff", true)
   public func SetDroneAiOff(on: Bool) -> Void { this.PutFlag("droneAiOff", on); }
 

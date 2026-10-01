@@ -49,6 +49,8 @@ public abstract class CMCUnit extends IScriptable {
   public func CamProfile() -> String = "mech"
   // moved before the camera each frame (the camera then frames where it really is drawn)
   public func TickFirst() -> Bool = false
+  // after the camera is placed each frame (diagnostics)
+  public func FrameLog(s: ref<CMCSession>, dt: Float) -> Void {}
 
   public func Name() -> String = "UNIT"
 }

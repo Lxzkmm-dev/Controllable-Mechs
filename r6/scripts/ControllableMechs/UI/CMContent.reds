@@ -139,6 +139,9 @@ public class CMContent extends TKContent {
       case "droneaioff":
         cfg.SetDroneAiOff(Equals(CMContent.Str(arg), "1"));
         break;
+      case "dronefl":
+        cfg.SetDroneFrameLog(Equals(CMContent.Str(arg), "1"));
+        break;
       case "dronevis":
         cfg.SetDroneVisualTest(CMContent.Val(arg, 1));
         break;
@@ -391,6 +394,7 @@ public class CMContent extends TKContent {
       p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "ENTITY TRANSFORM|AI TELEPORT|AI MOVE CARROT", "4|1|2", "dronemove", "");
       p.Dropdown("DRONE CAMERA FRAME LAG", "How many frames the camera follows a flown drone behind. Its mesh is drawn from where it was a frame earlier, 0 by default; 1 or 2 only to test if the drone jitters in the chase view (applies at once)", IntToString(cfg.DroneCamLag()), "0|1|2", "0|1|2", "dronelag", "");
       p.Dropdown("DRONE NPC SYSTEMS OFF (TEST)", "Which of the drone's own NPC systems are off while you fly it, to find what draws it off the camera in the chase view (from the next link-in)", IntToString(cfg.DroneVisualTest()), "NONE|MOVEMENT|ANIMATION|BOTH", "0|1|2|3", "dronevis", "");
+      p.Check("DRONE FRAME LOG", "Logs every frame for four seconds the first time a flown drone passes 8 m/s (where the flight, the drone and the camera each are), to find the chase-view jitter", cfg.DroneFrameLog(), "dronefl", "");
     }
   }
 
