@@ -1344,6 +1344,11 @@ public class CMUDrone extends CMCUnit {
       let eye = this.Anchor().Z + this.SensorUp();
       heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m, body bottom " + FloatToStringPrec(fl.pos.Z - this.Extent(new Vector4(0.0, 0.0, -1.0, 0.0)) - gz, 2) + " m";
     }
+    if this.m_lmgRounds > 0 {
+      heights += ", lmg " + IntToString(this.m_lmgRounds) + " rounds, " + IntToString(this.m_lmgHits) + " struck a target (last " + this.m_lmgLast + ")";
+      this.m_lmgRounds = 0;
+      this.m_lmgHits = 0;
+    }
     let wv = fl.wind;
     let wname = IsDefined(CMWind.Get(this.m_game)) ? CMWind.Get(this.m_game).Weather() : "?";
     heights += ", wind " + FloatToStringPrec(SqrtF(wv.X * wv.X + wv.Y * wv.Y), 1) + " m/s (vert " + FloatToStringPrec(wv.Z, 1) + ", exposure " + FloatToStringPrec(this.m_exposure, 2) + ", weather " + wname + ")";
@@ -1479,6 +1484,9 @@ public class CMUDrone extends CMCUnit {
   private let m_impactOk: Bool;
   private let m_tof: Float;
   private let m_shots: array<ref<CMDroneShot>>;
+  private let m_lmgRounds: Int32;      // rounds fired and rounds that struck something (log)
+  private let m_lmgHits: Int32;
+  private let m_lmgLast: String;       // what the last one struck (log)
   private let MORTAR_MIN: Float = 15.0;
   private let MORTAR_MAX: Float = 450.0;
   private let MORTAR_COOLDOWN: Float = 5.0;
@@ -1784,20 +1792,57 @@ public class CMUDrone extends CMCUnit {
       aim += new Vector4(RandRangeF(-spread, spread), RandRangeF(-spread, spread), RandRangeF(-spread, spread), 0.0);
       let dir = Vector4.Normalize(aim - muzzle);
       let fx = GameInstance.GetFxSystem(this.m_game);
-      fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
-      fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg_npc.effect"), CMUMinotaur.At(muzzle, dir), true);
+      // the flash: the HMG's first-person flash through the sensor (the third-person one
+      // is too small to see from the nose), its third-person one from the chase view
+      if s.SightView() {
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle.effect"), CMUMinotaur.At(muzzle, dir), true);
+      } else {
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
+      }
       // the round: what's on its line takes it
       let hit: TraceResult;
       let far = muzzle + dir * (dist + 3.0);
       far.W = 1.0;
+      let end = far;
+      let struck = false;
+      let target: wref<GameObject>;
       if this.ShotRay(muzzle, far, hit) {
-        let p = Cast<Vector4>(hit.position);
-        p.W = 1.0;
-        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\impacts\\default\\imp_default_norm.effect"), CMUMinotaur.At(p, -dir), true);
-        let obj = TraceResult.GetHitEntity(hit) as GameObject;
-        if IsDefined(obj) {
-          this.Blast(p, t"Attacks.CM_DroneRound", 0.5, this.RoundDamage(obj));
-        }
+        end = Cast<Vector4>(hit.position);
+        end.W = 1.0;
+        struck = true;
+        target = TraceResult.GetHitEntity(hit) as GameObject;
+      }
+      // the barrel's ray missed what the reticle is on (it starts lower, under the nose):
+      // the reticle's target, when the round ends next to it
+      if !IsDefined(target) && IsDefined(s.aimEntity) && Vector4.Distance(end, s.aim) < 2.5 {
+        target = s.aimEntity as GameObject;
+        end = s.aim;
+        end.W = 1.0;
+        struck = true;
+      }
+      // the tracer: a trail stretched from the barrel to where the round ends (a52-a55 gave
+      // it no end, so it was drawn zero long: no tracers)
+      let tracer = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg_npc.effect"), CMUMinotaur.At(muzzle, dir), true);
+      if IsDefined(tracer) {
+        let wp: WorldPosition;
+        WorldPosition.SetVector4(wp, end);
+        tracer.UpdateTargetPosition(wp);
+      }
+      this.m_lmgRounds += 1;
+      if struck {
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\impacts\\default\\imp_default_norm.effect"), CMUMinotaur.At(end, -dir), true);
+      }
+      let drone = this.m_drone;
+      if IsDefined(target) && (!IsDefined(drone) || target.GetEntityID() != drone.GetEntityID()) {
+        // the hit's area takes in both where it struck and the target's own origin (an
+        // area attack finds what is in it by the origin: at its feet for a person, so a
+        // 0.5 m area round a hit to the chest found nobody, a55)
+        let o = target.GetWorldPosition();
+        let c = (end + o) * 0.5;
+        c.W = 1.0;
+        this.Blast(c, t"Attacks.CM_DroneRound", Vector4.Distance(end, o) * 0.5 + 0.5, this.RoundDamage(target));
+        this.m_lmgHits += 1;
+        this.m_lmgLast = NameToString(target.GetClassName());
       }
       this.m_heat += this.LMG_HEAT;
       fired = true;

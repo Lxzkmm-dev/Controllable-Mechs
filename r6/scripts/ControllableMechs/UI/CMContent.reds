@@ -108,7 +108,7 @@ public class CMContent extends TKContent {
         cfg.SetCfgProfile(CMContent.Val(arg, 0));
         break;
       case "wind":
-        cfg.SetWindPct(CMContent.Val(arg, 100));
+        cfg.SetWindPct(CMContent.Val(arg, 0));
         break;
       case "dlevel":
         cfg.SetDroneLevel(cfg.CfgProfile(), CMContent.Val(arg, 50));
@@ -347,7 +347,7 @@ public class CMContent extends TKContent {
     p.Slider("MODEL LEAN LIMIT", "How far the drone's model is drawn leaning; the flight itself is never capped (90 = drawn as flown)", "", "10|90|5|" + IntToString(cfg.DroneShowTilt(kind, RoundF(base.showTilt))) + "|deg", "dshowtilt", "");
     p.Item("DEFAULTS", "Self-levelling " + IntToString(CMDroneProfiles.DefaultLevel(kind)) + "%, tilt " + IntToString(RoundF(base.tilt)) + " deg, rate " + IntToString(RoundF(base.tiltRate)) + " deg/s, model lean " + IntToString(RoundF(base.showTilt)) + " deg", "", "RESET", "dreset", "", true);
     p.SetTip("At low self-levelling it will loop and roll right over; upside down its thrust drives it down.");
-    p.Slider("WIND STRENGTH (ALL DRONES)", "The wind follows the weather: calm in fog, a breeze when clear, hard in storms; stronger higher up, gusting, broken behind buildings. Like a real drone, one left alone drifts with it. 0% turns it off (applies at once)", "", "0|200|10|" + IntToString(cfg.WindPct()) + "|%", "wind", "");
+    p.Slider("WIND STRENGTH (ALL DRONES)", "EXPERIMENTAL, off by default while the wind is being designed. The wind follows the weather: calm in fog, a breeze when clear, hard in storms; stronger higher up, gusting, broken behind buildings. Like a real drone, one left alone drifts with it. 0% turns it off (applies at once)", "", "0|200|10|" + IntToString(cfg.WindPct()) + "|%", "wind", "");
     p.Heading(StrUpper(kind) + " // OPTICS // SENSOR MOUNT");
     p.Slider("HEIGHT", "Sight view: above the drone's base (its centre by default)", "", "0|118|1|" + IntToString(CMContent.CmToIn(cfg.DroneCamUpCm(kind))) + "| in", "dcamup", "");
     p.Slider("FORWARD", "Sight view: ahead of the drone's centre (its nose by default)", "", "0|157|1|" + IntToString(CMContent.CmToIn(cfg.DroneCamFwdCm(kind))) + "| in", "dcamfwd", "");

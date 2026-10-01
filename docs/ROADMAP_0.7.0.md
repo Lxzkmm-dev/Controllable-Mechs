@@ -198,6 +198,11 @@ The drones are designed in docs/DRONES_TECHNICAL_DESIGN.md. Items marked **[spik
   - **[decide]** How it recharges: over time while recalled, or at once.
   - Pairs with the ammo bag and reload system planned for the drones' weapons.
 
+- **Wind** (Omar, 2026-10-01: a wind design doc is commissioned; nothing more until it lands).
+  - An experimental first pass shipped in a57 (`Control/CMWind.reds`): weather-driven mean wind, a wandering heading, gusts, turbulence, a height profile, shelter behind buildings, and flight through the moving air.
+  - Since a58 it is off by default (CONFIG WIND STRENGTH 0%), and gets rebuilt or replaced to the doc.
+- **Ground effect:** shipped in a56 (rotor lift near the ground, AV dust kick-up under low drones).
+
 ## 10. Open questions for Omar
 
 1. The Arasaka crash repro: which mech, how it was spawned, how the limbs were broken, and when the game died.

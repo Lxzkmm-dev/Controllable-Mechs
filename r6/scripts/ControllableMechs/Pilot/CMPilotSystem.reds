@@ -142,9 +142,10 @@ public class CMPilotSystem extends ScriptableSystem {
   // V out of enemy senses while linked (off by default: it makes piloting nearly safe)
   public func HideOperator() -> Bool = this.Flag("hideOperator", false)
   public func SetHideOperator(on: Bool) -> Void { this.PutFlag("hideOperator", on); }
-  // the wind's strength on the drones (CMWind), 0 (none) to 200%
-  public func WindPct() -> Int32 = Clamp(this.Int("windPct", 100), 0, 200)
-  public func SetWindPct(v: Int32) -> Void { this.PutInt("windPct", Clamp(v, 0, 200)); }
+  // the wind's strength on the drones (CMWind), 0 (none) to 200%. Off by default: parked
+  // until Omar's wind design doc (2026-10-01)
+  public func WindPct() -> Int32 = Clamp(this.Int("windPct2", 0), 0, 200)
+  public func SetWindPct(v: Int32) -> Void { this.PutInt("windPct2", Clamp(v, 0, 200)); }
   public func SensPct() -> Int32 = this.Int("sensPct", 100)
   public func SetSensPct(v: Int32) -> Void { this.PutInt("sensPct", Clamp(v, 25, 300)); }
 
