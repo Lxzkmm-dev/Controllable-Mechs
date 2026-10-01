@@ -41,7 +41,6 @@ public class CMUMinotaur extends CMCUnit {
   // part damage (CMCParts): this mech's seven parts, and a message about one that just broke
   private let m_parts: ref<CMPartState>;
   private let m_partsOn: Bool;
-  private let m_hullMax: Float;
   private let m_partNote: String;
   private let m_partNoteUntil: Float;
   private let m_limpHalt: Bool;
@@ -204,7 +203,6 @@ public class CMUMinotaur extends CMCUnit {
     this.m_hull = -1.0;
     this.Armour(mech, s.HullMult());
     this.ReadHull(mech);
-    this.m_hullMax = GameInstance.GetStatPoolsSystem(this.m_game).GetStatPoolMaxPointValue(Cast<StatsObjectID>(mech.GetEntityID()), gamedataStatPoolType.Health);
     this.m_partsOn = cfg.PartDamage();
     this.m_parts = CMCParts.Get(this.m_game).State(mech.GetEntityID());
     this.m_partNote = "";

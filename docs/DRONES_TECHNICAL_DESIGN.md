@@ -114,12 +114,11 @@ Omar has the author's permission for analysis. No code is taken; these are the i
 
 ## 5. Flight model (`CMFlight`)
 
-> **As built (2026-10-01): a full 6-DOF rigid body.** This replaces the simplified model described in the rest of this section.
+> **As built (0.7.1-a13, 2026-10-01): a PhysX rigid body.** The scripted 6-DOF integrator (0.7.0, kept on the `6-DOF-Legacy` branch) is retired. This replaces the simplified model described in the rest of this section.
 >
-> - **State and forces:** quaternion orientation, body-frame angular velocity, inertia per axis, Euler's equations, four X rotors with spool lag, yaw from counter-torque, quadratic drag per body axis, flapping moments, damping and gravity.
+> - **The body:** each drone flies on an invisible PhysX box (`mnc\physics\proxy_<kind>.ent`, its profile's mass) through the MNC Physics plugin. Gravity, collisions, the integration and the gyroscopic term are PhysX's own.
+> - **Forces:** `CMFlight.Step` works out the force (world) and torque (body) of four X rotors with spool lag, yaw from counter-torque, quadratic drag per body axis, flapping moments, damping and ground effect. The plugin applies them before every physics step.
 > - **Controller:** a cascaded flight controller (attitude, then rate, then mixer with air mode) that only commands the rotors.
-> - **Collisions:** contact impulses at the touching point with friction, against static, dynamic and vehicle geometry.
-> - **Offline mirror:** `tools/flight/sixdof.py`.
 
 ### State
 

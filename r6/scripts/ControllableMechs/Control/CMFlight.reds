@@ -1,23 +1,25 @@
 // =============================================================================
-// MECHS OF NIGHT CITY - CONTROL FRAMEWORK: DRONE FLIGHT MODEL (0.7.0, 6-DOF)
+// MECHS OF NIGHT CITY - CONTROL FRAMEWORK: DRONE FLIGHT MODEL (0.7.1, PhysX)
 //
-// A multirotor as a rigid body, simulated by the mod (docs/DRONES_TECHNICAL_DESIGN.md).
-// Nothing here is kinematic: every motion comes from forces and torques.
-//   - state: position and velocity of the centre of mass, orientation as a quaternion
-//     (no angle limits: it can loop and roll over), angular velocity in the body frame,
-//     and per-axis inertia
+// A multirotor's rotors, flight controller and air (docs/DRONES_TECHNICAL_DESIGN.md). The
+// drone flies as a PhysX rigid body (the MNC Physics plugin); each frame the unit reads the
+// body's state back into this, and Step works out the force and torque that the rotors and
+// the air put on it. Gravity, collisions and the integration are PhysX's own.
+//   - state (read back): position and velocity of the centre of mass, orientation as a
+//     quaternion (no angle limits: it can loop and roll over), angular velocity in the
+//     body frame, and per-axis inertia
 //   - four rotors in an X at their real positions, each spooling toward its command and
 //     giving thrust by its efficiency (damage); their counter-torque turns the body
 //   - quadratic drag per body axis (the top speed is where drag meets thrust, there is no
 //     cap), a little linear drag, blade-flapping moments from the airflow (speed pushes
-//     the nose up and the tilt back), angular damping, gyroscopic coupling, gravity
+//     the nose up and the tilt back), angular damping, ground effect
 //   - a flight controller that only commands rotors: an attitude loop (angle mode) and a
 //     rate loop (acro) blended by the self-levelling setting, the yaw following the view,
 //     and an altitude-hold assist on the collective. A mixer turns the wanted torques and
 //     thrust into rotor commands, keeping the differentials when it saturates (air mode)
 // Body frame: X right, Y forward, Z up (the game's). Body rates: X + nose up, Y + right
-// side down, Z + turning left. Pure maths: the drone unit feeds input, sweeps collisions
-// and puts the drone where it says. Mirrored in Python for tuning (offline checks).
+// side down, Z + turning left. Pure maths: the drone unit feeds input and the body's state
+// and hands the plugin the force and torque.
 // =============================================================================
 module ControllableMechs.Control
 
@@ -39,7 +41,6 @@ public class CMFlightProfile {
   public let cdv: Float;           // m2, drag area flat on (vertical)
   public let flap: Float;          // N.m per m/s: blade flapping (airflow tilting it back)
   public let impact: Float;        // m/s, a collision faster than this does damage
-  public let radius: Float;        // m, its collision sphere
   public let com: Float;           // m, its centre of mass above the model's origin
   public let bottom: Float;        // m, from the centre of mass down to its lowest point, level
   public let span: Float;          // m, from the centre out to its widest point (rotors, wings)
@@ -269,7 +270,7 @@ public class CMFlight {
     this.Angles();
   }
 
-  // the angles again after the state was set from outside (a V3 drone's body)
+  // the angles again after the state was read back from the drone's physics body
   public func Sync() -> Void {
     this.Angles();
   }
@@ -284,15 +285,6 @@ public class CMFlight {
     this.yaw = CMPilotRig.Wrap(Rad2Deg(2.0 * AtanF(this.q.k, this.q.r)));
     this.pitch = Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0)));
     this.roll = Rad2Deg(AsinF(ClampF(-r.Z, -1.0, 1.0)));
-  }
-
-  // How far below the centre of mass the model's base is, as it is tilted now. Only the
-  // body counts, not the rotor or wing tips: with them the contact sat a rotor's reach
-  // above the road and the drone could never get down onto it (Omar: "I could not get low
-  // enough to touch the floor"). A tip that clips the road on a hard bank is the pilot's
-  // problem, as it would be for a real drone.
-  public func Reach() -> Float {
-    return this.p.bottom * AbsF(ClampF(this.Up().Z, -1.0, 1.0));
   }
 
   // The orientation the model is drawn with: the flown one, or with its pitch and roll
@@ -355,21 +347,21 @@ public abstract class CMDroneProfiles {
         // Omar: it pitched forward far too hard and too fast; gentler defaults
         p.mass = 6.0; p.arm = 0.2; p.thrust = 30.0; p.spool = 0.06; p.kq = 0.02; p.agility = 11.0;
         p.tilt = 25.0; p.tiltRate = 140.0; p.yawRate = 200.0; p.climb = 5.0;
-        p.cdh = 0.3; p.cdv = 0.45; p.flap = 0.06; p.impact = 6.0; p.radius = 0.3; p.com = 0.13;
+        p.cdh = 0.3; p.cdv = 0.45; p.flap = 0.06; p.impact = 6.0; p.com = 0.13;
         // the mesh's lowest point is 0.004 m below its origin, the centre of mass 0.13 m up
         p.bottom = 0.134; p.span = 0.27; p.ramp = 0.3; p.expo = 0.6; p.showTilt = 25.0;
         break;
       case "octant":
         p.mass = 180.0; p.arm = 1.0; p.thrust = 900.0; p.spool = 0.14; p.kq = 0.08; p.agility = 4.5;
         p.tilt = 20.0; p.tiltRate = 90.0; p.yawRate = 60.0; p.climb = 3.0;
-        p.cdh = 10.7; p.cdv = 16.0; p.flap = 2.0; p.impact = 5.0; p.radius = 1.1; p.com = 0.15;
+        p.cdh = 10.7; p.cdv = 16.0; p.flap = 2.0; p.impact = 5.0; p.com = 0.15;
         // the mesh's lowest point is 0.76 m below its origin, the centre of mass 0.15 m up
         p.bottom = 0.91; p.span = 1.4; p.ramp = 0.2; p.expo = 0.3; p.showTilt = 90.0;
         break;
       default:   // griffin, wyvern
         p.mass = 40.0; p.arm = 0.45; p.thrust = 190.0; p.spool = 0.10; p.kq = 0.04; p.agility = 9.0;
         p.tilt = 22.0; p.tiltRate = 120.0; p.yawRate = 110.0; p.climb = 4.0;
-        p.cdh = 1.9; p.cdv = 2.8; p.flap = 0.35; p.impact = 5.5; p.radius = 0.5; p.com = Equals(kind, "wyvern") ? 0.22 : 0.0;
+        p.cdh = 1.9; p.cdv = 2.8; p.flap = 0.35; p.impact = 5.5; p.com = Equals(kind, "wyvern") ? 0.22 : 0.0;
         // measured on their meshes: the Griffin's origin is at its middle, the Wyvern's at its base
         // mesh lowest points: Wyvern -0.007 m (centre of mass 0.22 up), Griffin -0.474 m (at its origin)
         p.bottom = Equals(kind, "wyvern") ? 0.227 : 0.474; p.span = Equals(kind, "wyvern") ? 0.5 : 0.62; p.ramp = 0.2; p.expo = 0.3; p.showTilt = 90.0;

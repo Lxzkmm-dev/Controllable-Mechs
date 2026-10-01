@@ -103,7 +103,6 @@ public class CMPilotHud {
   private let m_markR: ref<inkRectangle>;
   private let m_markLOn: Bool;
   private let m_markROn: Bool;
-  private let m_reticle: ref<inkCanvas>;
   // where each barrel points: a small ring, placed from the centre in 4K units
   private let m_pipL: ref<inkCanvas>;
   private let m_pipR: ref<inkCanvas>;
@@ -592,7 +591,6 @@ public class CMPilotHud {
     r.SetAnchorPoint(Vector2(0.5, 0.5));
     r.SetSize(Vector2(400.0, 400.0));
     r.Reparent(root);
-    this.m_reticle = r;
     let c = CMPilotHud.Amber();
     // the sight: four arms with a wide centre gap and a chevron at the aim point
     CMPilotHud.Bar(r, 200.0 - 4.0, 200.0 - 110.0, 8.0, 60.0, c, 0.95);   // up

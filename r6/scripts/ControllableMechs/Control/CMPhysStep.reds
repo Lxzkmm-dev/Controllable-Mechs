@@ -12,7 +12,6 @@ module ControllableMechs.Control
 @if(ModuleExists("MNCPhysics.V3"))
 public abstract class CMPhysStep {
   public static func Present() -> Bool = true
-  public static func SetGravity(body: ref<PhysicalBodyInterface>, on: Bool) -> Bool = MNCPhysics_SetGravity(body, on)
   public static func SetForce(body: ref<PhysicalBodyInterface>, force: Vector4, torque: Vector4) -> Bool = MNCPhysics_SetForce(body, force, torque)
   public static func Release(body: ref<PhysicalBodyInterface>) -> Bool = MNCPhysics_Release(body)
   public static func Velocity(body: ref<PhysicalBodyInterface>) -> Vector4 = MNCPhysics_StepVelocity(body)
@@ -23,7 +22,6 @@ public abstract class CMPhysStep {
 @if(!ModuleExists("MNCPhysics.V3"))
 public abstract class CMPhysStep {
   public static func Present() -> Bool = false
-  public static func SetGravity(body: ref<PhysicalBodyInterface>, on: Bool) -> Bool = false
   public static func SetForce(body: ref<PhysicalBodyInterface>, force: Vector4, torque: Vector4) -> Bool = false
   public static func Release(body: ref<PhysicalBodyInterface>) -> Bool = false
   public static func Velocity(body: ref<PhysicalBodyInterface>) -> Vector4 = new Vector4(0.0, 0.0, 0.0, 0.0)

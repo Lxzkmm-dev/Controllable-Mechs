@@ -11,7 +11,7 @@
 //   - its pitch and roll can't be set: the tilt is shown through the camera instead
 // The camera rides where the drone really is (the teleports land a frame late).
 // Keys: WASD tilt it and the tilt moves it, Space/Ctrl climb and descend, the mouse
-// turns it. The flight is a 6-DOF rigid body (CMFlight). CONFIG > PROFILE > (the drone) sets its self-levelling (0% = acro), tilt limit
+// turns it. The flight model (CMFlight) works out the rotors' and the air's force and torque; the MNC Physics plugin flies it as a PhysX body. CONFIG > PROFILE > (the drone) sets its self-levelling (0% = acro), tilt limit
 // and rates.
 // Collisions: the step is swept against the world; the velocity into a surface is
 // removed with a little bounce, and a hard hit damages the drone (a crashed drone is
@@ -32,10 +32,7 @@ public class CMUDrone extends CMCUnit {
   private let m_cmd: ref<AICommand>;
   private let m_logAt: Float;
   private let m_frames: Int32;
-  private let m_hits: Int32;
-  private let m_dt: Float;             // the last frame's length (the teleport leads by one)
   private let m_gait: CName;           // the drone locomotion wrapper on (Walk, Run, Sprint)
-  private let m_lastYaw: Float;
   private let m_ground: Float;         // metres above the ground, last measured
   private let m_stickF: Float;         // the keys as a stick: ramped in, with expo
   private let m_rayHits: Int32;        // collision rays that found something / didn't (log)
@@ -43,7 +40,6 @@ public class CMUDrone extends CMCUnit {
   private let m_hitS: Int32;           // per query type: static, dynamic, vehicle (log)
   private let m_hitD: Int32;
   private let m_hitV: Int32;
-  private let m_hitG: Int32;
   // The drawn body: the hover animation poses the skeleton's body bone away from its rest
   // pose (lifted, and turned: the Wyvern rests on its side). The pose is measured through a
   // skeleton-bound slot (MeasurePose) as a transform from the rest pose to as drawn, in
@@ -81,7 +77,6 @@ public class CMUDrone extends CMCUnit {
   private let m_placed: Vector4;       // the flight's centre at the last placement
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
-  private let m_climb: Float;          // the climb keys this frame (-1..1)
 
 
   public func Begin(s: ref<CMCSession>) -> String {
@@ -133,8 +128,7 @@ public class CMUDrone extends CMCUnit {
     let start = drone.GetWorldPosition() + CMFlight.QRot(drone.GetWorldOrientation(), this.m_tt + this.m_c);
     this.m_flight = CMFlight.Make(prof, start, CMPilotRig.YawOf(drone.GetWorldForward()));
     this.m_flight.level = Cast<Float>(cfg.DroneLevel(this.m_kind)) / 100.0;
-    // its physics body (V3): asked for now; until it is live the drone holds where it is
-    this.m_phys = true;
+    // its physics body: asked for now; until it is live the drone holds where it is
     this.m_proxyLive = false;
     this.m_proxySpawned = false;
     this.m_proxyBody = null;
@@ -145,10 +139,7 @@ public class CMUDrone extends CMCUnit {
     this.m_seen = drone.GetWorldPosition();
     this.m_logAt = s.Now() + 1.0;
     this.m_frames = 0;
-    this.m_hits = 0;
-    this.m_dt = 0.016;
     this.m_gait = n"";
-    this.m_lastYaw = this.m_flight.yaw;
     this.Pacify(drone, true);
     // the game keeps running it as an AI NPC, whose hover and altitude logic would hold the
     // model up: its AI controller is off for the flight (PhysX and the entity transform move
@@ -350,7 +341,6 @@ public class CMUDrone extends CMCUnit {
     let actual = drone.GetWorldPosition();
     this.m_seen = actual;
     this.m_seenAtTick = actual;
-    this.m_dt = dt;
     // the drawn pose: measured over the first half second (settling from the drone's own
     // hover into ours), then held. Re-measured every frame (a33) it carried the hover
     // animation's sway and a frame's lag at speed into the placement: the jitter.
@@ -373,7 +363,6 @@ public class CMUDrone extends CMCUnit {
     let f = CMUDrone.Expo(this.m_stickF, this.m_flight.p.expo);
     let side = CMUDrone.Expo(this.m_stickS, this.m_flight.p.expo);
     let climb = (s.Key(CMCKey.Up()) ? 1.0 : 0.0) - (s.Key(CMCKey.Down()) ? 1.0 : 0.0);
-    this.m_climb = climb;
     // the gunship hold: the keys hold its place, the view looks on its own (the chase
     // view lets go)
     let heading = s.rig.yaw;
@@ -655,7 +644,7 @@ public class CMUDrone extends CMCUnit {
       return false;
     }
     let drone = this.m_drone;
-    // a V3 drone's physics body (invisible) is its own too
+    // the drone's physics body (invisible) is its own too
     return (IsDefined(drone) && e.GetEntityID() == drone.GetEntityID()) || (this.m_proxySpawned && e.GetEntityID() == this.m_proxyId);
   }
 
@@ -730,9 +719,6 @@ public class CMUDrone extends CMCUnit {
     if gotG && CMUDrone.Dist2(from, hg) < best {
       hit = hg;
       found = true;
-    }
-    if gotG {
-      this.m_hitG += 1;
     }
     if gotS {
       this.m_hitS += 1;
@@ -841,7 +827,6 @@ public class CMUDrone extends CMCUnit {
     }
     let over = speed - limit;
     let pct = MinF(100.0, over * over * 4.0);
-    this.m_hits += 1;
     GameInstance.GetStatPoolsSystem(this.m_game).RequestChangingStatPoolValue(Cast<StatsObjectID>(drone.GetEntityID()), gamedataStatPoolType.Health, -pct, null, false, true);
     GameObject.PlaySoundEvent(drone, n"dev_generic_impact_metal");
     CMCSession.Log("drone: hit something at " + FloatToStringPrec(speed, 1) + " m/s, " + FloatToStringPrec(pct, 0) + "% of its health");
@@ -876,7 +861,6 @@ public class CMUDrone extends CMCUnit {
   // jitter in a33, with the pose re-measured every frame).
   private func Lean(drone: ref<NPCPuppet>, dt: Float) -> Void {
     let fl = this.m_flight;
-    this.m_lastYaw = fl.yaw;
     let loco = new AnimFeature_DroneLocomotion();
     loco.speed = 0.0;
     loco.desiredSpeed = 0.0;
@@ -939,7 +923,6 @@ public class CMUDrone extends CMCUnit {
     this.m_hitS = 0;
     this.m_hitD = 0;
     this.m_hitV = 0;
-    this.m_hitG = 0;
   }
 
   // its own display (CMDroneHud), with the damage schematic of its type
@@ -1503,19 +1486,18 @@ public class CMUDrone extends CMCUnit {
     attack.StartAttack();
   }
 
-  // ---- V3: a real PhysX body (MNC Physics version 3; the Octant and the Wyvern, spawned as
-  // V3 from MOTOR POOL; Omar, 2026-10-01). The drone NPC stays the drone (its health,
+  // ---- the physics body (MNC Physics, version 3 and up; every drone since 0.7.1-a13, when
+  // the scripted 6-DOF flight was retired; Omar, 2026-10-01). The drone NPC stays the drone (its health,
   // targeting, hits and kills, its look) and is placed on an invisible physics body every
   // frame (mnc\physics\proxy_<kind>.ent: a box round its hull, its flight profile's mass).
   // PhysX moves and collides the body: it shoves cars and props and is shoved back, with
   // the game's own gravity. Each frame the flight model reads the body's real state (place,
-  // attitude, velocity, spin), works out what the rotors and the air do (CMFlight.external)
-  // and the plugin applies that force before every physics step; the drone turns with its
+  // attitude, velocity, spin), works out what the rotors and the air do (CMFlight.Step's
+  // force and torque) and the plugin applies that force before every physics step; the drone turns with its
   // own inertia from the spin the body has now (so a knock's spin is kept), set through the
   // body's own spin. The NPC's own physical parts stop colliding while it flies (they would
-  // shove the body: the old self-collision), and get it back after. Until the body is live,
-  // and if it is lost, the 6-DOF flight model flies it.
-  private let m_phys: Bool;
+  // shove the body: the old self-collision), and get it back after. Until the body is live
+  // (and while a lost one is asked for again) the drone holds where it is.
   private let m_proxyId: EntityID;
   private let m_proxySpawned: Bool;
   private let m_proxyLive: Bool;
@@ -1591,7 +1573,7 @@ public class CMUDrone extends CMCUnit {
     this.m_proxyLive = false;
     this.m_proxyAt = now;
     this.m_physKnock = 0.0;
-    CMCSession.Log("drone V3: physics body asked for at " + CMCHits.V(spec.position) + " (" + NameToString(StringToName(Equals(this.m_kind, "octant") ? "proxy_octant" : "proxy_wyvern")) + "), " + IntToString(ArraySize(this.m_physOffColliders)) + " of its colliders and " + IntToString(ArraySize(this.m_physOffMeshes)) + " physical meshes off");
+    CMCSession.Log("drone body: physics body asked for at " + CMCHits.V(spec.position) + " (" + "proxy_" + this.m_kind + "), " + IntToString(ArraySize(this.m_physOffColliders)) + " of its colliders and " + IntToString(ArraySize(this.m_physOffMeshes)) + " physical meshes off");
   }
 
   // the body, once it is placed and simulated: the flight hands its motion over to it
@@ -1607,7 +1589,7 @@ public class CMUDrone extends CMCUnit {
     if !IsDefined(e) || Vector4.Length(e.GetWorldPosition()) < 1.0 {
       if now - this.m_proxyAt > 10.0 {
         // (is mnc\physics\proxy_<kind>.ent in the archive?) asked for again
-        CMCSession.Log("drone V3: the physics body never appeared in 10 s; asking again");
+        CMCSession.Log("drone body: the physics body never appeared in 10 s; asking again");
         GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_proxyId);
         this.m_proxySpawned = false;
         this.m_proxyAt = now;
@@ -1623,7 +1605,7 @@ public class CMUDrone extends CMCUnit {
     this.m_physVel = fl.vel;
     CMPhysPlugin.SetVelocity(body, fl.vel);
     CMPhysPlugin.SetSpin(body, CMFlight.QRot(fl.q, fl.w));
-    CMCSession.Log("drone V3: physics body live after " + FloatToStringPrec(now - this.m_proxyAt, 2) + " s, at " + CMCHits.V(e.GetWorldPosition()) + "; PhysX flies it now");
+    CMCSession.Log("drone body: physics body live after " + FloatToStringPrec(now - this.m_proxyAt, 2) + " s, at " + CMCHits.V(e.GetWorldPosition()) + "; PhysX flies it now");
   }
 
   // a working handle on the body (taken again whenever it isn't simulated)
@@ -1638,7 +1620,7 @@ public class CMUDrone extends CMCUnit {
     return this.m_proxyBody;
   }
 
-  // its own pods push nothing while it flies as V3 (asked again every frame, as the wishes
+  // its own pods push nothing while it flies (asked again every frame, as the wishes
   // are dropped 0.3 s after the last ask)
   private func PodsOff() -> Int32 {
     let n = 0;
@@ -1658,7 +1640,7 @@ public class CMUDrone extends CMCUnit {
     if !IsDefined(body) {
       // the body is gone (streamed out, removed): a new one is asked for where the drone is,
       // which holds still meanwhile
-      CMCSession.Log("drone V3: the physics body was lost; asking for a new one");
+      CMCSession.Log("drone body: the physics body was lost; asking for a new one");
       if IsDefined(e) {
         GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_proxyId);
       }
@@ -1695,7 +1677,7 @@ public class CMUDrone extends CMCUnit {
     CMPhysWind.IgnoreNear(7310 + CMUDrone.KindIndex(this.m_kind), fl.pos, fl.p.span + 1.0);
     if now >= this.m_physLogAt {
       this.m_physLogAt = now + 1.0;
-      CMCSession.Log("drone V3: at " + CMCHits.V(fl.pos) + ", speed " + FloatToStringPrec(Vector4.Length(v), 1) + " m/s, spin " + FloatToStringPrec(Vector4.Length(fl.w), 2) + " rad/s, rotor force " + CMCHits.V(fl.outForce) + " N, " + FloatToStringPrec(this.m_ground, 1) + " m up, biggest knock " + FloatToStringPrec(this.m_physKnock, 1) + " m/s; " + CMPhysStep.Info(body) + (ArraySize(this.m_podBodies) > 0 ? "; pods (" + IntToString(ArraySize(this.m_podBodies)) + ", collision " + (CMPhysColl.Present() ? "off" : "NOT HANDLED: needs MNC Physics 3.1") + "): first " + CMPhysStep.Info(this.m_podBodies[0]) : ""));
+      CMCSession.Log("drone body: at " + CMCHits.V(fl.pos) + ", speed " + FloatToStringPrec(Vector4.Length(v), 1) + " m/s, spin " + FloatToStringPrec(Vector4.Length(fl.w), 2) + " rad/s, rotor force " + CMCHits.V(fl.outForce) + " N, " + FloatToStringPrec(this.m_ground, 1) + " m up, biggest knock " + FloatToStringPrec(this.m_physKnock, 1) + " m/s; " + CMPhysStep.Info(body) + (ArraySize(this.m_podBodies) > 0 ? "; pods (" + IntToString(ArraySize(this.m_podBodies)) + ", collision " + (CMPhysColl.Present() ? "off" : "NOT HANDLED: needs MNC Physics 3.1") + "): first " + CMPhysStep.Info(this.m_podBodies[0]) : ""));
       this.m_physKnock = 0.0;
     }
   }
@@ -1708,7 +1690,7 @@ public class CMUDrone extends CMCUnit {
     let top = fl.pos.Z + 1.0;
     if this.Ray(new Vector4(fl.pos.X, fl.pos.Y, top, 1.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       this.m_ground = fl.pos.Z - hit.position.Z;
-      this.m_groundFrom = "V3 ground ray";
+      this.m_groundFrom = "body ground ray";
       fl.grounded = this.m_ground < fl.p.bottom + 0.08 && Vector4.Length(fl.vel) < 2.0;
     } else {
       this.m_ground = -1.0;
@@ -1717,7 +1699,7 @@ public class CMUDrone extends CMCUnit {
     this.m_show = 90.0;   // drawn as flown: the body is real
   }
 
-  // the NPC's own colliders and physical meshes, off while it flies as V3 (back on after)
+  // the NPC's own colliders and physical meshes, off while it flies (back on after)
   private func PhysCollisions(drone: ref<NPCPuppet>, on: Bool) -> Void {
     if !on {
       ArrayClear(this.m_physOffColliders);
@@ -1822,7 +1804,7 @@ public class CMUDrone extends CMCUnit {
     if IsDefined(drone) {
       this.PhysCollisions(drone, true);
     }
-    CMCSession.Log("drone V3: physics body removed, the drone's own collisions back on");
+    CMCSession.Log("drone body: physics body removed, the drone's own collisions back on");
   }
 
   // ---- the downwash: low over the ground, the rotors kick up dust (the game's AV dust

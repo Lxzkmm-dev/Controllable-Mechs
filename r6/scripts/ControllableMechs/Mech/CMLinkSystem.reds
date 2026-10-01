@@ -565,13 +565,6 @@ public class CMLinkSystem extends ScriptableSystem {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Taking the robot over: friendly to V, no AI role of its own
-  // ---------------------------------------------------------------------------
-  public func Befriend(npc: ref<NPCPuppet>) -> Void {
-    this.MakeFriendly(npc);
-  }
-
   // The damage test: neutral both ways, so V's rounds count against it; friendly again after.
   public func TestAttitude(npc: ref<NPCPuppet>, on: Bool) -> Void {
     let player = GetPlayer(this.GetGameInstance());
