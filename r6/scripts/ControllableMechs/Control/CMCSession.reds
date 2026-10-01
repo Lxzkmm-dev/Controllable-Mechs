@@ -672,6 +672,8 @@ public class CMCSession extends ScriptableSystem {
 
   // the optics always look from the sensor: the chase view steps in while they're held
   private func ChaseNow() -> Bool = this.m_chase && !this.zoom
+  // the sight view (first person) is on: not the chase view, or the optics zoomed in
+  public func SightView() -> Bool = !this.ChaseNow()
 
   // optics on or off (held RMB, or MMB in split fire mode): tight field of view, slower
   // traverse, the sight view even from the chase view, and the optics frame on the HUD

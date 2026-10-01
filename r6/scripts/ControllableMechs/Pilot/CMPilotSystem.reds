@@ -190,6 +190,11 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SetDroneCamUpCm(kind: String, v: Int32) -> Void { this.PutInt(kind + "CamUpCm", Clamp(v, 0, 300)); }
   public func DroneCamFwdCm(kind: String) -> Int32 = Clamp(this.Int(kind + "CamFwdCm", CMDroneHull.SensorFwdCm(kind)), 0, 400)
   public func SetDroneCamFwdCm(kind: String, v: Int32) -> Void { this.PutInt(kind + "CamFwdCm", Clamp(v, 0, 400)); }
+  // the drone's own model hidden in the sight view, so the view isn't inside it (the
+  // Bombus: its sensor sits within its shell). On by default for the Bombus.
+  public func DroneHideInSight(kind: String) -> Bool = this.Flag(kind + "HideInSight", Equals(kind, "bombus"))
+  public func SetDroneHideInSight(kind: String, on: Bool) -> Void { this.PutFlag(kind + "HideInSight", on); }
+
   public func ResetDroneCam(kind: String) -> Void {
     this.Put(kind + "CamUpCm", "");
     this.Put(kind + "CamFwdCm", "");
