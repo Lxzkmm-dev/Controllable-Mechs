@@ -18,6 +18,7 @@
 module ControllableMechs.Control
 
 import ControllableMechs.*
+import Codeware.*
 
 public class CMPhysSpike extends ScriptableSystem {
   private let m_id: EntityID;
@@ -108,6 +109,80 @@ public class CMPhysSpike extends ScriptableSystem {
     }
     this.Start(0);
     return "*KICKED: IT SHOULD SLIDE TO YOUR RIGHT";
+  }
+
+  // REFLECT: what the engine's own type info says the physics classes can do (the script
+  // compiler only knows what the game's scripts declare; NativeDB lists velocity setters on
+  // the body with no parameters). Every function, its parameters and return type, to the
+  // log; then, with a box out, the velocity getters called through Codeware's Reflection.
+  public func Reflect() -> String {
+    let names: array<String> = ["entPhysicalBodyInterface", "entColliderComponent", "entIPlacedComponent", "entPhysicalMeshComponent", "PhysicalImpulseEvent"];
+    let total = 0;
+    for cls in names {
+      let c = Reflection.GetClass(StringToName(cls));
+      if !IsDefined(c) {
+        CMPhysSpike.Log("reflect: " + cls + " not found");
+      } else {
+        total += this.ReflectClass(cls, c);
+      }
+    }
+    this.ReflectCalls();
+    return "*REFLECTED " + IntToString(total) + " FUNCTIONS: SEE THE LOG";
+  }
+
+  private func ReflectClass(cls: String, c: ref<ReflectionClass>) -> Int32 {
+      let total = 0;
+      let fns = c.GetFunctions();
+      CMPhysSpike.Log("reflect: " + cls + " (parent " + (IsDefined(c.GetParent()) ? NameToString(c.GetParent().GetName()) : "none") + "): " + IntToString(ArraySize(fns)) + " functions, " + IntToString(ArraySize(c.GetProperties())) + " properties");
+      for f in fns {
+        let ps = "";
+        for prm in f.GetParameters() {
+          ps += (StrLen(ps) > 0 ? ", " : "") + NameToString(prm.GetName()) + ": " + NameToString(prm.GetType().GetName());
+        }
+        let ret = f.GetReturnType();
+        CMPhysSpike.Log("reflect:   " + NameToString(f.GetName()) + "(" + ps + ")" + (IsDefined(ret) ? " -> " + NameToString(ret.GetName()) : "") + (f.IsNative() ? "" : " [script]"));
+        total += 1;
+      }
+      for prop in c.GetProperties() {
+        CMPhysSpike.Log("reflect:   ." + NameToString(prop.GetName()) + ": " + NameToString(prop.GetType().GetName()));
+      }
+      return total;
+  }
+
+  // the getters, called for real on the box's body
+  private func ReflectCalls() -> Void {
+    let e = this.Box();
+    if IsDefined(e) {
+      let col = e.FindComponentByName(n"proxy_body") as ColliderComponent;
+      let body = IsDefined(col) ? col.CreatePhysicalBodyInterface() : null;
+      let bc = Reflection.GetClass(n"entPhysicalBodyInterface");
+      if IsDefined(body) && IsDefined(bc) {
+        for fname in [n"GetLinearVelocity", n"GetAngularVelocity", n"GetMass", n"IsSimulated", n"GetTransform"] {
+          let f = bc.GetFunction(fname);
+          if !IsDefined(f) {
+            CMPhysSpike.Log("reflect: call " + NameToString(fname) + ": no such function");
+          } else {
+            let ok = false;
+            let v = f.Call(body, [], ok);
+            CMPhysSpike.Log("reflect: call " + NameToString(fname) + ": " + (ok ? "ran" : "FAILED") + ", gave " + NameToString(VariantTypeName(v)) + " " + CMPhysSpike.Show(v));
+          }
+        }
+      }
+    }
+  }
+
+  private static func Show(v: Variant) -> String {
+    let t = VariantTypeName(v);
+    if Equals(t, n"Vector4") {
+      return CMCHits.V(FromVariant<Vector4>(v));
+    }
+    if Equals(t, n"Float") {
+      return FloatToStringPrec(FromVariant<Float>(v), 3);
+    }
+    if Equals(t, n"Bool") {
+      return FromVariant<Bool>(v) ? "true" : "false";
+    }
+    return "";
   }
 
   private func Box() -> ref<Entity> {
