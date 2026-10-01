@@ -52,6 +52,23 @@ std::string Hex(uint64_t aValue)
     return buf;
 }
 
+// an address as "rva 0x..." when it points into the game's executable, else as is
+std::string Rva(uintptr_t aAddr, uintptr_t aBase)
+{
+    static uintptr_t s_end = 0;
+    if (!s_end)
+    {
+        const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(aBase);
+        const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(aBase + dos->e_lfanew);
+        s_end = aBase + nt->OptionalHeader.SizeOfImage;
+    }
+    if (aAddr >= aBase && aAddr < s_end)
+    {
+        return "rva:" + Hex(aAddr - aBase);
+    }
+    return Hex(aAddr);
+}
+
 std::string TypeName(RED4ext::CProperty* aProp)
 {
     if (!aProp || !aProp->type)
@@ -103,13 +120,28 @@ int32_t DescribeClass(const char* aName)
             params += std::string(p && p->name.ToString() ? p->name.ToString() : "?") + ": " + TypeName(p);
         }
         const auto handler = HandlerOf(func);
-        const auto rva = handler >= base ? handler - base : 0;
         uint32_t flagBits = 0;
         std::memcpy(&flagBits, &func->flags, sizeof(flagBits));
+        // v0 found the handler table empty for these: class natives run through their
+        // invokable (IFunction::GetInvokable, whose vtable slot 2 is Execute). Its vtable,
+        // its Execute and its first fields (where a wrapped native pointer would sit), as
+        // offsets into the game's executable where they point into it.
+        std::string inv = "none";
+        auto invokable = func->GetInvokable();
+        if (invokable)
+        {
+            const auto obj = reinterpret_cast<const uintptr_t*>(invokable);
+            const auto vtbl = reinterpret_cast<const uintptr_t*>(obj[0]);
+            inv = "vtbl " + Rva(obj[0], base) + " slots";
+            for (int i = 0; i < 6; ++i)
+            {
+                inv += " " + Rva(vtbl[i], base);
+            }
+            inv += " fields " + Rva(obj[1], base) + " " + Rva(obj[2], base) + " " + Rva(obj[3], base);
+        }
         Log("inspect:   " + std::string(func->shortName.ToString()) + "(" + params + ")" +
             (func->returnType ? " -> " + TypeName(func->returnType) : "") + "  flags " + Hex(flagBits) +
-            "  regIndex " + std::to_string(func->regIndex) + "  handler " + Hex(handler) + " (rva " + Hex(rva) +
-            ")");
+            "  regIndex " + std::to_string(func->regIndex) + "  table " + Hex(handler) + "  invokable " + inv);
         ++n;
     }
     return n;
