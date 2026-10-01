@@ -561,12 +561,12 @@ public class CMUMinotaur extends CMCUnit {
     let at = from + fwd * 150.0;
     let best = 9999.0;
     let hit: TraceResult;
-    if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hit, true) {
+    if CMGround.World(this.m_game, from, to, hit) {
       at = Cast<Vector4>(hit.position);
       best = Vector4.Distance(from, at);
     }
     let dyn: TraceResult;
-    if sq.SyncRaycastByCollisionPreset(from, to, n"World Dynamic", dyn, true) {
+    if CMGround.Movers(this.m_game, from, to, dyn) {
       let p = Cast<Vector4>(dyn.position);
       if Vector4.Distance(from, p) < best {
         at = p;

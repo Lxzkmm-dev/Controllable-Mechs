@@ -767,12 +767,12 @@ public class CMCSession extends ScriptableSystem {
     let best = 0.0;
     this.aimEntity = null;
     let hit: TraceResult;
-    if sq.SyncRaycastByCollisionPreset(this.rig.pos + fwd * 0.3, to, n"World Static", hit, true) {
+    if CMGround.World(this.GetGameInstance(), this.rig.pos + fwd * 0.3, to, hit) {
       this.aim = Cast<Vector4>(hit.position);
       best = Vector4.Distance(this.rig.pos, this.aim);
     }
     let dyn: TraceResult;
-    if sq.SyncRaycastByCollisionPreset(this.rig.pos + fwd * skip, to, n"World Dynamic", dyn, true) {
+    if CMGround.Movers(this.GetGameInstance(), this.rig.pos + fwd * skip, to, dyn) {
       let p = Cast<Vector4>(dyn.position);
       let d = Vector4.Distance(this.rig.pos, p);
       if best <= 0.0 || d < best {

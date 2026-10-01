@@ -19,6 +19,7 @@ Plan: docs/ROADMAP_0.7.0.md.
     - Dynamic for movable props;
     - Vehicle for cars.
   - **Settles on the ground:** the "freaking out" was the drone sitting on the ground. The altitude hold pressed it down and the contacts kicked back, so it wobbled ±15 deg indefinitely. Now, on the ground with no climb input, it settles: the hold takes the ground height, and rotation is damped hard.
+  - **The mech gets the same safety net:** the pilot's aim and rangefinder, the MK.31 own-target ray and the ground check still try the preset first, then fall back to collision groups. That's Static/Terrain for the world (CMGround.World), and AI/Dynamic/Vehicle for movers (CMGround.Movers).
   - **Build:** 0.7.0-a20.
 - **Drone flight, round 8** (Omar's a18 test: jitter, phasing and V jumping all persist):
   - **Every ray fails, the control too.** The exact 8d130e5 ground ray found nothing at the drone's normal world position, so it isn't the code.

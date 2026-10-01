@@ -599,7 +599,57 @@ public abstract class CMGround {
     if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hit, true) {
       return true;
     }
-    return sq.SyncRaycastByCollisionGroup(from, to, n"Static", hit, true, false);
+    if sq.SyncRaycastByCollisionGroup(from, to, n"Static", hit, true, false) {
+      return true;
+    }
+    return sq.SyncRaycastByCollisionGroup(from, to, n"Terrain", hit, true, false);
+  }
+
+  // The world (static and terrain) along a line, nearest first. Preset queries returned
+  // nothing in some sessions (2026-09-30: the drones found no ground at all, with or
+  // without a physics mod), while the collision groups still answered; the preset is tried
+  // first, the groups after.
+  public static func World(game: GameInstance, from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
+    let sq = GameInstance.GetSpatialQueriesSystem(game);
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hit, true) {
+      return true;
+    }
+    let a: TraceResult;
+    let b: TraceResult;
+    let gotA = sq.SyncRaycastByCollisionGroup(from, to, n"Static", a, true, false);
+    let gotB = sq.SyncRaycastByCollisionGroup(from, to, n"Terrain", b, true, false);
+    if gotA && (!gotB || Vector4.Distance(from, Cast<Vector4>(a.position)) <= Vector4.Distance(from, Cast<Vector4>(b.position))) {
+      hit = a;
+      return true;
+    }
+    if gotB {
+      hit = b;
+      return true;
+    }
+    return false;
+  }
+
+  // Anything that moves along a line (characters, props, vehicles), nearest first: the
+  // "World Dynamic" preset, or the AI, Dynamic and Vehicle groups when that answers nothing.
+  public static func Movers(game: GameInstance, from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
+    let sq = GameInstance.GetSpatialQueriesSystem(game);
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Dynamic", hit, true) {
+      return true;
+    }
+    let best = 1000000.0;
+    let found = false;
+    for g in [n"AI", n"Dynamic", n"Vehicle"] {
+      let h: TraceResult;
+      if sq.SyncRaycastByCollisionGroup(from, to, g, h, true, false) {
+        let d = Vector4.Distance(from, Cast<Vector4>(h.position));
+        if d < best {
+          best = d;
+          hit = h;
+          found = true;
+        }
+      }
+    }
+    return found;
   }
 
   // A mech hanging in the air (the Minotaur has no fall) set down on `ground`, with a heavy
