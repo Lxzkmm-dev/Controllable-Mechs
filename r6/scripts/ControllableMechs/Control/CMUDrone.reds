@@ -235,19 +235,27 @@ public class CMUDrone extends CMCUnit {
     let hs: TraceResult;
     let hd: TraceResult;
     let hv: TraceResult;
-    let gotS = sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hs, true);
-    // the Dynamic group (movable props), not the "World Dynamic" preset: that one also
-    // takes in characters, and these rays start inside the drone itself
+    // By collision group only. The "World Static" preset queries returned nothing from
+    // 2026-09-30 evening on, with or without VAXIS (a19 log: preset 0, group hits every
+    // frame), so presets aren't used. Static and Terrain are the world, Destructible the
+    // breakables and fences, Dynamic the movable props, Vehicle the cars.
+    let gotS = sq.SyncRaycastByCollisionGroup(from, to, n"Static", hs, true, false);
+    let ht: TraceResult;
+    let gotT = sq.SyncRaycastByCollisionGroup(from, to, n"Terrain", ht, true, false);
+    if gotT && (!gotS || CMUDrone.Dist2(from, ht) < CMUDrone.Dist2(from, hs)) {
+      hs = ht;
+      gotS = true;
+    }
+    let hx: TraceResult;
+    let gotX = sq.SyncRaycastByCollisionGroup(from, to, n"Destructible", hx, true, false);
+    if gotX && (!gotS || CMUDrone.Dist2(from, hx) < CMUDrone.Dist2(from, hs)) {
+      hs = hx;
+      gotS = true;
+    }
     let gotD = sq.SyncRaycastByCollisionGroup(from, to, n"Dynamic", hd, true, false);
     let gotV = sq.SyncRaycastByCollisionGroup(from, to, n"Vehicle", hv, true, false);
-    // the world again by collision group rather than the "World Static" preset: a mod that
-    // rewrites the engine's collision presets (VAXIS does) can leave preset queries
-    // finding nothing, while the groups still answer
+    let gotG = false;
     let hg: TraceResult;
-    let gotG = sq.SyncRaycastByCollisionGroup(from, to, n"Static", hg, true, false);
-    if !gotG {
-      gotG = sq.SyncRaycastByCollisionGroup(from, to, n"Terrain", hg, true, false);
-    }
     let best = 1000000.0;
     let found = false;
     if gotS {
@@ -327,15 +335,15 @@ public class CMUDrone extends CMCUnit {
     // measured size: the centre alone let the body sink through the ground. The ray starts
     // a metre up, so a drone already part-way in still finds the surface above it.
     let r0 = fl.Reach();
-    // control: the exact ground ray the 8d130e5 build used, which did find the ground
-    let probe: TraceResult;
-    if GameInstance.GetSpatialQueriesSystem(this.m_game).SyncRaycastByCollisionPreset(fl.pos + new Vector4(0.0, 0.0, 0.18, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), n"World Static", probe, true) {
-      this.m_probe += 1;
-    }
+    fl.grounded = false;
+
     if this.Ray(fl.pos + new Vector4(0.0, 0.0, 1.0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       let gz = hit.position.Z;
       this.m_groundFrom = FloatToStringPrec(fl.pos.Z + 1.0 - gz, 2) + " m below the ray start";
       this.m_ground = fl.pos.Z - gz;
+      if fl.pos.Z < gz + r0 + 0.02 {
+        fl.grounded = Vector4.Length(fl.vel) < 2.0;
+      }
       if fl.pos.Z < gz + r0 {
         fl.pos.Z = gz + r0;
         let up = new Vector4(0.0, 0.0, 1.0, 0.0);
@@ -528,7 +536,7 @@ public class CMUDrone extends CMCUnit {
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
-      + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (static " + IntToString(this.m_hitS) + ", dynamic " + IntToString(this.m_hitD) + ", vehicle " + IntToString(this.m_hitV) + ", by group " + IntToString(this.m_hitG) + ", control " + IntToString(this.m_probe) + "; ground " + this.m_groundFrom + ")" + ", at " + CMCHits.V(this.m_flight.pos)
+      + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (static " + IntToString(this.m_hitS) + ", dynamic " + IntToString(this.m_hitD) + ", vehicle " + IntToString(this.m_hitV) + "; ground " + this.m_groundFrom + ")" + ", at " + CMCHits.V(this.m_flight.pos)
       + ", gait " + NameToString(this.m_gait)
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;

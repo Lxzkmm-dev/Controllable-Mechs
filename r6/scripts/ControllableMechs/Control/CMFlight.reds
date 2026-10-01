@@ -58,6 +58,7 @@ public class CMFlight {
   public let level: Float;         // self-levelling, 0 (acro) to 1 (angle mode)
   public let holdZ: Float;         // the altitude held with no climb input
   public let holding: Bool;
+  public let grounded: Bool;       // resting on the ground (set by the unit's contacts)
   public let p: ref<CMFlightProfile>;
   // derived each step, for the camera, the HUD and the log (degrees)
   public let yaw: Float;
@@ -171,7 +172,13 @@ public class CMFlight {
     let tz = iz * p.agility * 0.5 * (wantZ - this.w.Z);
     // the collective: climb rate, or the altitude held
     let az: Float;
-    if AbsF(c) > 0.05 {
+    if this.grounded && c <= 0.05 {
+      // sitting on the ground: it settles there (the hold used to press it into the ground
+      // and the contacts kicked back: the drone "freaking out" once it touched down)
+      this.holding = true;
+      this.holdZ = this.pos.Z;
+      az = -1.0;
+    } else if AbsF(c) > 0.05 {
       this.holding = false;
       az = (c * p.climb - this.vel.Z) * 1.6;
     } else {
@@ -221,9 +228,11 @@ public class CMFlight {
     let vb = CMFlight.QInvRot(this.q, this.vel);
     bx += p.flap * vb.Y;                             // airflow: speed lifts the nose
     by -= p.flap * vb.X;                             // and leans it back from a slide
-    bx -= ix * 1.5 * this.w.X;
-    by -= ix * 1.5 * this.w.Y;
-    bz -= iz * this.w.Z;
+    // the air damps rotation a little; the ground, when it sits on it, a lot
+    let damp = this.grounded ? 8.0 : 1.5;
+    bx -= ix * damp * this.w.X;
+    by -= ix * damp * this.w.Y;
+    bz -= iz * (this.grounded ? 4.0 : 1.0) * this.w.Z;
     // Euler's equation, with the gyroscopic term
     let gx = this.w.Y * (iz * this.w.Z) - this.w.Z * (ix * this.w.Y);
     let gy = this.w.Z * (ix * this.w.X) - this.w.X * (iz * this.w.Z);

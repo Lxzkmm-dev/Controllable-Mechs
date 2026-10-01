@@ -11,6 +11,15 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 - **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone flight, round 9** (Omar's a19 test with VAXIS disabled: the drone stopped at a wall, flew through a fence, and "freaked out" afterwards):
+  - **Not VAXIS:** with VAXIS off, every collision-preset query ("World Static", "World Dynamic", the 8d130e5 control) still returned nothing. The same rays by collision group hit every frame.
+  - **Rays use collision groups only:**
+    - Static and Terrain for the world;
+    - Destructible for fences and breakables (the fence it flew through);
+    - Dynamic for movable props;
+    - Vehicle for cars.
+  - **Settles on the ground:** the "freaking out" was the drone sitting on the ground. The altitude hold pressed it down and the contacts kicked back, so it wobbled ±15 deg indefinitely. Now, on the ground with no climb input, it settles: the hold takes the ground height, and rotation is damped hard.
+  - **Build:** 0.7.0-a20.
 - **Drone flight, round 8** (Omar's a18 test: jitter, phasing and V jumping all persist):
   - **Every ray fails, the control too.** The exact 8d130e5 ground ray found nothing at the drone's normal world position, so it isn't the code.
     - The suspect is VAXIS's ULTRA Physics Overhaul, enabled in the active MO2 profile since about the time the rays stopped. It rewrites engine\physics\collision_presets.json; its "World Static" and "World Dynamic" add names such as "Player Collision" that aren't collision groups.
