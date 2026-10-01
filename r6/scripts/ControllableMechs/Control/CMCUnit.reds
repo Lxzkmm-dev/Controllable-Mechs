@@ -49,6 +49,9 @@ public abstract class CMCUnit extends IScriptable {
   // game won't tilt (a drone); and how much of the rig's footfall weight applies (0 = none)
   public func CamTilt() -> Vector4 = new Vector4(0.0, 0.0, 0.0, 0.0)
   public func StepWeight() -> Float = 1.0
+  // the view's traverse: true for a light sensor gimbal that keeps up with the mouse (a
+  // drone), false for the heavy turret's spring and rate caps (the mech)
+  public func LightLook() -> Bool = false
   // whose chase camera settings it uses (CONFIG > PROFILE): mech, bombus, griffin, wyvern, octant
   public func CamProfile() -> String = "mech"
   // moved before the camera each frame (the camera then frames where it really is drawn)

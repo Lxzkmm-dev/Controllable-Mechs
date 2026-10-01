@@ -205,8 +205,9 @@ public class CMPilotRig {
     }
     this.speed += (v - this.speed) * MinF(1.0, dt * 4.0);
 
-    // two substeps keep the springs stable on a slow frame
-    let steps = dt > 0.02 ? 2 : 1;
+    // substeps of at most 10 ms keep the springs stable on a slow frame (a drone's stiff
+    // gimbal spring needs them; two fixed halves went unstable past 30 ms frames)
+    let steps = Max(1, CeilF(dt / 0.01));
     let h = dt / Cast<Float>(steps);
     let i = 0;
     while i < steps {

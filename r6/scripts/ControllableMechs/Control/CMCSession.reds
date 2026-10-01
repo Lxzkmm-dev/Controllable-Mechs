@@ -744,7 +744,14 @@ public class CMCSession extends ScriptableSystem {
     let k = this.zoom ? this.OPTICS_RATE : 1.0;
     // CONFIG > CHASSIS > TURN SPEED scales the traverse (and the unit scales its chassis turn)
     let t = Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).TurnPct()) / 100.0;
-    this.rig.SetWeight(this.LOOK_STIFFNESS * t, this.LOOK_DAMPING * SqrtF(t), this.LOOK_YAW_RATE * k * t, this.LOOK_PITCH_RATE * k * t, this.LOOK_LEAD * k);
+    if IsDefined(this.m_unit) && this.m_unit.LightLook() {
+      // a drone's sensor gimbal: a stiff, critically damped spring (settled in about 0.1 s)
+      // and no lead limit, so the view stays on the mouse. The turret's 42 deg/s cap had the
+      // first-person view trailing the mouse (Omar, Phase 4: "camera lagging behind").
+      this.rig.SetWeight(900.0, 60.0, 720.0 * k, 720.0 * k, 0.0);
+    } else {
+      this.rig.SetWeight(this.LOOK_STIFFNESS * t, this.LOOK_DAMPING * SqrtF(t), this.LOOK_YAW_RATE * k * t, this.LOOK_PITCH_RATE * k * t, this.LOOK_LEAD * k);
+    }
     this.rig.SetZoomFov(this.OPTICS_FOV);
     this.rig.SetStepWeight(this.STOMP * (IsDefined(this.m_unit) ? this.m_unit.StepWeight() : 1.0));
     this.rig.SetStride(!IsDefined(this.m_unit) || this.m_unit.StepWeight() > 0.0);

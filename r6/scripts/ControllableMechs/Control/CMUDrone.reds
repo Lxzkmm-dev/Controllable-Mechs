@@ -60,6 +60,7 @@ public class CMUDrone extends CMCUnit {
   private let m_mounts: array<Vector4>;  // the sensor on the drawn body, the same frames
   private let m_sight: Bool;           // the sight view is on (from the session, each tick)
   private let m_rigYaw: Float;         // the view's heading, this tick
+  private let m_flBodyPrev: Vector4;  // the frame log: the body's place the frame before
   private let m_camLag: Int32;         // frames the camera follows behind (DIAGNOSTICS)
   private let m_flLeft: Int32;         // frame-log lines left (-1 = not started)
   private let m_selfHits: Int32;       // rays that passed through the drone's own body (log)
@@ -261,10 +262,11 @@ public class CMUDrone extends CMCUnit {
     if this.m_flLeft < 0 {
       if Vector4.Length(fl.vel) < 8.0 {
         this.m_lastRoot = this.Root();
+        this.m_flBodyPrev = fl.pos;
         return;
       }
       this.m_flLeft = 240;
-      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll | body bone - where the flight wants it (fwd, side, up m) | cam - body bone (fwd, side, up m)");
+      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll | body bone - where the flight wants it (fwd, side, up m) | cam - body bone (fwd, side, up m) | body moved this frame vs its velocity x dt (m; 0 vs >0 = a stale read)");
     }
     if this.m_flLeft == 0 {
       return;
@@ -277,6 +279,8 @@ public class CMUDrone extends CMCUnit {
     this.m_lastRoot = root;
     let a = this.Ground();
     let rel = s.rig.pos - a;
+    let moved = Vector4.Length(fl.pos - this.m_flBodyPrev);
+    this.m_flBodyPrev = fl.pos;
     let yr = Deg2Rad(this.m_flight.yaw);
     let fwd = new Vector4(-SinF(yr), CosF(yr), 0.0, 0.0);
     let right = new Vector4(CosF(yr), SinF(yr), 0.0, 0.0);
@@ -299,7 +303,8 @@ public class CMUDrone extends CMCUnit {
       + " | " + FloatToStringPrec(Vector4.Length(drift), 3)
       + " | " + FloatToStringPrec(Vector4.Dot(rel, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(rel, right), 3) + " " + FloatToStringPrec(rel.Z, 3)
       + " | " + FloatToStringPrec(CMPilotRig.Wrap(s.rig.yaw - fl.yaw), 2)
-      + " | " + FloatToStringPrec(shown.Pitch, 2) + " " + FloatToStringPrec(shown.Roll, 2) + " | " + bone + " | " + camBone);
+      + " | " + FloatToStringPrec(shown.Pitch, 2) + " " + FloatToStringPrec(shown.Roll, 2) + " | " + bone + " | " + camBone
+      + " | " + FloatToStringPrec(moved, 3) + " vs " + FloatToStringPrec(Vector4.Length(fl.vel) * dt, 3));
     if this.m_flLeft == 0 {
       CMCSession.Log("frame log: done");
     }
@@ -329,6 +334,7 @@ public class CMUDrone extends CMCUnit {
   // in first person it crashes into the floor correctly)
   public func CamTilt() -> Vector4 = IsDefined(this.m_flight) ? new Vector4(this.m_flight.pitch, this.m_flight.roll, 0.0, 0.0) : new Vector4(0.0, 0.0, 0.0, 0.0)
   public func StepWeight() -> Float = 0.0   // no footfalls
+  public func LightLook() -> Bool = true
   public func CamProfile() -> String = this.m_kind
 
   public func Tick(s: ref<CMCSession>, dt: Float, now: Float) -> Void {
