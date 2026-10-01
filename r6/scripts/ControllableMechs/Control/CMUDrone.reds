@@ -239,15 +239,14 @@ public class CMUDrone extends CMCUnit {
   // Where the drone's origin goes: the body turns about its centre of mass (the model's
   // position), and the origin hangs below that along the body's up axis. Turning about the
   // origin itself, at the base of the Bombus and Wyvern, swung the body like a see-saw.
-  // The origin also goes down by however far the drone's animation holds its body bone
-  // off its rest pose, so the drawn (skinned) body is where the flight is, for every type.
-  // That is measured through a slot on a skeleton-bound slot component. (a23-a26 read it
-  // from fx_slots, which has no skeleton binding and reports the origin: a wrong -0.13 m
-  // that raised the drawn Bombus 0.13 m off the physics.)
+  // The model's rest pose is what's drawn: the drone's slots disagree about the animated
+  // skeleton (Slot88444 put the Bombus body bone 1.8 m up, which the picture doesn't
+  // show), so no animation correction is applied; the slot reading is logged only. The
+  // float that a23-a28 chased was the collision sweep holding the body a radius up.
   private func Root() -> Vector4 {
     let fl = this.m_flight;
     let q = fl.Shown(this.m_show);
-    let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com - CMFlight.QRot(q, this.m_lift);
+    let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com;
     r.W = 1.0;
     return r;
   }
@@ -408,15 +407,21 @@ public class CMUDrone extends CMCUnit {
     let hit: TraceResult;
     if len > 0.0005 {
       let dir = move / len;
-      if this.Ray(from, fl.pos + dir * r, hit) {
+      // How far the body reaches along the way it moves: its radius sideways, its real
+      // lowest point (belly, or a side as it tips) up and down. The sweep used the radius
+      // in every direction, so a drone settling onto the road stopped a whole radius up:
+      // the Bombus 0.30 m with its belly 0.13 m below its centre, every type floating a
+      // hand's width over the road while the first-person view sat at its centre (a27).
+      let ext = this.Extent(dir);
+      if this.Ray(from, fl.pos + dir * ext, hit) {
         let at = Cast<Vector4>(hit.position);
         let n = Vector4.Normalize(Cast<Vector4>(hit.normal));
-        fl.pos = at - dir * r;
+        fl.pos = at - dir * ext;
         fl.pos.W = 1.0;
         // floors are slid along with grip, walls give a little bounce; the height hold
         // takes the new height (it pulled back down into rising ground: the bobbing)
         let floorish = n.Z > 0.6;
-        this.Impact(drone, fl.Contact(n, n * -r, floorish ? 0.0 : 0.25, 0.3));
+        this.Impact(drone, fl.Contact(n, n * -ext, floorish ? 0.0 : 0.25, 0.3));
         if floorish && fl.holding {
           fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
         }
@@ -475,6 +480,17 @@ public class CMUDrone extends CMCUnit {
     let want = fl.p.showTilt + (90.0 - fl.p.showTilt) * near;
     this.m_show += (want - this.m_show) * MinF(1.0, this.m_dt * 8.0);
   }
+  // the body's reach from its centre along `dir` (unit): an ellipsoid with the radius
+  // across and the lowest-point reach at its real attitude vertically
+  private func Extent(dir: Vector4) -> Float {
+    let fl = this.m_flight;
+    let uz = AbsF(ClampF(fl.Up().Z, -1.0, 1.0));
+    let vert = fl.p.bottom * uz + fl.p.span * SqrtF(MaxF(0.0, 1.0 - uz * uz));
+    let h = SqrtF(dir.X * dir.X + dir.Y * dir.Y) * fl.p.radius;
+    let v = AbsF(dir.Z) * vert;
+    return SqrtF(h * h + v * v);
+  }
+
   // stick expo: x^3 blended in, soft near the centre, full at the end
   public static func Expo(x: Float, e: Float) -> Float = x * (1.0 - e) + x * x * x * e
 
@@ -654,6 +670,15 @@ public class CMUDrone extends CMCUnit {
     let avg = this.m_errN > 0 ? this.m_errSum / Cast<Float>(this.m_errN) : -1.0;
     let stalls = this.m_stalls;
     this.m_stalls = 0;
+    // heights above the surface the ground ray found: the sight-view eye, the drawn body's
+    // centre and lowest point (rest pose, as placed)
+    let heights = "";
+    if this.m_ground >= 0.0 {
+      let gz = fl.pos.Z - this.m_ground;
+      let root = this.Root();
+      let eye = root.Z + this.SensorUp();
+      heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m, body bottom " + FloatToStringPrec(fl.pos.Z - this.Extent(new Vector4(0.0, 0.0, -1.0, 0.0)) - gz, 2) + " m";
+    }
     CMCSession.Log("drone: " + CMUDrone.MethodName(this.m_method) + ", " + IntToString(this.m_frames) + " frames"
       + (this.m_method == 2 ? "" : ", off by " + FloatToStringPrec(avg, 2) + " m avg / " + FloatToStringPrec(this.m_errMax, 2) + " m max, " + IntToString(stalls) + " stalled frames")
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
@@ -663,7 +688,7 @@ public class CMUDrone extends CMCUnit {
       + ", gait " + NameToString(this.m_gait) + ", heading " + FloatToStringPrec(fl.yaw, 0)
       + ", animation lift " + CMUDrone.V2(this.m_lift)
       + ", body bone " + CMUDrone.V2(this.m_bone) + " vs flight centre " + CMUDrone.V2(this.m_placed) + " (bone less centre " + CMUDrone.V2(this.m_boneOff) + "), model lean cap " + FloatToStringPrec(this.m_show, 0)
-      + (this.m_ground >= 0.0 ? ", above the road: sight-view eye " + FloatToStringPrec(this.Root().Z + this.SensorUp() - (fl.pos.Z - this.m_ground), 2) + " m, model centre " + FloatToStringPrec(this.m_bone.Z - (fl.pos.Z - this.m_ground), 2) + " m, model bottom about " + FloatToStringPrec(this.m_bone.Z - fl.p.bottom - (fl.pos.Z - this.m_ground), 2) + " m" : "")
+      + heights
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
