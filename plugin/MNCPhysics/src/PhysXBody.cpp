@@ -223,14 +223,27 @@ void Collide_Detour(PxScene* aThis, PxReal aDt, PxBaseTask* aTask, void* aMem, P
     g_collide(aThis, aDt, aTask, aMem, aSize, aControl);
 }
 
-void PatchSlot(void** aVtable, std::size_t aSlot, void* aValue)
+// swaps our detour into a vtable slot, chaining to whatever is there (another plugin's hook
+// included). Compare-and-swap against the value just read (the Wind Framework session's
+// advice), so two first-time patches can't lose one another. Returns what we replaced.
+void* PatchSlot(void** aVtable, std::size_t aSlot, void* aValue)
 {
+    void* previous = nullptr;
     DWORD old = 0;
     if (VirtualProtect(&aVtable[aSlot], sizeof(void*), PAGE_READWRITE, &old))
     {
-        InterlockedExchangePointer(&aVtable[aSlot], aValue);
+        for (int tries = 0; tries < 8; ++tries)
+        {
+            void* seen = aVtable[aSlot];
+            if (InterlockedCompareExchangePointer(&aVtable[aSlot], aValue, seen) == seen)
+            {
+                previous = seen;
+                break;
+            }
+        }
         VirtualProtect(&aVtable[aSlot], sizeof(void*), old, &old);
     }
+    return previous;
 }
 
 Wish* Find(uint32_t aProxy, uint32_t aIndex, bool aCreate)
@@ -305,10 +318,21 @@ void EnsureHooked()
         return;
     }
     g_vtable = *reinterpret_cast<void***>(scene);
+    // the originals are set before the detours go in (a step may call them at once)
     g_simulate = reinterpret_cast<Simulate_t>(g_vtable[SLOT_SIMULATE]);
     g_collide = reinterpret_cast<Collide_t>(g_vtable[SLOT_COLLIDE]);
-    PatchSlot(g_vtable, SLOT_SIMULATE, reinterpret_cast<void*>(&Simulate_Detour));
-    PatchSlot(g_vtable, SLOT_COLLIDE, reinterpret_cast<void*>(&Collide_Detour));
+    auto prevSim = PatchSlot(g_vtable, SLOT_SIMULATE, reinterpret_cast<void*>(&Simulate_Detour));
+    auto prevCol = PatchSlot(g_vtable, SLOT_COLLIDE, reinterpret_cast<void*>(&Collide_Detour));
+    if (!prevSim || !prevCol)
+    {
+        if (g_sdk)
+        {
+            g_sdk->logger->Warn(g_handle, "v3: could not patch the PhysX step; per-step control is off");
+        }
+        return;
+    }
+    g_simulate = reinterpret_cast<Simulate_t>(prevSim);
+    g_collide = reinterpret_cast<Collide_t>(prevCol);
     g_hooked.store(true, std::memory_order_release);
     if (g_sdk)
     {
