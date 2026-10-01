@@ -1993,9 +1993,35 @@ public class CMUDrone extends CMCUnit {
   private let m_physVel: Vector4;
   private let m_physLogAt: Float;
   private let m_physKnock: Float;      // the biggest change of velocity in a frame since the last log
+  private let m_podBodies: array<ref<PhysicalBodyInterface>>;  // its own physical meshes' bodies
+                                       // (the Octant's thruster pods), kept from pushing the body
 
   private func StartPhys(drone: ref<NPCPuppet>, now: Float) -> Void {
     this.PhysCollisions(drone, false);
+    // the bodies of its own physical meshes (the Octant's four thruster pods): kinematic,
+    // moved with the NPC onto the physics body every frame, so inside it; PhysX shoved the
+    // body out at 16-18 m/s the moment it went live (a10). Each frame they are asked to push
+    // nothing (MNC Physics v3.1; bullets and rays still hit them).
+    ArrayClear(this.m_podBodies);
+    for c in this.m_physOffMeshes {
+      let pm = c as PhysicalMeshComponent;
+      if IsDefined(pm) {
+        let b = pm.CreatePhysicalBodyInterface();
+        if IsDefined(b) {
+          ArrayPush(this.m_podBodies, b);
+        }
+      }
+    }
+    // the pods go off first; the body is spawned a quarter second later (TryProxy), once the
+    // plugin has taken them off at its physics steps, so nothing of its own is inside it
+    this.PodsOff();
+    this.m_proxySpawned = false;
+    this.m_proxyLive = false;
+    this.m_proxyAt = now;
+    this.m_physKnock = 0.0;
+  }
+
+  private func SpawnProxy(now: Float) -> Void {
     let spec = new DynamicEntitySpec();
     spec.templatePath = Equals(this.m_kind, "octant") ? r"mnc\\physics\\proxy_octant.ent" : r"mnc\\physics\\proxy_wyvern.ent";
     spec.position = this.m_flight.pos;
@@ -2016,6 +2042,13 @@ public class CMUDrone extends CMCUnit {
 
   // the body, once it is placed and simulated: the flight hands its motion over to it
   private func TryProxy(now: Float) -> Void {
+    this.PodsOff();
+    if !this.m_proxySpawned {
+      if now - this.m_proxyAt >= 0.25 {
+        this.SpawnProxy(now);
+      }
+      return;
+    }
     let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
     if !IsDefined(e) || Vector4.Length(e.GetWorldPosition()) < 1.0 {
       if now - this.m_proxyAt > 10.0 {
@@ -2049,8 +2082,21 @@ public class CMUDrone extends CMCUnit {
     return this.m_proxyBody;
   }
 
+  // its own pods push nothing while it flies as V3 (asked again every frame, as the wishes
+  // are dropped 0.3 s after the last ask)
+  private func PodsOff() -> Int32 {
+    let n = 0;
+    for b in this.m_podBodies {
+      if IsDefined(b) && CMPhysColl.SetCollision(b, false) {
+        n += 1;
+      }
+    }
+    return n;
+  }
+
   private func PhysFly(s: ref<CMCSession>, drone: ref<NPCPuppet>, f: Float, side: Float, climb: Float, heading: Float, dt: Float, now: Float) -> Void {
     let fl = this.m_flight;
+    this.PodsOff();
     let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
     let body = IsDefined(e) ? this.PhysBody(e) : null;
     if !IsDefined(body) {
@@ -2088,7 +2134,7 @@ public class CMUDrone extends CMCUnit {
     CMPhysWind.IgnoreNear(Equals(this.m_kind, "octant") ? 7310 : 7311, fl.pos, fl.p.span + 1.0);
     if now >= this.m_physLogAt {
       this.m_physLogAt = now + 1.0;
-      CMCSession.Log("drone V3: at " + CMCHits.V(fl.pos) + ", speed " + FloatToStringPrec(Vector4.Length(v), 1) + " m/s, spin " + FloatToStringPrec(Vector4.Length(fl.w), 2) + " rad/s, rotor force " + CMCHits.V(fl.outForce) + " N, " + FloatToStringPrec(this.m_ground, 1) + " m up, biggest knock " + FloatToStringPrec(this.m_physKnock, 1) + " m/s; " + CMPhysStep.Info(body));
+      CMCSession.Log("drone V3: at " + CMCHits.V(fl.pos) + ", speed " + FloatToStringPrec(Vector4.Length(v), 1) + " m/s, spin " + FloatToStringPrec(Vector4.Length(fl.w), 2) + " rad/s, rotor force " + CMCHits.V(fl.outForce) + " N, " + FloatToStringPrec(this.m_ground, 1) + " m up, biggest knock " + FloatToStringPrec(this.m_physKnock, 1) + " m/s; " + CMPhysStep.Info(body) + (ArraySize(this.m_podBodies) > 0 ? "; pods (" + IntToString(ArraySize(this.m_podBodies)) + ", collision " + (CMPhysColl.Present() ? "off" : "NOT HANDLED: needs MNC Physics 3.1") + "): first " + CMPhysStep.Info(this.m_podBodies[0]) : ""));
       this.m_physKnock = 0.0;
     }
   }
@@ -2157,20 +2203,30 @@ public class CMUDrone extends CMCUnit {
   }
 
   private func StopPhys(drone: ref<NPCPuppet>) -> Void {
-    if !this.m_proxySpawned {
+    // (also when the link closes before the body was spawned: the drone's own collisions
+    // and pods were already taken off)
+    if !this.m_proxySpawned && ArraySize(this.m_podBodies) == 0 && ArraySize(this.m_physOffColliders) == 0 && ArraySize(this.m_physOffMeshes) == 0 {
       return;
     }
-    let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
-    if IsDefined(e) {
-      let body = this.PhysBody(e);
-      if IsDefined(body) {
-        CMPhysStep.Release(body);
+    if this.m_proxySpawned {
+      let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
+      if IsDefined(e) {
+        let body = this.PhysBody(e);
+        if IsDefined(body) {
+          CMPhysStep.Release(body);
+        }
       }
+      GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_proxyId);
     }
-    GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_proxyId);
     this.m_proxySpawned = false;
     this.m_proxyLive = false;
     this.m_proxyBody = null;
+    for b in this.m_podBodies {
+      if IsDefined(b) {
+        CMPhysColl.SetCollision(b, true);
+      }
+    }
+    ArrayClear(this.m_podBodies);
     if IsDefined(this.m_flight) {
       this.m_flight.external = false;
     }

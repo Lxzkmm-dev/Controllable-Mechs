@@ -25,6 +25,9 @@ bool IsHooked();
 // dropped 0.3 s after it was last set (the drone stopped asking: let the body go)
 bool SetGravity(uint32_t aProxy, uint32_t aIndex, bool aOn);
 bool SetForce(uint32_t aProxy, uint32_t aIndex, const float aForce[3], const float aTorque[3]);
+// off: the body's shapes stop pushing (and being pushed by) other bodies; bullets and rays
+// still hit them. Put back when the wish is dropped.
+bool SetCollision(uint32_t aProxy, uint32_t aIndex, bool aOn);
 void Release(uint32_t aProxy, uint32_t aIndex);
 bool GetReadback(uint32_t aProxy, uint32_t aIndex, Readback& aOut);
 uint32_t Steps();

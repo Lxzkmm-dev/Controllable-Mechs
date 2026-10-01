@@ -37,7 +37,7 @@ namespace
 RED4ext::v1::PluginHandle g_handle = nullptr;
 const RED4ext::v1::Sdk* g_sdk = nullptr;
 
-constexpr int32_t VERSION = 3;
+constexpr int32_t VERSION = 4; // v3.1: collision off for a body's shapes
 
 void Log(const std::string& aText)
 {
@@ -384,6 +384,20 @@ void SetForce(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, i
     }
 }
 
+void SetCollision(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    uint32_t proxy = 0, index = 0;
+    const bool ok = ReadBody(aFrame, proxy, index);
+    bool on = true;
+    RED4ext::GetParameter(aFrame, &on);
+    aFrame->code++; // ParamEnd
+    const bool done = ok && MNC::PhysXBody::SetCollision(proxy, index, on);
+    if (aOut)
+    {
+        *aOut = done;
+    }
+}
+
 void ReleaseBody(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
 {
     uint32_t proxy = 0, index = 0;
@@ -507,6 +521,8 @@ void PostRegisterTypes()
     Global("MNCPhysics_SetForce", &SetForce, "Bool",
            {{"handle:entPhysicalBodyInterface", "body"}, {"Vector4", "force"}, {"Vector4", "torque"}});
     Global("MNCPhysics_Release", &ReleaseBody, "Bool", {{"handle:entPhysicalBodyInterface", "body"}});
+    Global("MNCPhysics_SetCollision", &SetCollision, "Bool",
+           {{"handle:entPhysicalBodyInterface", "body"}, {"Bool", "on"}});
     Global("MNCPhysics_StepVelocity", &StepVelocity, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
     Global("MNCPhysics_StepSpin", &StepSpin, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
     Global("MNCPhysics_StepInfo", &StepInfo, "String", {{"handle:entPhysicalBodyInterface", "body"}});

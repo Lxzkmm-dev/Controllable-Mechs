@@ -34,7 +34,8 @@ namespace
 {
 constexpr std::size_t SLOT_SIMULATE = 56; // PxScene vtable (3.4 order, checked in PhysX3_x64.dll)
 constexpr std::size_t SLOT_COLLIDE = 58;
-constexpr std::size_t MAX_BODIES = 16;
+constexpr std::size_t MAX_BODIES = 32;
+constexpr PxU32 MAX_SHAPES = 32;
 constexpr ULONGLONG HOLD_MS = 300;
 
 // the engine's physics proxy table (address-library hashes, game 2.31)
@@ -56,6 +57,8 @@ struct Wish
     ULONGLONG until;   // dropped after this (GetTickCount64)
     int32_t gravity;   // -1 leave as is, 0 off, 1 on
     bool restore;      // put gravity back on when the wish is dropped
+    int32_t collide;   // -1 leave as is, 0 its shapes push nothing (queries still hit them), 1 back
+    uint32_t turnedOff; // the shapes (bit per shape, first 32) whose simulation flag we cleared
     float force[3];
     float torque[3];
     MNC::PhysXBody::Readback back;
@@ -129,6 +132,28 @@ PxRigidDynamic* ActorOf(uint32_t aProxy, uint32_t aIndex, PxScene* aScene)
     return dyn;
 }
 
+// a body's shapes as simulation shapes (they push and are pushed) or not (scene queries,
+// so bullets and rays, still find them); only the shapes this changed are put back
+void SetSimulationShapes(PxRigidActor* aActor, Wish& aWish, bool aOn)
+{
+    PxShape* shapes[MAX_SHAPES];
+    const PxU32 n = aActor->getShapes(shapes, MAX_SHAPES, 0);
+    for (PxU32 i = 0; i < n; ++i)
+    {
+        const bool sim = shapes[i]->getFlags().isSet(PxShapeFlag::eSIMULATION_SHAPE);
+        if (!aOn && sim)
+        {
+            shapes[i]->setFlag(PxShapeFlag::eSIMULATION_SHAPE, false);
+            aWish.turnedOff |= 1u << i;
+        }
+        else if (aOn && !sim && (aWish.turnedOff & (1u << i)))
+        {
+            shapes[i]->setFlag(PxShapeFlag::eSIMULATION_SHAPE, true);
+            aWish.turnedOff &= ~(1u << i);
+        }
+    }
+}
+
 void Drive(PxScene* aScene)
 {
     g_steps.fetch_add(1, std::memory_order_relaxed);
@@ -159,8 +184,20 @@ void Drive(PxScene* aScene)
                 actor->setActorFlag(PxActorFlag::eDISABLE_GRAVITY, false);
                 actor->wakeUp();
             }
+            if (w.turnedOff)
+            {
+                SetSimulationShapes(actor, w, true);
+            }
             w = {};
             continue;
+        }
+        if (w.collide == 0)
+        {
+            SetSimulationShapes(actor, w, false);
+        }
+        else if (w.collide == 1 && w.turnedOff)
+        {
+            SetSimulationShapes(actor, w, true);
         }
         if (w.gravity >= 0)
         {
@@ -266,6 +303,7 @@ Wish* Find(uint32_t aProxy, uint32_t aIndex, bool aCreate)
         free->proxy = aProxy;
         free->index = aIndex;
         free->gravity = -1;
+        free->collide = -1;
         free->back.gravity = -1;
         return free;
     }
@@ -369,6 +407,20 @@ bool SetForce(uint32_t aProxy, uint32_t aIndex, const float aForce[3], const flo
     {
         std::memcpy(w->force, aForce, sizeof(w->force));
         std::memcpy(w->torque, aTorque, sizeof(w->torque));
+        w->until = GetTickCount64() + HOLD_MS;
+    }
+    ReleaseSRWLockExclusive(&g_lock);
+    return w != nullptr && IsHooked();
+}
+
+bool SetCollision(uint32_t aProxy, uint32_t aIndex, bool aOn)
+{
+    EnsureHooked();
+    AcquireSRWLockExclusive(&g_lock);
+    auto w = Find(aProxy, aIndex, true);
+    if (w)
+    {
+        w->collide = aOn ? 1 : 0;
         w->until = GetTickCount64() + HOLD_MS;
     }
     ReleaseSRWLockExclusive(&g_lock);
