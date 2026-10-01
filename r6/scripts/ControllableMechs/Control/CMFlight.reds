@@ -60,6 +60,8 @@ public class CMFlight {
   public let holding: Bool;
   public let grounded: Bool;       // resting on the ground (set by the unit's contacts)
   public let groundGain: Float;    // ground effect: the rotors' thrust near the ground, x (1 = none)
+  public let wind: Vector4;        // the air's own motion here (m/s, world; CMWind): drag and
+                                   // the blades' flapping act on the speed through the air
   public let p: ref<CMFlightProfile>;
   // derived each step, for the camera, the HUD and the log (degrees)
   public let yaw: Float;
@@ -87,6 +89,7 @@ public class CMFlight {
     f.holdZ = pos.Z;
     f.holding = true;
     f.groundGain = 1.0;
+    f.wind = new Vector4(0.0, 0.0, 0.0, 0.0);
     f.Angles();
     return f;
   }
@@ -241,7 +244,9 @@ public class CMFlight {
     let bx = d * (t0 + t1 - t2 - t3);                // front heavier: nose up
     let by = d * (t0 - t1 + t2 - t3);                // left heavier: right side down
     let bz = p.kq * (t0 - t1 - t2 + t3);             // the rotors' counter-torque
-    let vb = CMFlight.QInvRot(this.q, this.vel);
+    // the speed through the air (the wind's own motion taken off)
+    let air = this.vel - this.wind;
+    let vb = CMFlight.QInvRot(this.q, air);
     bx += p.flap * vb.Y;                             // airflow: speed lifts the nose
     by -= p.flap * vb.X;                             // and leans it back from a slide
     // the air damps rotation a little; the ground, when it sits on it, a lot
@@ -276,7 +281,7 @@ public class CMFlight {
     let force = CMFlight.QRot(this.q, new Vector4(0.0, 0.0, t0 + t1 + t2 + t3, 0.0));
     let drag = new Vector4(-0.6 * p.cdh * vb.X * AbsF(vb.X), -0.6 * p.cdh * vb.Y * AbsF(vb.Y), -0.6 * p.cdv * vb.Z * AbsF(vb.Z), 0.0);
     force += CMFlight.QRot(this.q, drag);
-    force -= this.vel * (0.05 * m);
+    force -= air * (0.05 * m);
     force.Z -= m * 9.81;
     this.vel.X += force.X / m * dt;
     this.vel.Y += force.Y / m * dt;

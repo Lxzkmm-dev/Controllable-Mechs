@@ -54,6 +54,7 @@ public class CMDroneHud extends CMPilotHud {
   private let m_ter: ref<inkText>;
   private let m_terBox: ref<inkCanvas>;
   private let m_holdT: ref<inkText>;
+  private let m_windT: ref<inkText>;
   private let m_heat: ref<inkRectangle>;
   private let m_hullT: ref<inkText>;
   private let m_hullBar: ref<inkRectangle>;
@@ -347,6 +348,7 @@ public class CMDroneHud extends CMPilotHud {
     this.m_pitchT = this.Txt(root, W - 520.0, 150.0, "PITCH  +00", 30, false);
     this.m_rollT = this.Txt(root, W - 520.0, 194.0, "ROLL   +00", 30, false);
     this.m_spoolT = this.Txt(root, W - 520.0, 238.0, "SPOOL  00%", 30, false);
+    this.m_windT = this.Txt(root, W - 520.0, 282.0, "", 30, false);
     this.m_warnT = this.Txt(root, W * 0.5, 300.0, "", 36, true);
     this.m_warnT.SetTintColor(CMPilotHud.Red());
   }
@@ -426,6 +428,7 @@ public class CMDroneHud extends CMPilotHud {
     this.m_secBox.SetOpacity(s.weapon == 1 ? 1.0 : 0.25);
     this.m_terBox.SetOpacity(s.weapon == 2 ? 1.0 : 0.25);
     this.m_holdT.SetText(s.holdText);
+    this.m_windT.SetText(s.windText);
     this.m_heat.SetSize(Vector2(756.0 * ClampF(s.secHeat, 0.0, 1.0), 6.0));
     this.m_heat.SetTintColor(s.secHeat >= 1.0 ? CMPilotHud.Red() : CMPilotHud.Caution());
     // hull and parts

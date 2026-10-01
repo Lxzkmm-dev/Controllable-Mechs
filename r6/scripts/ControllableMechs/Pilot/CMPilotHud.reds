@@ -1359,6 +1359,7 @@ public class CMPilotHudState {
   public let weapon: Int32;       // the selected weapon's line (0 pri, 1 sec, 2 third)
   public let secHeat: Float;      // the secondary's heat, 0-1 (1 = overheated)
   public let holdText: String;    // a hold mode's banner ("" = off): the drone's gunship hold
+  public let windText: String;    // the wind where the drone is (CMWind)
   public let droneParts: array<Float>;   // each schematic part's health, 0-1
 }
 

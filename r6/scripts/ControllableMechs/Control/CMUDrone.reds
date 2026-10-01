@@ -134,6 +134,9 @@ public class CMUDrone extends CMCUnit {
     this.m_hold = false;
     this.DropShots();
     this.StopWash();
+    this.m_exposure = 1.0;
+    this.m_exposureTo = 1.0;
+    this.m_exposureAt = 0.0;
     this.m_tq = CMUDrone.QIdentity();
     this.m_tqSeen = CMUDrone.QIdentity();
     this.m_tt = new Vector4(0.0, 0.0, 0.0, 0.0);
@@ -433,6 +436,7 @@ public class CMUDrone extends CMCUnit {
     let from = this.m_flight.pos;
     // ground effect: the rotors' cushion near the ground (its height from the last frame)
     this.m_flight.SetGround(this.m_ground);
+    this.UpdateWind(now, dt);
     // the flight model in small steps
     let left = dt;
     while left > 0.0001 {
@@ -631,6 +635,44 @@ public class CMUDrone extends CMCUnit {
     this.m_camLag = cfg.DroneCamLag();
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
     this.m_sensFwd = Cast<Float>(cfg.DroneCamFwdCm(this.m_kind)) / 100.0;
+    this.m_windK = Cast<Float>(cfg.WindPct()) / 100.0;
+  }
+
+  // ---- the wind (CMWind): the air the flight flies through, times CONFIG's WIND
+  // STRENGTH and how open the drone is to it (shelter, looked for four times a second and
+  // eased, so passing a building's corner isn't a step). Sitting on the ground it is still.
+  private let m_windK: Float;
+  private let m_exposure: Float;
+  private let m_exposureTo: Float;
+  private let m_exposureAt: Float;
+
+  private func UpdateWind(now: Float, dt: Float) -> Void {
+    let fl = this.m_flight;
+    let w = CMWind.Get(this.m_game);
+    if this.m_windK <= 0.0 || fl.grounded || !IsDefined(w) {
+      fl.wind = new Vector4(0.0, 0.0, 0.0, 0.0);
+      return;
+    }
+    if now >= this.m_exposureAt {
+      this.m_exposureAt = now + 0.25;
+      this.m_exposureTo = w.Exposure(fl.pos);
+    }
+    this.m_exposure += (this.m_exposureTo - this.m_exposure) * MinF(1.0, dt * 2.0);
+    fl.wind = w.At(fl.pos, this.m_ground) * (this.m_windK * this.m_exposure);
+  }
+
+  // the wind on the HUD: where it blows from (compass) and how hard, here
+  private func WindText() -> String {
+    let w = CMWind.Get(this.m_game);
+    if !IsDefined(w) || !IsDefined(this.m_flight) || this.m_windK <= 0.0 {
+      return "WIND  OFF";
+    }
+    let from = RoundF(CMPilotRig.Wrap(-(w.Heading() + 180.0)));
+    if from < 0 {
+      from += 360;
+    }
+    let v = this.m_flight.wind;
+    return "WIND  " + CMPilotHud.Pad3(from % 360) + " / " + IntToString(RoundF(SqrtF(v.X * v.X + v.Y * v.Y))) + " M/S";
   }
 
   // ---- quaternions (i, j, k, r) ----
@@ -1302,6 +1344,9 @@ public class CMUDrone extends CMCUnit {
       let eye = this.Anchor().Z + this.SensorUp();
       heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m, body bottom " + FloatToStringPrec(fl.pos.Z - this.Extent(new Vector4(0.0, 0.0, -1.0, 0.0)) - gz, 2) + " m";
     }
+    let wv = fl.wind;
+    let wname = IsDefined(CMWind.Get(this.m_game)) ? CMWind.Get(this.m_game).Weather() : "?";
+    heights += ", wind " + FloatToStringPrec(SqrtF(wv.X * wv.X + wv.Y * wv.Y), 1) + " m/s (vert " + FloatToStringPrec(wv.Z, 1) + ", exposure " + FloatToStringPrec(this.m_exposure, 2) + ", weather " + wname + ")";
     heights += ", ground effect x" + FloatToStringPrec(fl.groundGain, 3) + (IsDefined(this.m_wash) ? " (downwash dust)" : "") + (this.m_hold ? ", gunship hold" : "");
     heights += ", own-body hits skipped " + IntToString(this.m_selfHits) + ", contact rays hit " + IntToString(this.m_fastHits) + (this.m_fastOff ? " (per-group)" : "") + (this.m_hidden ? ", model hidden" : "");
     this.m_fastHits = 0;
@@ -1366,6 +1411,7 @@ public class CMUDrone extends CMCUnit {
     st.secSelected = this.m_wpn == 1;
     st.secHeat = this.m_heat;
     st.holdText = this.m_hold ? "GUNSHIP // HOLDING      [H] RELEASE" : "";
+    st.windText = this.WindText();
     if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 {
       let now = s.Now();
       let gun = this.m_partHp[5] > 0.0;
@@ -1901,6 +1947,7 @@ public class CMUDrone extends CMCUnit {
   private let m_holdPos: Vector4;
   private let m_holdYaw: Float;
   private let m_holdChase: Bool;       // the chase view was on before (back on letting go)
+  private let m_holdTrim: Vector4;     // the lean the wind needs, learned (key units, world)
   private let HOLD_NUDGE: Float = 4.0;  // m/s, WASD moving the held place
 
   public func Hold(s: ref<CMCSession>) -> Void {
@@ -1920,6 +1967,7 @@ public class CMUDrone extends CMCUnit {
       this.m_holdPos = fl.pos + fl.vel * 0.5;   // where it comes to rest
       this.m_holdPos.W = 1.0;
       this.m_holdYaw = fl.yaw;
+      this.m_holdTrim = new Vector4(0.0, 0.0, 0.0, 0.0);
       this.m_holdChase = !s.SightView();
       if this.m_holdChase {
         s.SetChaseView(false);
@@ -1954,7 +2002,14 @@ public class CMUDrone extends CMCUnit {
       want = want * (8.0 / n);
     }
     want += nudge;
-    let k = (want - fl.vel) * 0.3;
+    // a steady wind needs a steady lean into it: a slow trim learns it, so the hold sits on
+    // its place instead of a little downwind of it
+    this.m_holdTrim += err * (0.06 * dt);
+    let tn = Vector4.Length(this.m_holdTrim);
+    if tn > 0.6 {
+      this.m_holdTrim = this.m_holdTrim * (0.6 / tn);
+    }
+    let k = (want - fl.vel) * 0.3 + this.m_holdTrim;
     let bf = CMPilotRig.Dir(fl.yaw, 0.0);
     let br = new Vector4(bf.Y, -bf.X, 0.0, 0.0);
     f = ClampF(k.X * bf.X + k.Y * bf.Y, -1.0, 1.0);
