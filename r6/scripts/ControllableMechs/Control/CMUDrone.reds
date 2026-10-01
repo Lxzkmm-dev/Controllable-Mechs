@@ -11,7 +11,7 @@
 //   - its pitch and roll can't be set: the tilt is shown through the camera instead
 // The camera rides where the drone really is (the teleports land a frame late).
 // Keys: WASD tilt it and the tilt moves it, Space/Ctrl climb and descend, the mouse
-// turns it. CONFIG > PROFILE > (the drone) sets its self-levelling (0% = acro), tilt limit
+// turns it. The flight is a 6-DOF rigid body (CMFlight). CONFIG > PROFILE > (the drone) sets its self-levelling (0% = acro), tilt limit
 // and rates.
 // Collisions: the step is swept against the world; the velocity into a surface is
 // removed with a little bounce, and a hard hit damages the drone (a crashed drone is
@@ -189,49 +189,75 @@ public class CMUDrone extends CMCUnit {
   // origin itself, at the base of the Bombus and Wyvern, swung the body like a see-saw.
   private func Root() -> Vector4 {
     let fl = this.m_flight;
-    let up = CMFlight.BodyUp(fl.yaw, fl.pitch, fl.roll);
-    let r = fl.pos - up * fl.p.com;
+    let r = fl.pos - fl.Up() * fl.p.com;
     r.W = 1.0;
     return r;
   }
 
-  // The step from `from` to where the model went, swept against the world: into a wall
-  // or the ground, the drone stops at the surface, the velocity into it is removed with
-  // a little bounce, and a hard hit damages it.
+  // The nearest thing between two points: the static world, dynamic objects (props the
+  // game or a physics mod makes movable) and vehicles. Static-only rays let the drone fly
+  // through cars and loose props.
+  private func Ray(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
+    let sq = GameInstance.GetSpatialQueriesSystem(this.m_game);
+    let best = -1.0;
+    let h: TraceResult;
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", h, true) {
+      best = Vector4.Distance(from, Cast<Vector4>(h.position));
+      hit = h;
+    }
+    if sq.SyncRaycastByCollisionPreset(from, to, n"World Dynamic", h, true) {
+      let dd = Vector4.Distance(from, Cast<Vector4>(h.position));
+      if best < 0.0 || dd < best {
+        best = dd;
+        hit = h;
+      }
+    }
+    if sq.SyncRaycastByCollisionGroup(from, to, n"Vehicle", h, true, false) {
+      let dv = Vector4.Distance(from, Cast<Vector4>(h.position));
+      if best < 0.0 || dv < best {
+        best = dv;
+        hit = h;
+      }
+    }
+    return best >= 0.0;
+  }
+
+  // The step from `from` to where the model went, swept against the world. A contact is a
+  // rigid-body impulse at the point of the drone that touched (CMFlight.Contact): it stops
+  // the motion into the surface, bounces a little off walls, grips and slides on floors,
+  // and an off-centre or glancing hit spins it. A hard hit damages it.
   private func Collide(drone: ref<NPCPuppet>, from: Vector4) -> Void {
     let fl = this.m_flight;
-    let sq = GameInstance.GetSpatialQueriesSystem(this.m_game);
-    let to = fl.pos;
-    let move = to - from;
+    let r = fl.p.radius;
+    let move = fl.pos - from;
     let len = Vector4.Length(move);
     let hit: TraceResult;
     if len > 0.0005 {
       let dir = move / len;
-      let r = fl.p.radius;
-      if sq.SyncRaycastByCollisionPreset(from, to + dir * r, n"World Static", hit, true) {
+      if this.Ray(from, fl.pos + dir * r, hit) {
         let at = Cast<Vector4>(hit.position);
         let n = Vector4.Normalize(Cast<Vector4>(hit.normal));
         fl.pos = at - dir * r;
         fl.pos.W = 1.0;
-        // ground-like surfaces are slid along, not bounced off, and the height hold takes
-        // the new height (it pulled back down into rising ground: the bobbing)
+        // floors are slid along with grip, walls give a little bounce; the height hold
+        // takes the new height (it pulled back down into rising ground: the bobbing)
         let floorish = n.Z > 0.6;
-        this.Impact(drone, fl.Contact(n, floorish ? 0.0 : 0.3));
+        this.Impact(drone, fl.Contact(n, n * -r, floorish ? 0.0 : 0.25, 0.3));
         if floorish && fl.holding {
           fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
         }
       }
     }
-    // the ground under it: measured for the HUD, and a contact only when the drone is
-    // actually in it. There is no minimum height (a floor held it half a metre up and
-    // bounced it over every curb and bump in the road); flying low is the pilot's call.
-    let r0 = fl.p.com > 0.05 ? fl.p.com + 0.05 : fl.p.radius * 0.5;
-    if sq.SyncRaycastByCollisionPreset(fl.pos + new Vector4(0.0, 0.0, r0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), n"World Static", hit, true) {
+    // the ground under it: measured for the HUD, and a contact only when the drone is in
+    // it. There is no minimum height; flying low is the pilot's call.
+    let r0 = fl.p.com > 0.05 ? fl.p.com + 0.05 : r * 0.5;
+    if this.Ray(fl.pos + new Vector4(0.0, 0.0, r0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       let gz = Cast<Vector4>(hit.position).Z;
       this.m_ground = fl.pos.Z - gz;
       if fl.pos.Z < gz + r0 {
         fl.pos.Z = gz + r0;
-        this.Impact(drone, fl.Contact(new Vector4(0.0, 0.0, 1.0, 0.0), 0.0));
+        let up = new Vector4(0.0, 0.0, 1.0, 0.0);
+        this.Impact(drone, fl.Contact(up, up * -r0, 0.0, 0.3));
         if fl.holding {
           fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
         }
@@ -240,7 +266,6 @@ public class CMUDrone extends CMCUnit {
       this.m_ground = -1.0;
     }
   }
-
   // a collision this fast (m/s): past the type's limit it costs health, more the harder
   // it hits; a crash can destroy the drone (a crashed drone is lost)
   private func Impact(drone: ref<NPCPuppet>, speed: Float) -> Void {
@@ -262,18 +287,15 @@ public class CMUDrone extends CMCUnit {
     switch this.m_method {
       case 4:
         // the entity's own transform set each frame (Codeware), with the body's full
-        // tilt; an AI teleport four times a second keeps its movement component where
+        // orientation; an AI teleport four times a second keeps its movement component where
         // the body is
         let wt: WorldTransform;
         let root = this.Root();
         let world: WorldPosition;
         WorldPosition.SetVector4(world, root);
         WorldTransform.SetWorldPosition(wt, world);
-        let q: EulerAngles;
-        q.Yaw = fl.yaw;
-        q.Pitch = fl.pitch;
-        q.Roll = fl.roll;
-        WorldTransform.SetOrientation(wt, EulerAngles.ToQuat(q));
+        WorldTransform.SetOrientation(wt, fl.q);   // the rigid body's own orientation
+
         drone.SetWorldTransform(wt);
         if now - this.m_cmdAt >= 0.25 {
           let sync = new AITeleportCommand();

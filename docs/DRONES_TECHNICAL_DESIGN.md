@@ -114,6 +114,13 @@ Omar has the author's permission for analysis. No code is taken; these are the i
 
 ## 5. Flight model (`CMFlight`)
 
+> **As built (2026-10-01): a full 6-DOF rigid body.** This replaces the simplified model described in the rest of this section.
+>
+> - **State and forces:** quaternion orientation, body-frame angular velocity, inertia per axis, Euler's equations, four X rotors with spool lag, yaw from counter-torque, quadratic drag per body axis, flapping moments, damping and gravity.
+> - **Controller:** a cascaded flight controller (attitude, then rate, then mixer with air mode) that only commands the rotors.
+> - **Collisions:** contact impulses at the touching point with friction, against static, dynamic and vehicle geometry.
+> - **Offline mirror:** `tools/flight/sixdof.py`.
+
 ### State
 
 - position `p`;

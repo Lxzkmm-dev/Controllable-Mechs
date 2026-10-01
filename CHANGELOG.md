@@ -11,6 +11,18 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 - **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone flight, round 4: a full 6-DOF rigid-body model** (CMFlight rewritten; Omar's go-ahead, 2026-10-01). Nothing is kinematic any more.
+  - **Rigid body:** a quaternion orientation (no angle limits), angular velocity in the body frame, inertia per axis and per type, and Euler's equations with the gyroscopic term.
+  - **Rotors:** four in an X at their real positions, each with spool lag and an efficiency (for damage). Yaw comes from their counter-torque.
+  - **Drag:** quadratic per body axis, plus a little linear drag. The top speed is simply where drag meets thrust (no cap).
+  - **Airflow and damping:** blade-flapping moments, angular damping and gravity.
+  - **Flight controller:** it only commands the rotors.
+    - An attitude loop and a rate loop, blended by SELF-LEVELLING.
+    - The yaw follows the view, and the collective holds altitude.
+    - A mixer with air mode keeps attitude authority when it saturates.
+  - **Collisions are rigid-body impulses** at the point that touched, with bounce on walls and friction on floors, so off-centre and glancing hits spin it. Spin is capped at about 1,150 deg/s. The checks cover the static world, dynamic objects and vehicles (static-only rays let it pass through cars and loose props).
+  - **Placement:** the drone takes the body's quaternion directly.
+  - **Offline check:** tools/flight/sixdof.py mirrors the model. All three weight classes are stable, with tilt, flare, turns, acro flips, ground skids and wall hits.
 - **Drone flight, round 3: physics-based tilt** (Omar: the tilt felt like a fixed axis; bobbing near the ground):
   - **Centre of mass:** the body turns about its centre of mass, and the model's origin hangs below it. On the Bombus and Wyvern the origin is at the base, so they swung like a see-saw.
   - **Rotational inertia per type** (agility):
