@@ -81,6 +81,7 @@ public class CMUDrone extends CMCUnit {
   // the first frames (m_self, -1 = nothing of its own on that ray); a hit there is its own.
   private let m_self: array<Float>;
   private let m_flLeft: Int32;         // frame-log lines left (-1 = not started)
+  private let m_selfHits: Int32;       // rays that passed through the drone's own body (log)
   private let m_flOn: Bool;
   private let m_flT: Float;
   private let m_lastRoot: Vector4;     // where the entity was put last frame
@@ -135,7 +136,7 @@ public class CMUDrone extends CMCUnit {
     this.m_tt = new Vector4(0.0, 0.0, 0.0, 0.0);
     this.m_poseOk = false;
     this.m_poseFrames = 0;
-    this.m_selfFrames = 0;
+    this.m_selfFrames = 10;   // (no learning: each ray skips the drone's own body itself)
     this.m_flLeft = -1;
     this.m_flOn = cfg.DroneFrameLog();
     this.m_flT = 0.0;
@@ -631,9 +632,64 @@ public class CMUDrone extends CMCUnit {
   // through cars and loose props.
   // The contact rays (24 a frame): one query against the same groups as Ray(), combined in
   // one filter, instead of five.
+  // Every ray skips the drone itself: a hit whose entity is the drone (the Octant's shell
+  // and thruster pods, the Griffin's body are physical meshes) is passed through, and the
+  // ray goes on from just beyond it, up to four times. So the drones that have a body of
+  // their own keep every contact (cars shoving them included) and none of their own body
+  // counts (Codeware: TraceResult.GetHitEntity).
+  private func IsSelf(hit: TraceResult) -> Bool {
+    let e = TraceResult.GetHitEntity(hit);
+    let drone = this.m_drone;
+    return IsDefined(e) && IsDefined(drone) && e.GetEntityID() == drone.GetEntityID();
+  }
+
   private func RayFast(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
+    let a = from;
+    let i = 0;
+    while i < 4 {
+      if !this.RayFastOnce(a, to, hit) {
+        return false;
+      }
+      if !this.IsSelf(hit) {
+        return true;
+      }
+      this.m_selfHits += 1;
+      let dir = Vector4.Normalize(to - a);
+      a = Cast<Vector4>(hit.position) + dir * 0.02;
+      a.W = 1.0;
+      if Vector4.Dot(to - a, dir) <= 0.0 {
+        return false;
+      }
+      i += 1;
+    }
+    return false;
+  }
+
+  private func Ray(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
+    let a = from;
+    let i = 0;
+    while i < 4 {
+      if !this.RayOnce(a, to, hit) {
+        return false;
+      }
+      if !this.IsSelf(hit) {
+        return true;
+      }
+      this.m_selfHits += 1;
+      let dir = Vector4.Normalize(to - a);
+      a = Cast<Vector4>(hit.position) + dir * 0.02;
+      a.W = 1.0;
+      if Vector4.Dot(to - a, dir) <= 0.0 {
+        return false;
+      }
+      i += 1;
+    }
+    return false;
+  }
+
+  private func RayFastOnce(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
     if this.m_fastOff {
-      return this.Ray(from, to, hit);
+      return this.RayOnce(from, to, hit);
     }
     let filter: QueryFilter;
     QueryFilter.AddGroup(filter, n"Static");
@@ -648,7 +704,7 @@ public class CMUDrone extends CMCUnit {
     return got;
   }
 
-  private func Ray(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
+  private func RayOnce(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
     let sq = GameInstance.GetSpatialQueriesSystem(this.m_game);
     // each query in its own result, the nearest kept. The distance is worked out from the
     // X, Y and Z alone: the 6-DOF build compared Vector4 distances against a cast position
@@ -744,7 +800,7 @@ public class CMUDrone extends CMCUnit {
     fl.grounded = false;
     let clear = 1000.0;   // how far the lowest point is above the ground
     // a drone with a shell of its own looks for the ground from just under its lowest point
-    let top = this.m_hasSelf || this.ShellKind() ? fl.pos.Z + low.Z - 0.02 : fl.pos.Z + 1.0;
+    let top = fl.pos.Z + 1.0;   // (the drone's own body is skipped by the ray itself)
     if this.Ray(new Vector4(fl.pos.X, fl.pos.Y, top, 1.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       let gz = hit.position.Z;
       this.m_groundFrom = FloatToStringPrec(top - gz, 2) + " m below the ray start";
@@ -1027,19 +1083,7 @@ public class CMUDrone extends CMCUnit {
   private func Contacts(drone: ref<NPCPuppet>) -> Void {
     let fl = this.m_flight;
     let hit: TraceResult;
-    if this.m_selfFrames < 10 {
-      this.LearnSelf();
-      return;
-    }
-    // A drone with a physical shell of its own (the Octant's body and thruster pods, the
-    // Griffin's body) can't use rays out from its centre at all: they always cross its own
-    // shell, and its pods are animated, so learning where the shell sits on each ray (a39)
-    // missed most of it (a52 log: 100-240 own hits a second at 7.5 m up in open air, each a
-    // push: the Octant lurching about in flight). It collides by its leading points' sweeps
-    // (they start on the hull and run outward) and the ground ray from under its belly.
-    if this.m_hasSelf || this.ShellKind() {
-      return;
-    }
+
     let i = -1;
     for p in this.m_pts {
       i += 1;
@@ -1226,8 +1270,9 @@ public class CMUDrone extends CMCUnit {
       let eye = this.Anchor().Z + this.SensorUp();
       heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m, body bottom " + FloatToStringPrec(fl.pos.Z - this.Extent(new Vector4(0.0, 0.0, -1.0, 0.0)) - gz, 2) + " m";
     }
-    heights += ", contact rays hit " + IntToString(this.m_fastHits) + (this.m_fastOff ? " (per-group)" : "") + (this.m_hidden ? ", model hidden" : "");
+    heights += ", own-body hits skipped " + IntToString(this.m_selfHits) + ", contact rays hit " + IntToString(this.m_fastHits) + (this.m_fastOff ? " (per-group)" : "") + (this.m_hidden ? ", model hidden" : "");
     this.m_fastHits = 0;
+    this.m_selfHits = 0;
     CMCSession.Log("drone: " + CMUDrone.MethodName(this.m_method) + ", " + IntToString(this.m_frames) + " frames"
       + (this.m_method == 2 ? "" : ", off by " + FloatToStringPrec(avg, 2) + " m avg / " + FloatToStringPrec(this.m_errMax, 2) + " m max, " + IntToString(stalls) + " stalled frames")
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
