@@ -9,3 +9,21 @@ Attacks.CM_Missile:
   damageType: DamageTypes.Physical
   statModifiers: []
   statusEffects: []
+
+# The Octant's weapons (CMUDrone): the mortar's blast and each machine-gun round's hit,
+# both small area attacks whose damage is added from script with V as the instigator.
+Attacks.CM_Mortar:
+  $base: Attacks.BaseProjectileAoEAttack
+  effectTag: explosion_round_charged
+  range: 6.0
+  damageType: DamageTypes.Physical
+  statModifiers: []
+  statusEffects: []
+
+Attacks.CM_DroneRound:
+  $base: Attacks.BaseProjectileAoEAttack
+  effectTag: explosion_round_charged
+  range: 0.6
+  damageType: DamageTypes.Physical
+  statModifiers: []
+  statusEffects: []

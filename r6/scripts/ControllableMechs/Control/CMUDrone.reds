@@ -196,6 +196,10 @@ public class CMUDrone extends CMCUnit {
       if this.m_hidden {
         this.ShowModel(drone, true);
       }
+      if this.m_lmgSound {
+        GameObject.PlaySoundEvent(drone, n"w_gun_hmg_militech_fire_auto_stop");
+        this.m_lmgSound = false;
+      }
       this.NpcSystems(drone, true);
       this.Cancel(drone);
       this.SetGait(drone, n"Walk");   // the drone's own default
@@ -432,6 +436,7 @@ public class CMUDrone extends CMCUnit {
       let fl = this.m_flight;
       hud.SetFlight(fl.pitch, fl.roll, Vector4.Length(fl.vel), this.m_ground, fl.vel.Z);
     }
+    this.Weapons(s, now, dt, hud);
     this.Remember();
     this.Lean(drone, dt);
     if now >= this.m_logAt {
@@ -1266,10 +1271,12 @@ public class CMUDrone extends CMCUnit {
     }
     // weapons (the Octant's come next: its mortar, unlimited; its two machine guns, on heat)
     st.secSelected = st.fireMode % 2 == 1;
-    st.secHeat = 0.0;
+    st.secHeat = this.m_heat;
     if Equals(this.m_kind, "octant") {
-      st.priText = "PRI  MORTAR      UNLTD   " + (this.m_partHp[5] > 0.0 ? "STBY" : "LOST");
-      st.secText = "SEC  LMG x2      HEAT    " + (this.m_partHp[5] > 0.0 ? "STBY" : "LOST");
+      let now = s.Now();
+      let gun = this.m_partHp[5] > 0.0;
+      st.priText = "PRI  MORTAR      UNLTD   " + (!gun ? "LOST" : (now >= this.m_mortarReady ? "RDY" : "RLD " + FloatToStringPrec(this.m_mortarReady - now, 1) + "S"));
+      st.secText = "SEC  LMG x2      " + (!gun ? "LOST" : (this.m_overheat ? "OVERHEAT" : "HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%"));
     } else {
       st.priText = "PRI  ----";
       st.secText = "SEC  ----";
@@ -1296,6 +1303,229 @@ public class CMUDrone extends CMCUnit {
       case "griffin": return "STRIKE";
     }
     return "ESCORT";
+  }
+
+  // ---- weapons (the Octant): a mortar, unlimited, and two light machine guns on heat -----
+  // The Octant carries no weapon items (a44 log: "carries nothing"), so like the Minotaur's
+  // missile its weapons are ours: the game's attack system for the damage (V's, so V's
+  // kills and heat), its HMG's effects and sounds for the look.
+  //   LMB fires the selected weapon (B selects), G the mortar.
+  //   Mortar: a shell at MORTAR_SPEED along the view, falling under gravity; the arc is
+  //     solved against the world 20 times a second and its impact shown on the HUD with
+  //     the time of flight; the blast lands there after that time. MORTAR_COOLDOWN apart.
+  //   LMG x2: the barrels under the nose take turns at LMG_RATE, at the reticle point with
+  //     a little spread; every round heats both by LMG_HEAT, they cool at LMG_COOL a second,
+  //     and at full heat they lock until they're under a third.
+  private let m_mortarReady: Float;
+  private let m_heat: Float;
+  private let m_overheat: Bool;
+  private let m_lmgNext: Float;
+  private let m_lmgLeft: Bool;
+  private let m_lmgSound: Bool;
+  private let m_impactAt: Vector4;
+  private let m_impactOk: Bool;
+  private let m_tof: Float;
+  private let m_solveAt: Float;
+  private let MORTAR_SPEED: Float = 55.0;
+  private let MORTAR_COOLDOWN: Float = 2.5;
+  private let MORTAR_RADIUS: Float = 6.0;
+  private let MORTAR_DAMAGE: Float = 650.0;
+  private let LMG_RATE: Float = 0.075;
+  private let LMG_DAMAGE: Float = 32.0;
+  private let LMG_HEAT: Float = 0.022;
+  private let LMG_COOL: Float = 0.35;
+
+  private func Weapons(s: ref<CMCSession>, now: Float, dt: Float, hud: ref<CMDroneHud>) -> Void {
+    if !Equals(this.m_kind, "octant") || ArraySize(this.m_partHp) < 6 {
+      return;
+    }
+    let drone = this.m_drone;
+    let gun = this.m_partHp[5] > 0.0;
+    // the guns cool
+    this.m_heat = MaxF(0.0, this.m_heat - this.LMG_COOL * dt);
+    if this.m_overheat && this.m_heat < 0.33 {
+      this.m_overheat = false;
+      GameObject.PlaySoundEvent(drone, n"w_gun_hmg_militech_overheat_close");
+    }
+    // the mortar's solution, and its mark on the HUD
+    if now >= this.m_solveAt {
+      this.m_solveAt = now + 0.05;
+      this.SolveMortar(s);
+    }
+    if IsDefined(hud) {
+      let o = this.Screen(s, this.m_impactAt);
+      let sec = s.FireMode() % 2 == 1;
+      hud.SetImpact(gun && !sec && this.m_impactOk && AbsF(o.X) < 1900.0 && AbsF(o.Y) < 1050.0, o.X, o.Y, this.m_tof);
+    }
+    let lmb = s.Key(CMCKey.Lmb());
+    let firing = false;
+    if lmb && gun {
+      if s.FireMode() % 2 == 1 {
+        firing = this.FireLmg(s, now);
+      } else {
+        this.FireMortar(s, now);
+      }
+    }
+    if NotEquals(firing, this.m_lmgSound) {
+      this.m_lmgSound = firing;
+      GameObject.PlaySoundEvent(drone, firing ? n"w_gun_hmg_militech_fire_auto" : n"w_gun_hmg_militech_fire_auto_stop");
+    }
+  }
+
+  public func Secondary(s: ref<CMCSession>) -> Void {
+    if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 && this.m_partHp[5] > 0.0 {
+      this.FireMortar(s, s.Now());
+    }
+  }
+
+  // where the shell from the gun along the view lands: steps of 0.05 s, each a ray
+  private func SolveMortar(s: ref<CMCSession>) -> Void {
+    let fl = this.m_flight;
+    let p = this.Muzzle(0.0);
+    let v = s.rig.Forward() * this.MORTAR_SPEED + fl.vel;
+    let t = 0.0;
+    let hit: TraceResult;
+    this.m_impactOk = false;
+    while t < 8.0 {
+      let next = p + v * 0.05;
+      next.W = 1.0;
+      if this.RayFast(p, next, hit) {
+        this.m_impactAt = Cast<Vector4>(hit.position);
+        this.m_impactAt.W = 1.0;
+        this.m_tof = t + 0.05 * Vector4.Distance(p, this.m_impactAt) / MaxF(0.001, Vector4.Distance(p, next));
+        this.m_impactOk = true;
+        return;
+      }
+      p = next;
+      v.Z -= 9.81 * 0.05;
+      t += 0.05;
+    }
+  }
+
+  private func FireMortar(s: ref<CMCSession>, now: Float) -> Void {
+    let drone = this.m_drone;
+    if now < this.m_mortarReady {
+      return;
+    }
+    if !this.m_impactOk {
+      GameObject.PlaySoundEvent(GetPlayer(this.m_game), n"ui_hacking_press_fail");
+      this.m_mortarReady = now + 0.4;
+      return;
+    }
+    this.m_mortarReady = now + this.MORTAR_COOLDOWN;
+    let fx = GameInstance.GetFxSystem(this.m_game);
+    let dir = Vector4.Normalize(s.rig.Forward());
+    let muzzle = this.Muzzle(0.0);
+    fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
+    GameObject.PlaySoundEvent(drone, n"nme_boss_smasher_wpn_missile_fire_single");
+    s.rig.Recoil(0.6);
+    let cb = new CMUDroneMortarCb();
+    cb.unit = this;
+    cb.at = this.m_impactAt;
+    GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, MaxF(0.1, this.m_tof), false);
+    CMCSession.Log("mortar: fired, impact " + CMCHits.V(this.m_impactAt) + " in " + FloatToStringPrec(this.m_tof, 2) + " s");
+  }
+
+  public func Detonate(at: Vector4) -> Void {
+    GameInstance.GetFxSystem(this.m_game).SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\minotaur\\v_minotaur_explosion.effect"), CMUMinotaur.At(at, new Vector4(0.0, 0.0, 1.0, 0.0)), true);
+    this.Blast(at, t"Attacks.CM_Mortar", this.MORTAR_RADIUS, this.MORTAR_DAMAGE);
+  }
+
+  private func FireLmg(s: ref<CMCSession>, now: Float) -> Bool {
+    if this.m_overheat {
+      return false;
+    }
+    let fired = false;
+    while now >= this.m_lmgNext {
+      this.m_lmgNext = MaxF(this.m_lmgNext + this.LMG_RATE, now - this.LMG_RATE);
+      this.m_lmgLeft = !this.m_lmgLeft;
+      let muzzle = this.Muzzle(this.m_lmgLeft ? -0.12 : 0.12);
+      let aim = s.aim;
+      let dist = Vector4.Distance(muzzle, aim);
+      let spread = dist * 0.008;
+      aim += new Vector4(RandRangeF(-spread, spread), RandRangeF(-spread, spread), RandRangeF(-spread, spread), 0.0);
+      let dir = Vector4.Normalize(aim - muzzle);
+      let fx = GameInstance.GetFxSystem(this.m_game);
+      fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
+      fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg_npc.effect"), CMUMinotaur.At(muzzle, dir), true);
+      if this.m_lmgLeft {
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_explosive_bullet.effect"), CMUMinotaur.At(aim, -dir), true);
+      }
+      this.Blast(aim, t"Attacks.CM_DroneRound", 0.6, this.LMG_DAMAGE);
+      this.m_heat += this.LMG_HEAT;
+      fired = true;
+      if this.m_heat >= 1.0 {
+        this.m_heat = 1.0;
+        this.m_overheat = true;
+        GameObject.PlaySoundEvent(this.m_drone, n"w_gun_hmg_militech_overheat_open");
+        GameObject.PlaySoundEvent(this.m_drone, n"w_gun_hmg_militech_overheat_steam");
+        return false;
+      }
+    }
+    return fired || now < this.m_lmgNext;
+  }
+
+  // the gun under the nose (the Octant's front gun mesh, rig frame), `side` metres across
+  private func Muzzle(side: Float) -> Vector4 {
+    let fl = this.m_flight;
+    let p = fl.pos + CMFlight.QRot(fl.q, new Vector4(side, 1.45, -0.45, 0.0) - this.m_c);
+    p.W = 1.0;
+    return p;
+  }
+
+  // an area attack at `at`, V's (her kills, XP and heat), on those it hits the drone's
+  private func Blast(at: Vector4, rec: TweakDBID, radius: Float, damage: Float) -> Void {
+    let player = GetPlayer(this.m_game);
+    if !IsDefined(player) {
+      return;
+    }
+    let record = TweakDBInterface.GetAttackRecord(rec) as Attack_GameEffect_Record;
+    if !IsDefined(record) {
+      record = TweakDBInterface.GetAttackRecord(t"Attacks.FragGrenade") as Attack_GameEffect_Record;
+    }
+    if !IsDefined(record) {
+      return;
+    }
+    let ctx: AttackInitContext;
+    ctx.record = record;
+    ctx.instigator = player;
+    ctx.source = player;
+    let attack = IAttack.Create(ctx) as Attack_GameEffect;
+    if !IsDefined(attack) {
+      return;
+    }
+    attack.AddStatModifier(RPGManager.CreateStatModifier(gamedataStatType.PhysicalDamage, gameStatModifierType.Additive, damage));
+    let statMods: array<ref<gameStatModifierData>>;
+    attack.GetStatModList(statMods);
+    let flags: array<SHitFlag>;
+    let effect = attack.PrepareAttack(player);
+    EffectData.SetFloat(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.radius, radius);
+    EffectData.SetVector(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.position, at);
+    EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attack, ToVariant(attack));
+    EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attackStatModList, ToVariant(statMods));
+    EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.flags, ToVariant(flags));
+    let drone = this.m_drone;
+    if IsDefined(drone) {
+      CMCHits.Blame(drone, 0.6);
+    }
+    attack.StartAttack();
+  }
+
+  // a world point on the HUD, 4K units from the centre, through the camera as it is drawn
+  // (its heading and pitch, and the drone's tilt the camera carries); far off when behind
+  private func Screen(s: ref<CMCSession>, p: Vector4) -> Vector2 {
+    let tilt = this.CamTilt();
+    let k = s.SightView() ? 1.0 : 0.35;
+    let e: EulerAngles;
+    e.Yaw = s.rig.yaw;
+    e.Pitch = s.rig.pitch + tilt.X * k;
+    e.Roll = s.rig.roll + tilt.Y * k;
+    let d = CMFlight.QInvRot(EulerAngles.ToQuat(e), p - s.rig.pos);
+    if d.Y < 0.5 {
+      return Vector2(9999.0, 9999.0);
+    }
+    let scale = 1080.0 / TanF(Deg2Rad(s.rig.fov * 0.5));
+    return Vector2(d.X / d.Y * scale, -d.Z / d.Y * scale);
   }
 
   // ---- part damage (the Octant first): body, the four thrusters, the gun ---------------
@@ -1418,5 +1648,16 @@ public class CMUDrone extends CMCUnit {
       case "octant": return "ZETATECH OCTANT";
     }
     return "MILITECH WYVERN";
+  }
+}
+
+// the mortar's shell landing (one per shot)
+public class CMUDroneMortarCb extends DelayCallback {
+  public let unit: wref<CMUDrone>;
+  public let at: Vector4;
+  public func Call() -> Void {
+    if IsDefined(this.unit) {
+      this.unit.Detonate(this.at);
+    }
   }
 }

@@ -596,7 +596,7 @@ public class CMUMinotaur extends CMCUnit {
     }
   }
 
-  private static func Fx(path: ResRef) -> FxResource {
+  public static func Fx(path: ResRef) -> FxResource {
     let ref: ResourceAsyncRef;
     ResourceAsyncRef.SetPath(ref, path);
     let fx: FxResource;
@@ -604,7 +604,7 @@ public class CMUMinotaur extends CMCUnit {
     return fx;
   }
 
-  private static func At(p: Vector4, dir: Vector4) -> WorldTransform {
+  public static func At(p: Vector4, dir: Vector4) -> WorldTransform {
     let wp: WorldPosition;
     WorldPosition.SetVector4(wp, p);
     let wt: WorldTransform;
