@@ -216,6 +216,13 @@ public class CMPilotSystem extends ScriptableSystem {
   public func DroneCamLag() -> Int32 = Clamp(this.Int("droneCamLag2", 0), 0, 2)
   public func SetDroneCamLag(v: Int32) -> Void { this.PutInt("droneCamLag2", Clamp(v, 0, 2)); }
   // a frame-by-frame log of a fast flight (DIAGNOSTICS): four seconds once over 8 m/s
+  // the first-person lag tests (DIAGNOSTICS, Phase 4): where the sight eye is mounted (0 on
+  // the body, turning with it: a18; 1 level on the heading: a43-a17) and whether the hull is
+  // drawn a frame ahead (a17)
+  public func DroneSightMount() -> Int32 = Clamp(this.Int("droneSightMount", 0), 0, 1)
+  public func SetDroneSightMount(v: Int32) -> Void { this.PutInt("droneSightMount", Clamp(v, 0, 1)); }
+  public func DroneHullLead() -> Bool = this.Flag("droneHullLead", true)
+  public func SetDroneHullLead(on: Bool) -> Void { this.PutFlag("droneHullLead", on); }
   public func DroneFrameLog() -> Bool = this.Flag("droneFrameLog", true)
   public func SetDroneFrameLog(on: Bool) -> Void { this.PutFlag("droneFrameLog", on); }
 

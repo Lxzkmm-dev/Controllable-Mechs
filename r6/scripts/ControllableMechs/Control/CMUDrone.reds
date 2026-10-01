@@ -76,6 +76,8 @@ public class CMUDrone extends CMCUnit {
   private let m_bone: Vector4;         // the body bone, last measured (world, log)
   private let m_boneOff: Vector4;      // it less the flight's centre when last placed (log)
   private let m_placed: Vector4;       // the flight's centre at the last placement
+  private let m_sightLevel: Bool;      // DIAGNOSTICS: the sight eye level on the heading (a17), not on the body (a18)
+  private let m_hullLead: Bool;        // DIAGNOSTICS: the hull drawn a frame ahead (a17; on by default)
   private let m_leadDt: Float;         // how far ahead the hull is placed (this frame's length; 0 until flying)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
@@ -247,6 +249,11 @@ public class CMUDrone extends CMCUnit {
       // follows the body (CamTilt), so the eye now sits where it looks from.
       let fwd = this.SensorFwd();
       let view = CMPilotRig.Dir(this.m_rigYaw, 0.0);
+      if this.m_sightLevel {
+        let body = CMPilotRig.Dir(this.m_flight.yaw, 0.0);
+        let a = this.m_anchors[i];
+        return new Vector4(a.X + (body.X - view.X) * fwd, a.Y + (body.Y - view.Y) * fwd, a.Z, 1.0);
+      }
       let m = this.m_mounts[i];
       return new Vector4(m.X - view.X * fwd, m.Y - view.Y * fwd, m.Z - this.SensorUp(), 1.0);
     }
@@ -402,7 +409,7 @@ public class CMUDrone extends CMCUnit {
     if NotEquals(hide, this.m_hidden) {
       this.ShowModel(drone, !hide);
     }
-    this.m_leadDt = this.m_proxyLive ? dt : 0.0;
+    this.m_leadDt = this.m_proxyLive && this.m_hullLead ? dt : 0.0;
     this.Place(drone, now);
     this.m_sight = s.SightView();
     this.m_rigYaw = s.rig.yaw;
@@ -572,6 +579,8 @@ public class CMUDrone extends CMCUnit {
     let cfg = CMPilotSystem.Get(this.m_game);
     this.m_hideInSight = cfg.DroneHideInSight(this.m_kind);
     this.m_camLag = cfg.DroneCamLag();
+    this.m_sightLevel = cfg.DroneSightMount() == 1;
+    this.m_hullLead = cfg.DroneHullLead();
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
     this.m_sensFwd = Cast<Float>(cfg.DroneCamFwdCm(this.m_kind)) / 100.0;
     this.m_windK = Cast<Float>(cfg.WindPct()) / 100.0;
