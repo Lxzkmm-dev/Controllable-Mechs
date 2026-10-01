@@ -14,6 +14,9 @@ public static native func MNCPhysics_SetSleeping(body: ref<PhysicalBodyInterface
 public static native func MNCPhysics_SetGravity(body: ref<PhysicalBodyInterface>, on: Bool) -> Bool
 public static native func MNCPhysics_SetForce(body: ref<PhysicalBodyInterface>, force: Vector4, torque: Vector4) -> Bool
 public static native func MNCPhysics_Release(body: ref<PhysicalBodyInterface>) -> Bool
+// v3.1 (plugin version 4): off = the body's shapes stop pushing other bodies (bullets and rays
+// still hit them); held like the other wishes, put back when dropped
+public static native func MNCPhysics_SetCollision(body: ref<PhysicalBodyInterface>, on: Bool) -> Bool
 public static native func MNCPhysics_StepVelocity(body: ref<PhysicalBodyInterface>) -> Vector4
 public static native func MNCPhysics_StepSpin(body: ref<PhysicalBodyInterface>) -> Vector4
 public static native func MNCPhysics_StepInfo(body: ref<PhysicalBodyInterface>) -> String
