@@ -168,7 +168,7 @@ public class CMUDrone extends CMCUnit {
     if !IsDefined(this.m_flight) {
       return this.m_seen;
     }
-    let p = this.Root() + this.m_flight.vel * this.m_dt;
+    let p = this.Anchor() + this.m_flight.vel * this.m_dt;
     p.W = 1.0;
     return p;
   }
@@ -239,11 +239,24 @@ public class CMUDrone extends CMCUnit {
   // Where the drone's origin goes: the body turns about its centre of mass (the model's
   // position), and the origin hangs below that along the body's up axis. Turning about the
   // origin itself, at the base of the Bombus and Wyvern, swung the body like a see-saw.
-  // The model's rest pose is what's drawn: the drone's slots disagree about the animated
-  // skeleton (Slot88444 put the Bombus body bone 1.8 m up, which the picture doesn't
-  // show), so no animation correction is applied; the slot reading is logged only. The
-  // float that a23-a28 chased was the collision sweep holding the body a radius up.
+  // The entity's origin also goes down by however far the drone's hover animation holds
+  // its body bone off the rest pose (the Bombus: 1.68 m, read through the skeleton-bound
+  // Item_Attachment_Slot/Center). With that applied (a28) Omar saw the model sit right; the
+  // origin itself is then well under the road, so nothing else may anchor to it: the
+  // cameras use Anchor(), the body's rest-pose origin.
   private func Root() -> Vector4 {
+    let fl = this.m_flight;
+    let q = fl.Shown(this.m_show);
+    let r = this.Anchor() - CMFlight.QRot(q, this.m_lift);
+    r.W = 1.0;
+    return r;
+  }
+
+  // where the body's origin is in its rest pose: the centre of mass less the body-up x
+  // com. The drawn body sits here (with the lift taken off the entity), and so do the
+  // sight view and the chase pivot. a28 anchored the cameras to the entity origin and the
+  // first-person view went 1.7 m under the road.
+  private func Anchor() -> Vector4 {
     let fl = this.m_flight;
     let q = fl.Shown(this.m_show);
     let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com;
@@ -675,8 +688,7 @@ public class CMUDrone extends CMCUnit {
     let heights = "";
     if this.m_ground >= 0.0 {
       let gz = fl.pos.Z - this.m_ground;
-      let root = this.Root();
-      let eye = root.Z + this.SensorUp();
+      let eye = this.Anchor().Z + this.SensorUp();
       heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m, body bottom " + FloatToStringPrec(fl.pos.Z - this.Extent(new Vector4(0.0, 0.0, -1.0, 0.0)) - gz, 2) + " m";
     }
     CMCSession.Log("drone: " + CMUDrone.MethodName(this.m_method) + ", " + IntToString(this.m_frames) + " frames"

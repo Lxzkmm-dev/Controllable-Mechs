@@ -1,4 +1,15 @@
-# Drone float analysis (0.7.0, builds a21–a29)
+# Drone float analysis (0.7.0, builds a21–a30)
+
+> **Correction after Omar's a28 test (2026-10-01).** The float had **two** independent causes. This doc first blamed only the second one, and that was wrong:
+>
+> 1. **The hover animation really does lift the drawn body.** The Bombus body bone sits 1.68 m above the entity origin. It is read correctly through the skeleton-bound `Item_Attachment_Slot/Center`.
+>    - a28 lowered the origin by that amount, and the model sat right ("it works").
+>    - a28 also anchored the cameras to the entity origin, so first person went 1.7 m under the road.
+>    - a29 dropped the lift, which was wrong.
+>    - **a30** keeps the lift for the entity and anchors both cameras (sight view and chase pivot) to the body's rest-pose origin, `Anchor()`.
+> 2. **The sweep radius** (below) held the centre a radius up. Fixed in a29 and kept in a30.
+>
+> The `fx_slots` (a23–a26) and `Slot88444` readings remain as described in §3. Only the bound `Item_Attachment_Slot/Center` is trustworthy. Slot88444 gave the same 1.68 m and was dismissed wrongly in §3: its reading was correct.
 
 **Symptom (Omar, all drone types):** at rest and level, the third-person model floats a hand's width (about 0.3 m) above the road, while the first-person view sits on the asphalt.
 
