@@ -287,6 +287,27 @@ public class CMPhysSpike extends ScriptableSystem {
     return "*PLUGIN TILT: IT RISES 2 M AND LEANS 20 DEG, HELD BY THE ENGINE'S OWN VELOCITY AND SPIN";
   }
 
+  // MNC Physics version 3: gravity off for the box, height held by a per-step force
+  public func PluginGravity() -> String {
+    let e = this.Box();
+    if !IsDefined(e) {
+      return "!DROP A BOX FIRST";
+    }
+    if !CMPhysStep.Present() {
+      return "!NEEDS MNC PHYSICS VERSION 3";
+    }
+    this.m_holdSet = false;
+    this.m_errSum = 0.0;
+    this.m_errMax = 0.0;
+    this.m_errN = 0;
+    this.m_tiltSum = 0.0;
+    this.m_tiltN = 0;
+    this.m_pluginFails = 0;
+    CMPhysSpike.Log("plugin gravity: gravity off, height on a per-step force, 20 deg lean on spin, " + FloatToStringPrec(this.TILT_TIME, 0) + " s");
+    this.Start(4);
+    return "*PLUGIN GRAVITY: GRAVITY OFF, IT RISES 2 M AND HOLDS ON A REAL FORCE";
+  }
+
   // a body handle that works: taken again whenever the last one isn't simulated (a1: one
   // taken the frame the box spawned, before it was placed, never worked)
   private func Fresh(e: ref<Entity>) -> ref<PhysicalBodyInterface> {
@@ -528,6 +549,32 @@ public class CMPhysSpike extends ScriptableSystem {
         CMPhysSpike.Log("plugin tilt " + FloatToStringPrec(age, 1) + " s: lean " + FloatToStringPrec(Rad2Deg(AcosF(ClampF(upP.Z, -1.0, 1.0))), 1) + " deg, off the hold by " + FloatToStringPrec(errP, 3) + " m; velocity measured " + CMCHits.V(this.m_vel) + " vs engine " + CMCHits.V(CMPhysPlugin.Velocity(body)) + ", spin measured " + CMCHits.V(w) + " vs engine " + CMCHits.V(CMPhysPlugin.Spin(body)) + (this.m_pluginFails > 0 ? ", " + IntToString(this.m_pluginFails) + " calls refused" : ""));
       }
     }
+    if this.m_mode == 4 && IsDefined(body) && this.m_holdSet {
+      // version 3: the box's gravity off, its height held by a real force applied every
+      // physics step (a spring on the height, a damper on the climb), drift damped
+      // sideways; the 20 deg lean by its spin as in PLUGIN TILT
+      let errG = this.m_holdZ - p.Z;
+      let upG = CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0));
+      let wantG = new Vector4(SinF(Deg2Rad(20.0)), 0.0, CosF(Deg2Rad(20.0)), 0.0);
+      let vNow = CMPhysStep.Velocity(body);
+      let f = new Vector4(-vNow.X * this.MASS * 2.0, -vNow.Y * this.MASS * 2.0, this.MASS * (errG * 6.0 - vNow.Z * 4.0), 0.0);
+      let okG = CMPhysStep.SetGravity(body, false);
+      let okF = CMPhysStep.SetForce(body, f, new Vector4(0.0, 0.0, 0.0, 0.0));
+      let okS = CMPhysPlugin.SetSpin(body, CMFlight.Cross(upG, wantG) * 4.0);
+      if !okG || !okF || !okS {
+        this.m_pluginFails += 1;
+      }
+      if age > 5.0 {
+        this.m_errSum += AbsF(errG);
+        this.m_errMax = MaxF(this.m_errMax, AbsF(errG));
+        this.m_errN += 1;
+        this.m_tiltSum += Rad2Deg(AcosF(ClampF(Vector4.Dot(upG, wantG), -1.0, 1.0)));
+        this.m_tiltN += 1;
+      }
+      if now >= this.m_logAt {
+        CMPhysSpike.Log("plugin gravity " + FloatToStringPrec(age, 1) + " s: lean " + FloatToStringPrec(Rad2Deg(AcosF(ClampF(upG.Z, -1.0, 1.0))), 1) + " deg, off the hold by " + FloatToStringPrec(errG, 3) + " m, force " + CMCHits.V(f) + "; velocity measured " + CMCHits.V(this.m_vel) + " vs step " + CMCHits.V(vNow) + "; " + CMPhysStep.Info(body) + (this.m_pluginFails > 0 ? ", " + IntToString(this.m_pluginFails) + " calls refused" : ""));
+      }
+    }
     if this.m_mode >= 1 && this.m_mode <= 2 && IsDefined(body) && this.m_holdSet {
       // gravity, cancelled over this frame, and the height hold (a spring and a damper on
       // the measured climb rate), as one impulse through the centre of mass, through a body
@@ -547,7 +594,7 @@ public class CMPhysSpike extends ScriptableSystem {
         this.m_errN += 1;
       }
     }
-    if now >= this.m_logAt && this.m_mode == 3 {
+    if now >= this.m_logAt && this.m_mode >= 3 {
       this.m_logAt = now + 0.5;
     }
     if now >= this.m_logAt {
@@ -556,6 +603,12 @@ public class CMPhysSpike extends ScriptableSystem {
     }
     let limit = this.m_mode >= 2 ? this.TILT_TIME : (this.m_mode == 1 ? this.HOVER : this.WATCH);
     if age >= limit {
+      if this.m_mode == 4 {
+        let avgG = this.m_errN > 0 ? this.m_errSum / Cast<Float>(this.m_errN) : -1.0;
+        let e = this.Box();
+        let b = IsDefined(e) ? this.Fresh(e) : null;
+        CMPhysSpike.Log("gravity off (plugin v3) " + (this.m_errN > 0 && this.m_errMax < 0.03 ? "PASS" : "RESULT") + ": held its height within " + FloatToStringPrec(avgG, 3) + " m on average, " + FloatToStringPrec(this.m_errMax, 3) + " m at most, on force alone with gravity off; " + (IsDefined(b) ? CMPhysStep.Info(b) : "no body") + "; it now gets its gravity back and drops");
+      }
       if this.m_mode == 3 {
         let avgP = this.m_tiltN > 0 ? this.m_tiltSum / Cast<Float>(this.m_tiltN) : -1.0;
         CMPhysSpike.Log("R4 (plugin) " + (this.m_tiltN > 0 && avgP < 3.0 ? "PASS" : "RESULT") + ": the lean was off its 20 deg by " + FloatToStringPrec(avgP, 2) + " deg on average over " + IntToString(this.m_tiltN) + " frames; " + IntToString(this.m_pluginFails) + " plugin calls refused");

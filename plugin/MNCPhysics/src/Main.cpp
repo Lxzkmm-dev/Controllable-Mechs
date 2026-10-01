@@ -25,6 +25,8 @@
 #include <RED4ext/Relocation.hpp>
 #include <RED4ext/Detail/AddressHashes.hpp>
 
+#include "PhysXBody.hpp"
+
 #include <Windows.h>
 
 #include <cstdio>
@@ -35,7 +37,7 @@ namespace
 RED4ext::v1::PluginHandle g_handle = nullptr;
 const RED4ext::v1::Sdk* g_sdk = nullptr;
 
-constexpr int32_t VERSION = 2;
+constexpr int32_t VERSION = 3;
 
 void Log(const std::string& aText)
 {
@@ -343,6 +345,116 @@ void SetSleeping(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut
     }
 }
 
+// ---- v3: per-physics-step wishes (PhysXBody.cpp) ---------------------------------
+bool ReadBody(RED4ext::CStackFrame* aFrame, uint32_t& aProxy, uint32_t& aIndex)
+{
+    RED4ext::Handle<RED4ext::IScriptable> body;
+    RED4ext::GetParameter(aFrame, &body);
+    return BodyIds(body, aProxy, aIndex);
+}
+
+void SetGravity(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    uint32_t proxy = 0, index = 0;
+    const bool ok = ReadBody(aFrame, proxy, index);
+    bool on = true;
+    RED4ext::GetParameter(aFrame, &on);
+    aFrame->code++; // ParamEnd
+    const bool done = ok && MNC::PhysXBody::SetGravity(proxy, index, on);
+    if (aOut)
+    {
+        *aOut = done;
+    }
+}
+
+void SetForce(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    uint32_t proxy = 0, index = 0;
+    const bool ok = ReadBody(aFrame, proxy, index);
+    RED4ext::Vector4 f{}, t{};
+    RED4ext::GetParameter(aFrame, &f);
+    RED4ext::GetParameter(aFrame, &t);
+    aFrame->code++; // ParamEnd
+    const float force[3] = {f.X, f.Y, f.Z};
+    const float torque[3] = {t.X, t.Y, t.Z};
+    const bool done = ok && MNC::PhysXBody::SetForce(proxy, index, force, torque);
+    if (aOut)
+    {
+        *aOut = done;
+    }
+}
+
+void ReleaseBody(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+{
+    uint32_t proxy = 0, index = 0;
+    const bool ok = ReadBody(aFrame, proxy, index);
+    aFrame->code++; // ParamEnd
+    if (ok)
+    {
+        MNC::PhysXBody::Release(proxy, index);
+    }
+    if (aOut)
+    {
+        *aOut = ok;
+    }
+}
+
+void StepVelocity(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, int64_t)
+{
+    uint32_t proxy = 0, index = 0;
+    const bool ok = ReadBody(aFrame, proxy, index);
+    aFrame->code++; // ParamEnd
+    MNC::PhysXBody::Readback back{};
+    if (aOut)
+    {
+        *aOut = ok && MNC::PhysXBody::GetReadback(proxy, index, back)
+                    ? RED4ext::Vector4{back.vel[0], back.vel[1], back.vel[2], 0.f}
+                    : RED4ext::Vector4{0.f, 0.f, 0.f, 0.f};
+    }
+}
+
+void StepSpin(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::Vector4* aOut, int64_t)
+{
+    uint32_t proxy = 0, index = 0;
+    const bool ok = ReadBody(aFrame, proxy, index);
+    aFrame->code++; // ParamEnd
+    MNC::PhysXBody::Readback back{};
+    if (aOut)
+    {
+        *aOut = ok && MNC::PhysXBody::GetReadback(proxy, index, back)
+                    ? RED4ext::Vector4{back.spin[0], back.spin[1], back.spin[2], 0.f}
+                    : RED4ext::Vector4{0.f, 0.f, 0.f, 0.f};
+    }
+}
+
+void StepInfo(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    uint32_t proxy = 0, index = 0;
+    const bool ok = ReadBody(aFrame, proxy, index);
+    aFrame->code++; // ParamEnd
+    std::string text = std::string("hook ") + (MNC::PhysXBody::IsHooked() ? "on" : "OFF") + ", " +
+                       std::to_string(MNC::PhysXBody::Steps()) + " physics steps";
+    MNC::PhysXBody::Readback back{};
+    if (!ok)
+    {
+        text += ", body not live";
+    }
+    else if (MNC::PhysXBody::GetReadback(proxy, index, back))
+    {
+        text += ", body driven " + std::to_string(back.steps) + " steps, gravity " +
+                (back.gravity < 0 ? "?" : (back.gravity ? "on" : "off")) + ", put back by others " +
+                std::to_string(back.reset) + " times";
+    }
+    else
+    {
+        text += ", body not driven";
+    }
+    if (aOut)
+    {
+        *aOut = RED4ext::CString(text.c_str());
+    }
+}
+
 template<typename T>
 void Global(const char* aName, RED4ext::ScriptingFunction_t<T> aFunc, const char* aReturn,
             std::initializer_list<std::pair<const char*, const char*>> aParams)
@@ -391,7 +503,15 @@ void PostRegisterTypes()
            {{"handle:entPhysicalBodyInterface", "body"}});
     Global("MNCPhysics_SetSleeping", &SetSleeping, "Bool",
            {{"handle:entPhysicalBodyInterface", "body"}, {"Bool", "sleeping"}});
-    Log("MNC Physics v" + std::to_string(VERSION) + " registered: velocity and spin setters/getters, sleep");
+    Global("MNCPhysics_SetGravity", &SetGravity, "Bool", {{"handle:entPhysicalBodyInterface", "body"}, {"Bool", "on"}});
+    Global("MNCPhysics_SetForce", &SetForce, "Bool",
+           {{"handle:entPhysicalBodyInterface", "body"}, {"Vector4", "force"}, {"Vector4", "torque"}});
+    Global("MNCPhysics_Release", &ReleaseBody, "Bool", {{"handle:entPhysicalBodyInterface", "body"}});
+    Global("MNCPhysics_StepVelocity", &StepVelocity, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
+    Global("MNCPhysics_StepSpin", &StepSpin, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
+    Global("MNCPhysics_StepInfo", &StepInfo, "String", {{"handle:entPhysicalBodyInterface", "body"}});
+    Log("MNC Physics v" + std::to_string(VERSION) +
+        " registered: velocity and spin, per-step gravity / force / torque");
 }
 
 // the plugin's own scripts, next to the DLL: compiled only while the plugin is loaded
@@ -427,6 +547,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4e
         rtti->AddRegisterCallback(RegisterTypes);
         rtti->AddPostRegisterCallback(PostRegisterTypes);
         AddScripts();
+        MNC::PhysXBody::Init(aHandle, aSdk);
         break;
     }
     case RED4ext::v1::EMainReason::Unload:

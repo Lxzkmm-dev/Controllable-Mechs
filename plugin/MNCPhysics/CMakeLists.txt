@@ -16,7 +16,15 @@ endif()
 set(RED4EXT_HEADER_ONLY ON CACHE BOOL "" FORCE)
 add_subdirectory(${RED4EXT_SDK_DIR} red4ext_sdk EXCLUDE_FROM_ALL)
 
-add_library(MNCPhysics SHARED src/Main.cpp)
+# PhysX 3.4 public headers (BSD-3), only for the virtual interfaces of the game's own PhysX
+# DLLs; nothing is linked (PxGetPhysics is looked up at runtime)
+set(PHYSX34_DIR "" CACHE PATH "PhysX 3.4 headers (with PhysX_3.4/Include and PxShared/include)")
+if(NOT PHYSX34_DIR)
+  message(FATAL_ERROR "Set PHYSX34_DIR to the PhysX 3.4 headers")
+endif()
+
+add_library(MNCPhysics SHARED src/Main.cpp src/PhysXBody.cpp)
+target_include_directories(MNCPhysics SYSTEM PRIVATE "${PHYSX34_DIR}/PhysX_3.4/Include" "${PHYSX34_DIR}/PxShared/include")
 target_link_libraries(MNCPhysics PRIVATE RED4ext::SDK)
 target_compile_definitions(MNCPhysics PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 if(MSVC)
