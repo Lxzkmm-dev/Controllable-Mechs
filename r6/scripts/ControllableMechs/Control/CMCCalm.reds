@@ -196,3 +196,23 @@ public abstract class CMCCalm {
     CMCHits.Trace(owner.GetGame(), "AI kept out: " + what + " from " + who + " at " + dist + " m raised no alert and no threat");
   }
 }
+
+// V while piloting: no jumping or crouching. Space and Ctrl climb and descend a drone, and
+// NoJump alone did not stop V hopping and ducking at the operator's spot.
+@wrapMethod(JumpDecisions)
+protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
+  let player = scriptInterface.executionOwner as PlayerPuppet;
+  if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    return false;
+  }
+  return wrappedMethod(stateContext, scriptInterface);
+}
+
+@wrapMethod(CrouchDecisions)
+protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
+  let player = scriptInterface.executionOwner as PlayerPuppet;
+  if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    return false;
+  }
+  return wrappedMethod(stateContext, scriptInterface);
+}

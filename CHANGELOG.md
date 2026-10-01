@@ -11,6 +11,10 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 - **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone flight, round 5** (Omar: "flying feels much better"):
+  - **Ground:** drones sank into the ground. Contact now uses each type's measured lowest point as it is tilted (the belly when level, a rotor or wing tip when banked), and the ground ray starts a metre above the drone, so one already part-way in still finds the surface.
+  - **Bombus defaults:** it pitched forward far too hard and too fast. The defaults are now tilt 25 deg (was 35), rate 140 deg/s (was 220), self-levelling 75% (was 65%), and a slower attitude response. Holding W now leans it about 30 deg instead of about 48. Saved slider values still win; RESET applies the new defaults.
+  - **V no longer jumps or crouches** while piloting. Space and Ctrl climb and descend; NoJump alone hadn't stopped it, so the jump and crouch decisions are refused at the source while a session runs.
 - **Drone flight, round 4: a full 6-DOF rigid-body model** (CMFlight rewritten; Omar's go-ahead, 2026-10-01). Nothing is kinematic any more.
   - **Rigid body:** a quaternion orientation (no angle limits), angular velocity in the body frame, inertia per axis and per type, and Euler's equations with the gyroscopic term.
   - **Rotors:** four in an X at their real positions, each with spool lag and an efficiency (for damage). Yaw comes from their counter-torque.

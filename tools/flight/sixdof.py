@@ -23,7 +23,7 @@ def cross(a, b):
     return (a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0])
 
 PROF = {
- 'bombus': dict(mass=6, arm=0.2, thrust=30, spool=0.06, kq=0.02, agility=16, tilt=35, rate=220, cdh=0.30, cdv=0.45, flap=0.06, yawRate=200, climb=5, level=0.65),
+ 'bombus': dict(mass=6, arm=0.2, thrust=30, spool=0.06, kq=0.02, agility=11, tilt=25, rate=140, cdh=0.30, cdv=0.45, flap=0.06, yawRate=200, climb=5, level=0.75),
  'griffin': dict(mass=40, arm=0.45, thrust=190, spool=0.10, kq=0.04, agility=9, tilt=22, rate=120, cdh=1.9, cdv=2.8, flap=0.35, yawRate=110, climb=4, level=0.85),
  'octant': dict(mass=180, arm=1.0, thrust=900, spool=0.14, kq=0.08, agility=4.5, tilt=20, rate=90, cdh=10.7, cdv=16, flap=2.0, yawRate=60, climb=3, level=0.95),
 }
@@ -147,54 +147,4 @@ def acro_flip(t):
     return (1.0 if 1 <= t < 2.6 else 0.0, 0.0, 0.0, 0.0)
 
 if __name__ == '__main__':
-    for k in PROF: run(k, script=fwd_then_release)
-    run('bombus', script=diag_turn)
-    run('bombus', L=0.0, script=acro_flip)
-
-def contact(s, n, r, bounce, grip):
-    wW = qrot(s.q, tuple(s.w))
-    cr = cross(wW, r)
-    vc = [s.vel[i] + cr[i] for i in range(3)]
-    vn = sum(vc[i]*n[i] for i in range(3))
-    if vn >= 0: return 0.0
-    m = s.p['mass']; ix, _, iz = s.I
-    rn = qinv_rot(s.q, cross(r, n))
-    irn = qrot(s.q, (rn[0]/ix, rn[1]/ix, rn[2]/iz))
-    k = 1/m + sum(a*b for a, b in zip(cross(irn, r), n))
-    j = -(1+bounce)*vn/max(1e-4, k)
-    vt = [vc[i] - n[i]*vn for i in range(3)]
-    sl = math.sqrt(sum(v*v for v in vt))
-    imp = [n[i]*j for i in range(3)]
-    if sl > 1e-3:
-        tdir = [vt[i]/sl for i in range(3)]
-        rt = qinv_rot(s.q, cross(r, tdir)); irt = qrot(s.q, (rt[0]/ix, rt[1]/ix, rt[2]/iz))
-        kt = 1/m + sum(a*b for a, b in zip(cross(irt, r), tdir))
-        ft = min(grip*j, sl/max(1e-4, kt))
-        imp = [imp[i] - vt[i]/sl*ft for i in range(3)]
-    for i in range(3): s.vel[i] += imp[i]/m
-    ang = qinv_rot(s.q, cross(r, imp))
-    s.w[0] += ang[0]/ix; s.w[1] += ang[1]/ix; s.w[2] += ang[2]/iz
-    return -vn
-
-def crash_test(kind):
-    p = dict(PROF[kind]); d = Drone(p); d.pos = [0, 0, 1.5]; d.holdZ = 1.5; dt = 0.004; out = []; hits = []
-    for i in range(int(6/dt)):
-        t = i*dt
-        f = 1.0 if t < 3 else 0.0
-        c = -1.0 if 1 < t < 2 else 0.0
-        frame_from = list(d.pos)
-        d.step(dt, f, 0.0, c, 0.0)
-        r = 0.3
-        if d.pos[2] < r:  # ground
-            d.pos[2] = r; v = contact(d, (0, 0, 1), (0, 0, -r), 0.0, GRIP)
-            if v > 0.5: hits.append(('ground', round(t, 2), round(v, 1)))
-        if d.pos[1] > 25 - r:  # wall facing -y
-            d.pos[1] = 25 - r; v = contact(d, (0, -1, 0), (0, r, 0), 0.25, 0.3)
-            if v > 0.5: hits.append(('wall', round(t, 2), round(v, 1)))
-        if i % int(0.5/dt) == 0:
-            pi, ro, ya = d.euler()
-            out.append('t%.1f p%6.1f r%6.1f y%6.1f vy%5.1f z%5.2f w%5.1f' % (t, pi, ro, ya, d.vel[1], d.pos[2], math.degrees(math.sqrt(sum(x*x for x in d.w)))))
-    print(kind, 'crash test'); print('\n'.join(out)); print(hits[:8])
-
-for GRIP in (0.5, 0.25, 0.15):
-    print('GRIP', GRIP); crash_test('bombus')
+    run('bombus', script=fwd_then_release)

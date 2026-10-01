@@ -250,8 +250,11 @@ public class CMUDrone extends CMCUnit {
     }
     // the ground under it: measured for the HUD, and a contact only when the drone is in
     // it. There is no minimum height; flying low is the pilot's call.
-    let r0 = fl.p.com > 0.05 ? fl.p.com + 0.05 : r * 0.5;
-    if this.Ray(fl.pos + new Vector4(0.0, 0.0, r0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
+    // the lowest point of the body as it is tilted (belly, rotor or wing tip), from its
+    // measured size: the centre alone let the body sink through the ground. The ray starts
+    // a metre up, so a drone already part-way in still finds the surface above it.
+    let r0 = fl.Reach();
+    if this.Ray(fl.pos + new Vector4(0.0, 0.0, 1.0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       let gz = Cast<Vector4>(hit.position).Z;
       this.m_ground = fl.pos.Z - gz;
       if fl.pos.Z < gz + r0 {
