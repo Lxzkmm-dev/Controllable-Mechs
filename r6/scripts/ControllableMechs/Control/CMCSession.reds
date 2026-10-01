@@ -345,7 +345,7 @@ public class CMCSession extends ScriptableSystem {
     timeout.system = this;
     timeout.generation = this.m_gen;
     GameInstance.GetDelaySystem(game).DelayCallback(timeout, 3.0, false);
-    CMCSession.Log("begin: " + unit.Name() + ", " + (this.m_chase ? "chase" : "sight") + " view");
+    CMCSession.Log("begin: " + unit.Name() + ", " + (this.m_chase ? "chase" : "sight") + " view, build " + CMVersion.Build());
     return "";
   }
 

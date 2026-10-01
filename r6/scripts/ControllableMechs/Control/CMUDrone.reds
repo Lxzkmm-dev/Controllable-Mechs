@@ -45,6 +45,9 @@ public class CMUDrone extends CMCUnit {
   private let m_lastYaw: Float;
   private let m_ground: Float;         // metres above the ground, last measured
   private let m_stickF: Float;         // the keys as a stick: ramped in, with expo
+  private let m_rayHits: Int32;        // collision rays that found something / didn't (log)
+  private let m_rayMiss: Int32;
+  private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
 
   private let SUBSTEP: Float = 0.008;  // s, the flight model's step
@@ -66,6 +69,7 @@ public class CMUDrone extends CMCUnit {
     link.SetOrder(CMOrder.Pilot());
     let cfg = CMPilotSystem.Get(this.m_game);
     let prof = CMDroneProfiles.For(this.m_kind);
+    prof.showTilt = Cast<Float>(cfg.DroneShowTilt(this.m_kind, RoundF(prof.showTilt)));
     prof.tilt = Cast<Float>(cfg.DroneTilt(this.m_kind, RoundF(prof.tilt)));
     prof.tiltRate = Cast<Float>(cfg.DroneRate(this.m_kind, RoundF(prof.tiltRate)));
     // the model flies the centre of mass; the drone's origin hangs below it (Root())
@@ -200,7 +204,7 @@ public class CMUDrone extends CMCUnit {
   // origin itself, at the base of the Bombus and Wyvern, swung the body like a see-saw.
   private func Root() -> Vector4 {
     let fl = this.m_flight;
-    let r = fl.pos - fl.Up() * fl.p.com;
+    let r = fl.pos - CMFlight.QRot(fl.Shown(fl.p.showTilt), new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com;
     r.W = 1.0;
     return r;
   }
@@ -210,31 +214,47 @@ public class CMUDrone extends CMCUnit {
   // through cars and loose props.
   private func Ray(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
     let sq = GameInstance.GetSpatialQueriesSystem(this.m_game);
-    let best = -1.0;
-    let h: TraceResult;
-    if sq.SyncRaycastByCollisionPreset(from, to, n"World Static", h, true) {
-      best = Vector4.Distance(from, Cast<Vector4>(h.position));
-      hit = h;
-    }
+    // each query in its own result, the nearest kept. The distance is worked out from the
+    // X, Y and Z alone: the 6-DOF build compared Vector4 distances against a cast position
+    // and no ray ever counted (no ground, no walls: the drones phased through everything)
+    let hs: TraceResult;
+    let hd: TraceResult;
+    let hv: TraceResult;
+    let gotS = sq.SyncRaycastByCollisionPreset(from, to, n"World Static", hs, true);
     // the Dynamic group (movable props), not the "World Dynamic" preset: that one also
     // takes in characters, and these rays start inside the drone itself
-    if sq.SyncRaycastByCollisionGroup(from, to, n"Dynamic", h, true, false) {
-      let dd = Vector4.Distance(from, Cast<Vector4>(h.position));
-      if best < 0.0 || dd < best {
-        best = dd;
-        hit = h;
-      }
+    let gotD = sq.SyncRaycastByCollisionGroup(from, to, n"Dynamic", hd, true, false);
+    let gotV = sq.SyncRaycastByCollisionGroup(from, to, n"Vehicle", hv, true, false);
+    let best = 1000000.0;
+    let found = false;
+    if gotS {
+      best = CMUDrone.Dist2(from, hs);
+      hit = hs;
+      found = true;
     }
-    if sq.SyncRaycastByCollisionGroup(from, to, n"Vehicle", h, true, false) {
-      let dv = Vector4.Distance(from, Cast<Vector4>(h.position));
-      if best < 0.0 || dv < best {
-        best = dv;
-        hit = h;
-      }
+    if gotD && CMUDrone.Dist2(from, hd) < best {
+      best = CMUDrone.Dist2(from, hd);
+      hit = hd;
+      found = true;
     }
-    return best >= 0.0;
+    if gotV && CMUDrone.Dist2(from, hv) < best {
+      hit = hv;
+      found = true;
+    }
+    if found {
+      this.m_rayHits += 1;
+    } else {
+      this.m_rayMiss += 1;
+    }
+    return found;
   }
 
+  private static func Dist2(a: Vector4, h: TraceResult) -> Float {
+    let x = h.position.X - a.X;
+    let y = h.position.Y - a.Y;
+    let z = h.position.Z - a.Z;
+    return x * x + y * y + z * z;
+  }
   // The step from `from` to where the model went, swept against the world. A contact is a
   // rigid-body impulse at the point of the drone that touched (CMFlight.Contact): it stops
   // the motion into the surface, bounces a little off walls, grips and slides on floors,
@@ -268,7 +288,8 @@ public class CMUDrone extends CMCUnit {
     // a metre up, so a drone already part-way in still finds the surface above it.
     let r0 = fl.Reach();
     if this.Ray(fl.pos + new Vector4(0.0, 0.0, 1.0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
-      let gz = Cast<Vector4>(hit.position).Z;
+      let gz = hit.position.Z;
+      this.m_groundFrom = FloatToStringPrec(fl.pos.Z + 1.0 - gz, 2) + " m below the ray start";
       this.m_ground = fl.pos.Z - gz;
       if fl.pos.Z < gz + r0 {
         fl.pos.Z = gz + r0;
@@ -280,6 +301,7 @@ public class CMUDrone extends CMCUnit {
       }
     } else {
       this.m_ground = -1.0;
+      this.m_groundFrom = "no ground found";
     }
   }
   // stick expo: x^3 blended in, soft near the centre, full at the end
@@ -341,7 +363,7 @@ public class CMUDrone extends CMCUnit {
         let world: WorldPosition;
         WorldPosition.SetVector4(world, root);
         WorldTransform.SetWorldPosition(wt, world);
-        WorldTransform.SetOrientation(wt, fl.q);   // the rigid body's own orientation
+        WorldTransform.SetOrientation(wt, fl.Shown(fl.p.showTilt));   // as flown, or the model's lean capped
 
         drone.SetWorldTransform(wt);
         if now - this.m_cmdAt >= 0.25 {
@@ -458,12 +480,15 @@ public class CMUDrone extends CMCUnit {
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
+      + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (ground " + this.m_groundFrom + ")"
       + ", gait " + NameToString(this.m_gait)
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
     this.m_errN = 0;
     this.m_frames = 0;
+    this.m_rayHits = 0;
+    this.m_rayMiss = 0;
   }
 
   public func Hud(s: ref<CMCSession>, st: ref<CMPilotHudState>) -> Void {

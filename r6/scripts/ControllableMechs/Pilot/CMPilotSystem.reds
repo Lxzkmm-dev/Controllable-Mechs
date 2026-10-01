@@ -181,7 +181,11 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SetDroneTilt(kind: String, v: Int32) -> Void { this.PutInt(kind + "Tilt", Clamp(v, 10, 70)); }
   public func DroneRate(kind: String, def: Int32) -> Int32 = Clamp(this.Int(kind + "Rate", def), 45, 600)
   public func SetDroneRate(kind: String, v: Int32) -> Void { this.PutInt(kind + "Rate", Clamp(v, 45, 600)); }
+  // how far the drone's model is drawn leaning (90 = as flown; the physics is never capped)
+  public func DroneShowTilt(kind: String, def: Int32) -> Int32 = Clamp(this.Int(kind + "ShowTilt", def), 10, 90)
+  public func SetDroneShowTilt(kind: String, v: Int32) -> Void { this.PutInt(kind + "ShowTilt", Clamp(v, 10, 90)); }
   public func ResetDrone(kind: String) -> Void {
+    this.Put(kind + "ShowTilt", "");
     this.Put(kind + "Level", "");
     this.Put(kind + "Tilt", "");
     this.Put(kind + "Rate", "");

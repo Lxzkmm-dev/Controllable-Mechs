@@ -45,6 +45,7 @@ public class CMFlightProfile {
   public let span: Float;          // m, from the centre out to its widest point (rotors, wings)
   public let ramp: Float;          // s, a key goes from nothing to full stick over this (keys are on/off)
   public let expo: Float;          // 0-1, stick expo: how soft the start of the stick travel is
+  public let showTilt: Float;      // deg, the most the model is drawn tilted (90 = as flown)
 }
 
 public class CMFlight {
@@ -327,6 +328,29 @@ public class CMFlight {
     return this.p.bottom * AbsF(uz) + this.p.span * SqrtF(1.0 - uz * uz);
   }
 
+  // The orientation the model is drawn with: the flown one, or with its pitch and roll
+  // held within `limit` degrees (the heading always as flown). Omar: the physics stays
+  // unlimited, only how far the Bombus model leans is capped, so it doesn't look as if it
+  // is planting its face in the floor.
+  public func Shown(limit: Float) -> Quaternion {
+    if limit >= 89.0 {
+      return this.q;
+    }
+    let hy = Deg2Rad(this.yaw) * 0.5;
+    let hp = Deg2Rad(ClampF(this.pitch, -limit, limit)) * 0.5;
+    let hr = Deg2Rad(ClampF(this.roll, -limit, limit)) * 0.5;
+    let qy: Quaternion;
+    qy.k = SinF(hy);
+    qy.r = CosF(hy);
+    let qp: Quaternion;
+    qp.i = SinF(hp);
+    qp.r = CosF(hp);
+    let qr: Quaternion;
+    qr.j = SinF(hr);
+    qr.r = CosF(hr);
+    return CMFlight.QMul(CMFlight.QMul(qy, qp), qr);
+  }
+
   // the spool of the four rotors on average, for the HUD
   public func Spool() -> Float = (this.spool[0] + this.spool[1] + this.spool[2] + this.spool[3]) * 0.25
 }
@@ -351,20 +375,20 @@ public abstract class CMDroneProfiles {
         p.mass = 6.0; p.arm = 0.2; p.thrust = 30.0; p.spool = 0.06; p.kq = 0.02; p.agility = 11.0;
         p.tilt = 25.0; p.tiltRate = 140.0; p.yawRate = 200.0; p.climb = 5.0;
         p.cdh = 0.3; p.cdv = 0.45; p.flap = 0.06; p.impact = 6.0; p.radius = 0.3; p.com = 0.13;
-        p.bottom = 0.15; p.span = 0.27; p.ramp = 0.3; p.expo = 0.6;
+        p.bottom = 0.15; p.span = 0.27; p.ramp = 0.3; p.expo = 0.6; p.showTilt = 25.0;
         break;
       case "octant":
         p.mass = 180.0; p.arm = 1.0; p.thrust = 900.0; p.spool = 0.14; p.kq = 0.08; p.agility = 4.5;
         p.tilt = 20.0; p.tiltRate = 90.0; p.yawRate = 60.0; p.climb = 3.0;
         p.cdh = 10.7; p.cdv = 16.0; p.flap = 2.0; p.impact = 5.0; p.radius = 1.1; p.com = 0.15;
-        p.bottom = 0.92; p.span = 1.4; p.ramp = 0.2; p.expo = 0.3;
+        p.bottom = 0.92; p.span = 1.4; p.ramp = 0.2; p.expo = 0.3; p.showTilt = 90.0;
         break;
       default:   // griffin, wyvern
         p.mass = 40.0; p.arm = 0.45; p.thrust = 190.0; p.spool = 0.10; p.kq = 0.04; p.agility = 9.0;
         p.tilt = 22.0; p.tiltRate = 120.0; p.yawRate = 110.0; p.climb = 4.0;
         p.cdh = 1.9; p.cdv = 2.8; p.flap = 0.35; p.impact = 5.5; p.radius = 0.5; p.com = Equals(kind, "wyvern") ? 0.22 : 0.0;
         // measured on their meshes: the Griffin's origin is at its middle, the Wyvern's at its base
-        p.bottom = Equals(kind, "wyvern") ? 0.24 : 0.48; p.span = Equals(kind, "wyvern") ? 0.5 : 0.62; p.ramp = 0.2; p.expo = 0.3;
+        p.bottom = Equals(kind, "wyvern") ? 0.24 : 0.48; p.span = Equals(kind, "wyvern") ? 0.5 : 0.62; p.ramp = 0.2; p.expo = 0.3; p.showTilt = 90.0;
     }
     return p;
   }

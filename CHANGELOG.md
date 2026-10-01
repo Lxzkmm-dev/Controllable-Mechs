@@ -11,6 +11,14 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 - **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone flight, round 6** (Omar: "none of the fixes worked"):
+  - **Collision rays never counted** from the 6-DOF build on. The log shows "-1 m up" (no ground found) on every line since 20:14, and no hits at all, so drones phased through everything.
+    - The ray helper is rewritten: each query has its own result, and the nearest is picked by plain X/Y/Z distance.
+    - With DIAGNOSTICS on, each second now logs how many rays hit or missed and what the ground ray found.
+  - **Model lean limit:** the physics is never capped; only how far the model is drawn leaning is. MODEL LEAN LIMIT per drone is 25 deg for the Bombus and 90 (as flown) for the others. At 75 deg of real pitch the Bombus model shows 25. The camera still shows the true attitude.
+  - **Saved Bombus sliders:** Omar's settings file had tilt 61, rate 45, self-levelling 65 from earlier slider moves. Those override the new defaults until RESET.
+  - **Diagnostics:** refused jumps and crouches are now logged (to confirm the block), and the session-begin line names the build, so a game started before a push shows it is running old scripts.
+  - **Version:** 0.7.0 ALPHA.
 - **Drone flight, round 5** (Omar: "flying feels much better"):
   - **Ground:** drones sank into the ground. Contact now uses each type's measured lowest point as it is tilted (the belly when level, a rotor or wing tip when banked), and the ground ray starts a metre above the drone, so one already part-way in still finds the surface.
   - **Bombus defaults:** it pitched forward far too hard and too fast. The defaults are now tilt 25 deg (was 35), rate 140 deg/s (was 220), self-levelling 75% (was 65%), and a slower attitude response. Holding W now leans it about 30 deg instead of about 48. Saved slider values still win; RESET applies the new defaults.

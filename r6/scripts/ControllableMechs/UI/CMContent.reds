@@ -103,6 +103,9 @@ public class CMContent extends TKContent {
       case "dtilt":
         cfg.SetDroneTilt(cfg.CfgProfile(), CMContent.Val(arg, 30));
         break;
+      case "dshowtilt":
+        cfg.SetDroneShowTilt(cfg.CfgProfile(), CMContent.Val(arg, 90));
+        break;
       case "drate":
         cfg.SetDroneRate(cfg.CfgProfile(), CMContent.Val(arg, 180));
         break;
@@ -298,7 +301,8 @@ public class CMContent extends TKContent {
     p.Slider("SELF-LEVELLING", "100%: the keys set a tilt and it levels itself when you let go. 0%: acro, the keys set how fast it rolls and pitches and nothing levels it; you fly every attitude. Between: the rates, with a pull back toward level (from the next link-in)", "", "0|100|5|" + IntToString(cfg.DroneLevel(kind)) + "|%", "dlevel", "");
     p.Slider("TILT LIMIT", "How far it leans with the keys held, while it levels itself; more tilt, more speed (from the next link-in)", "", "10|70|1|" + IntToString(cfg.DroneTilt(kind, RoundF(base.tilt))) + "|deg", "dtilt", "");
     p.Slider("ROLL / PITCH RATE", "How fast it rolls and pitches at full key, the acro part of the flight (from the next link-in)", "", "45|600|15|" + IntToString(cfg.DroneRate(kind, RoundF(base.tiltRate))) + "|deg/s", "drate", "");
-    p.Item("DEFAULTS", "Self-levelling " + IntToString(CMDroneProfiles.DefaultLevel(kind)) + "%, tilt " + IntToString(RoundF(base.tilt)) + " deg, rate " + IntToString(RoundF(base.tiltRate)) + " deg/s", "", "RESET", "dreset", "", true);
+    p.Slider("MODEL LEAN LIMIT", "How far the drone's model is drawn leaning; the flight itself is never capped (90 = drawn as flown)", "", "10|90|5|" + IntToString(cfg.DroneShowTilt(kind, RoundF(base.showTilt))) + "|deg", "dshowtilt", "");
+    p.Item("DEFAULTS", "Self-levelling " + IntToString(CMDroneProfiles.DefaultLevel(kind)) + "%, tilt " + IntToString(RoundF(base.tilt)) + " deg, rate " + IntToString(RoundF(base.tiltRate)) + " deg/s, model lean " + IntToString(RoundF(base.showTilt)) + " deg", "", "RESET", "dreset", "", true);
     p.SetTip("At low self-levelling it will loop and roll right over; upside down its thrust drives it down.");
     this.ChaseSettings(p, cfg, kind);
   }

@@ -203,6 +203,9 @@ public abstract class CMCCalm {
 protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
   let player = scriptInterface.executionOwner as PlayerPuppet;
   if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    if wrappedMethod(stateContext, scriptInterface) && CMPilotSystem.Get(player.GetGame()).ShowDebug() {
+      CMCHits.Trace(player.GetGame(), "operator: a jump was refused");
+    }
     return false;
   }
   return wrappedMethod(stateContext, scriptInterface);
@@ -212,6 +215,9 @@ protected const func EnterCondition(const stateContext: ref<StateContext>, const
 protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
   let player = scriptInterface.executionOwner as PlayerPuppet;
   if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    if wrappedMethod(stateContext, scriptInterface) && CMPilotSystem.Get(player.GetGame()).ShowDebug() {
+      CMCHits.Trace(player.GetGame(), "operator: a crouch was refused");
+    }
     return false;
   }
   return wrappedMethod(stateContext, scriptInterface);
