@@ -88,7 +88,9 @@ uintptr_t HandlerOf(RED4ext::CClassFunction* aFunc)
     {
         return 0;
     }
-    return reinterpret_cast<uintptr_t>(table[aFunc->regIndex]);
+    // the index the engine itself uses (the virtual, as the SDK's ExecuteNative does; v0.2
+    // read the regIndex field and found nothing)
+    return reinterpret_cast<uintptr_t>(table[aFunc->GetRegIndex()]);
 }
 
 int32_t DescribeClass(const char* aName)
@@ -141,7 +143,8 @@ int32_t DescribeClass(const char* aName)
         }
         Log("inspect:   " + std::string(func->shortName.ToString()) + "(" + params + ")" +
             (func->returnType ? " -> " + TypeName(func->returnType) : "") + "  flags " + Hex(flagBits) +
-            "  regIndex " + std::to_string(func->regIndex) + "  table " + Hex(handler) + "  invokable " + inv);
+            "  regIndex " + std::to_string(func->regIndex) + " / " + std::to_string(func->GetRegIndex()) +
+            "  table " + Rva(handler, base) + "  invokable " + inv);
         ++n;
     }
     return n;
