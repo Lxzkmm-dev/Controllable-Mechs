@@ -744,7 +744,7 @@ public class CMUDrone extends CMCUnit {
     fl.grounded = false;
     let clear = 1000.0;   // how far the lowest point is above the ground
     // a drone with a shell of its own looks for the ground from just under its lowest point
-    let top = this.m_hasSelf ? fl.pos.Z + low.Z - 0.02 : fl.pos.Z + 1.0;
+    let top = this.m_hasSelf || this.ShellKind() ? fl.pos.Z + low.Z - 0.02 : fl.pos.Z + 1.0;
     if this.Ray(new Vector4(fl.pos.X, fl.pos.Y, top, 1.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       let gz = hit.position.Z;
       this.m_groundFrom = FloatToStringPrec(top - gz, 2) + " m below the ray start";
@@ -1011,6 +1011,10 @@ public class CMUDrone extends CMCUnit {
     }
   }
 
+  // the types whose bodies are physical meshes (entity files: entPhysicalMeshComponent
+  // thrusters on the Octant, entPhysicalSkinnedMeshComponent body on the Griffin)
+  private func ShellKind() -> Bool = Equals(this.m_kind, "octant") || Equals(this.m_kind, "griffin")
+
   // stick expo: x^3 blended in, soft near the centre, full at the end
   public static func Expo(x: Float, e: Float) -> Float = x * (1.0 - e) + x * x * x * e
 
@@ -1025,6 +1029,15 @@ public class CMUDrone extends CMCUnit {
     let hit: TraceResult;
     if this.m_selfFrames < 10 {
       this.LearnSelf();
+      return;
+    }
+    // A drone with a physical shell of its own (the Octant's body and thruster pods, the
+    // Griffin's body) can't use rays out from its centre at all: they always cross its own
+    // shell, and its pods are animated, so learning where the shell sits on each ray (a39)
+    // missed most of it (a52 log: 100-240 own hits a second at 7.5 m up in open air, each a
+    // push: the Octant lurching about in flight). It collides by its leading points' sweeps
+    // (they start on the hull and run outward) and the ground ray from under its belly.
+    if this.m_hasSelf || this.ShellKind() {
       return;
     }
     let i = -1;
