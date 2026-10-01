@@ -29,18 +29,10 @@ public class CMUDrone extends CMCUnit {
   private let m_seen: Vector4;         // where the drone really is (the camera follows this)
   private let m_kind: String;          // bombus, griffin, wyvern, octant
   private let m_name: String;
-  private let m_method: Int32;         // 0 facility teleport, 1 AI teleport, 2 AI move carrot,
-                                       // 3 AI off + facility teleport
   private let m_cmd: ref<AICommand>;
-  private let m_cmdAt: Float;
   private let m_logAt: Float;
-  private let m_errSum: Float;
-  private let m_errMax: Float;
-  private let m_errN: Int32;
   private let m_frames: Int32;
   private let m_hits: Int32;
-  private let m_stalls: Int32;         // frames the drone didn't move though it was sent on
-  private let m_last: Vector4;         // where it was the frame before
   private let m_dt: Float;             // the last frame's length (the teleport leads by one)
   private let m_gait: CName;           // the drone locomotion wrapper on (Walk, Run, Sprint)
   private let m_lastYaw: Float;
@@ -52,8 +44,6 @@ public class CMUDrone extends CMCUnit {
   private let m_hitD: Int32;
   private let m_hitV: Int32;
   private let m_hitG: Int32;
-  private let m_touchLogged: Bool;
-  private let m_aiOff: Bool;           // its AI controller switched off for the flight
   // The drawn body: the hover animation poses the skeleton's body bone away from its rest
   // pose (lifted, and turned: the Wyvern rests on its side). The pose is measured through a
   // skeleton-bound slot (MeasurePose) as a transform from the rest pose to as drawn, in
@@ -75,12 +65,6 @@ public class CMUDrone extends CMCUnit {
   private let m_sight: Bool;           // the sight view is on (from the session, each tick)
   private let m_rigYaw: Float;         // the view's heading, this tick
   private let m_camLag: Int32;         // frames the camera follows behind (DIAGNOSTICS)
-  private let m_visTest: Int32;        // which NPC systems are off while flown (DIAGNOSTICS)
-  // Its own collision: the Octant's shell and thrusters (and the Griffin's body) are physical
-  // meshes our rays hit, so every ray out from its centre struck its own shell and pushed
-  // it: the slide on take-over. Each contact ray's distance to its own shell is learned in
-  // the first frames (m_self, -1 = nothing of its own on that ray); a hit there is its own.
-  private let m_self: array<Float>;
   private let m_flLeft: Int32;         // frame-log lines left (-1 = not started)
   private let m_selfHits: Int32;       // rays that passed through the drone's own body (log)
   private let m_flOn: Bool;
@@ -88,25 +72,17 @@ public class CMUDrone extends CMCUnit {
   private let m_lastRoot: Vector4;     // where the entity was put last frame
   private let m_boneRel: Vector4;      // the body bone less the flight centre when the pose was held (log)
   private let m_seenAtTick: Vector4;   // where the engine had it at the start of this tick
-  private let m_selfFrames: Int32;
-  private let m_hasSelf: Bool;
   private let m_hideInSight: Bool;
-  private let m_fastHits: Int32;       // contact-ray hits (log)
-  private let m_fastOff: Bool;         // the one-query filter found nothing where it should:
-  private let m_fastMiss: Int32;       // per-group rays instead (frames on the ground, no hit)
-  private let m_prevQ: Quaternion;     // the attitude a frame ago (the swept contact points)
   private let m_sensUp: Float;         // the sight-view sensor mount (m), from CONFIG
   private let m_sensFwd: Float;
   private let m_show: Float;           // deg, the most the model is drawn leaning, now
   private let m_bone: Vector4;         // the body bone, last measured (world, log)
   private let m_boneOff: Vector4;      // it less the flight's centre when last placed (log)
   private let m_placed: Vector4;       // the flight's centre at the last placement
-  private let m_probe: Int32;          // the old inline ground ray, kept as a control (log)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
   private let m_climb: Float;          // the climb keys this frame (-1..1)
 
-  private let SUBSTEP: Float = 0.008;  // s, the flight model's step
 
   public func Begin(s: ref<CMCSession>) -> String {
     this.m_game = s.GetGameInstance();
@@ -117,6 +93,11 @@ public class CMUDrone extends CMCUnit {
     }
     if !ScriptedPuppet.IsAlive(drone) {
       return "!DRONE IS DESTROYED";
+    }
+    // drones fly as real PhysX bodies, which needs the MNC Physics plugin (version 3.1: the
+    // body's force each physics step, and its own parts kept from pushing it)
+    if !CMPhysStep.Present() || !CMPhysColl.Present() || !CMPhysPlugin.HasVelocity() {
+      return "!DRONE FLIGHT NEEDS THE MNC PHYSICS PLUGIN (RED4EXT\\PLUGINS\\MNCPHYSICS)";
     }
     this.m_drone = drone;
     this.m_kind = CMUDrone.Kind(drone);
@@ -143,73 +124,42 @@ public class CMUDrone extends CMCUnit {
     this.m_tt = new Vector4(0.0, 0.0, 0.0, 0.0);
     this.m_poseOk = false;
     this.m_poseFrames = 0;
-    this.m_selfFrames = 10;   // (no learning: each ray skips the drone's own body itself)
     this.m_flLeft = -1;
     this.m_flOn = cfg.DroneFrameLog();
     this.m_flT = 0.0;
-    this.m_hasSelf = false;
-    ArrayClear(this.m_self);
     this.MeasurePose(drone, 1.0);
     this.UpdateHull();
     this.LoadSensor();
     let start = drone.GetWorldPosition() + CMFlight.QRot(drone.GetWorldOrientation(), this.m_tt + this.m_c);
     this.m_flight = CMFlight.Make(prof, start, CMPilotRig.YawOf(drone.GetWorldForward()));
     this.m_flight.level = Cast<Float>(cfg.DroneLevel(this.m_kind)) / 100.0;
-    // a V3 drone (spawned as V3 in MOTOR POOL): its physics body is asked for now; the
-    // 6-DOF model flies it until the body is live
-    this.m_phys = false;
+    // its physics body (V3): asked for now; until it is live the drone holds where it is
+    this.m_phys = true;
     this.m_proxyLive = false;
     this.m_proxySpawned = false;
     this.m_proxyBody = null;
-    if link.IsPhysicsTest(drone) {
-      if CMPhysStep.Present() && CMPhysPlugin.HasVelocity() {
-        this.m_phys = true;
-        this.m_name += " V3";
-        this.StartPhys(drone, s.Now());
-      } else {
-        CMCSession.Log("drone V3: MNC Physics version 3 isn't loaded (or this kind has no body); flying on the 6-DOF model");
-      }
-    }
-    this.m_prevQ = this.m_flight.q;
+    this.StartPhys(drone, s.Now());
     this.m_hidden = false;
     this.m_show = prof.showTilt;
     this.m_placed = this.m_flight.pos;
     this.m_seen = drone.GetWorldPosition();
-    this.m_method = cfg.DroneMove();
     this.m_logAt = s.Now() + 1.0;
-    this.m_errSum = 0.0;
-    this.m_errMax = 0.0;
-    this.m_errN = 0;
     this.m_frames = 0;
     this.m_hits = 0;
-    this.m_stalls = 0;
-    this.m_last = drone.GetWorldPosition();
     this.m_dt = 0.016;
     this.m_gait = n"";
     this.m_lastYaw = this.m_flight.yaw;
     this.Pacify(drone, true);
-    // Omar's idea: the game keeps running it as an AI NPC, whose hover and altitude logic
-    // holds the model up. With the setting on (default), its AI controller is off for the
-    // flight (our physics and the entity transform move it; nothing needs its AI).
-    this.m_aiOff = this.m_method == 3 || (this.m_method == 4 && cfg.DroneAiOff());
-    if this.m_aiOff {
-      let ai = drone.GetAIControllerComponent();
-      if IsDefined(ai) {
-        ai.Toggle(false);
-      }
+    // the game keeps running it as an AI NPC, whose hover and altitude logic would hold the
+    // model up: its AI controller is off for the flight (PhysX and the entity transform move
+    // it; nothing needs its AI)
+    let ai = drone.GetAIControllerComponent();
+    if IsDefined(ai) {
+      ai.Toggle(false);
     }
-    // the drone's own NPC machinery switched off for the flight (DIAGNOSTICS > DRONE NPC
-    // SYSTEMS OFF): its movement and/or its animation, after the pose was measured
-    this.m_visTest = cfg.DroneVisualTest();
-    this.NpcSystems(drone, false);
-    if this.m_visTest >= 2 {
-      this.m_poseFrames = 30;   // the skeleton is frozen as measured: hold that pose
-    }
-    CMCSession.Log("drone: NPC systems off for the flight: " + CMUDrone.VisTestName(this.m_visTest));
     this.LogLoadout(drone);
-    CMCSession.Log("drone: drawn pose " + (this.m_poseOk ? "via " + this.m_poseFrom : "not measured") + ", lift " + CMUDrone.V2(this.m_tt) + ", turned " + CMUDrone.V2(CMUDrone.QEuler(this.m_tqSeen)) + " deg, " + IntToString(ArraySize(this.m_hull)) + " contact points, centre " + CMUDrone.V2(this.m_c) + ", sensor " + FloatToStringPrec(this.m_sensUp, 2) + " up " + FloatToStringPrec(this.m_sensFwd, 2) + " fwd");
-    CMCSession.Log("drone: " + this.m_name + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID())
-      + (this.m_aiOff ? ", AI off" : ", AI on") + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", move method " + CMUDrone.MethodName(this.m_method));
+    CMCSession.Log("drone: drawn pose " + (this.m_poseOk ? "via " + this.m_poseFrom : "not measured") + ", lift " + CMUDrone.V2(this.m_tt) + ", turned " + CMUDrone.V2(CMUDrone.QEuler(this.m_tqSeen)) + " deg, centre " + CMUDrone.V2(this.m_c) + ", sensor " + FloatToStringPrec(this.m_sensUp, 2) + " up " + FloatToStringPrec(this.m_sensFwd, 2) + " fwd");
+    CMCSession.Log("drone: " + this.m_name + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID()) + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", flown as a PhysX body (MNC Physics v" + IntToString(CMPhysPlugin.Version()) + ")");
     return "";
   }
 
@@ -233,14 +183,11 @@ public class CMUDrone extends CMCUnit {
         GameObject.PlaySoundEvent(drone, n"w_gun_hmg_militech_fire_auto_stop");
         this.m_lmgSound = false;
       }
-      this.NpcSystems(drone, true);
       this.Cancel(drone);
       this.SetGait(drone, n"Walk");   // the drone's own default
-      if this.m_aiOff {
-        let ai = drone.GetAIControllerComponent();
-        if IsDefined(ai) {
-          ai.Toggle(true);
-        }
+      let ai = drone.GetAIControllerComponent();
+      if IsDefined(ai) {
+        ai.Toggle(true);
       }
       this.Pacify(drone, false);
     }
@@ -403,11 +350,6 @@ public class CMUDrone extends CMCUnit {
     let actual = drone.GetWorldPosition();
     this.m_seen = actual;
     this.m_seenAtTick = actual;
-    // a stall: the model moved on but the drone stayed put this frame
-    if Vector4.Length(this.m_flight.vel) > 0.5 && Vector4.Distance(actual, this.m_last) < 0.002 {
-      this.m_stalls += 1;
-    }
-    this.m_last = actual;
     this.m_dt = dt;
     // the drawn pose: measured over the first half second (settling from the drone's own
     // hover into ours), then held. Re-measured every frame (a33) it carried the hover
@@ -419,14 +361,6 @@ public class CMUDrone extends CMCUnit {
       if this.m_poseFrames == 30 {
         this.m_boneRel = this.m_bone - this.m_placed;   // at rest: the bone's place on the body
       }
-    }
-    if this.m_method == 2 {
-      this.m_flight.pos = actual + new Vector4(0.0, 0.0, this.m_flight.p.com, 0.0);   // the AI does the moving
-    } else {
-      let err = Vector4.Distance(actual, this.Root());
-      this.m_errSum += err;
-      this.m_errMax = MaxF(this.m_errMax, err);
-      this.m_errN += 1;
     }
     // keys are on or off; a stick isn't: each key ramps the stick in over the type's ramp
     // time, and expo softens the start of its travel, so W eases the drone over instead
@@ -450,40 +384,19 @@ public class CMUDrone extends CMCUnit {
       this.HoldKeys(s, dt, f, side);
       heading = this.m_holdYaw;
     }
-    let from = this.m_flight.pos;
     // ground effect: the rotors' cushion near the ground (its height from the last frame)
     this.m_flight.SetGround(this.m_ground);
     this.UpdateWind(now, dt);
-    if this.m_phys && !this.m_proxyLive {
+    if !this.m_proxyLive {
+      // its physics body isn't live yet (the first frames): it holds where it is
       this.TryProxy(now);
+      this.m_flight.vel = new Vector4(0.0, 0.0, 0.0, 0.0);
+      this.m_flight.w = new Vector4(0.0, 0.0, 0.0, 0.0);
     }
     if this.m_proxyLive {
-      // a V3 drone: PhysX flies and collides its body; the flight model gives the forces
+      // PhysX flies and collides its body; the flight model gives the forces
       this.PhysFly(s, drone, f, side, climb, heading, dt, now);
-    } else {
-      // the flight model in small steps
-      let left = dt;
-      while left > 0.0001 {
-        let h = MinF(this.SUBSTEP, left);
-        this.m_flight.Step(h, f, side, climb, heading);
-        left -= h;
-      }
-      this.Collide(drone, from);
-      let fastBefore = this.m_fastHits;
-      this.Sweep(drone, from);
-      this.Contacts(drone);
-      // a self-check: sitting on the ground (the per-group ground ray says so) its lowest
-      // contact point must hit; if the one-query filter never does (as the preset queries
-      // once returned nothing), the contact rays go back to the per-group queries
-      if !this.m_fastOff && this.m_ground >= 0.0 && this.m_ground < -this.Lowest().Z + 0.01 {
-        this.m_fastMiss = this.m_fastHits > fastBefore ? 0 : this.m_fastMiss + 1;
-        if this.m_fastMiss > 60 {
-          this.m_fastOff = true;
-          CMCSession.Log("drone: the one-query contact rays found nothing on the ground; per-group rays from now on");
-        }
-      }
     }
-    this.m_prevQ = this.m_flight.q;
     // its own model hidden while looking through its sensor (CONFIG; the Bombus by default)
     let hide = this.m_hideInSight && s.SightView();
     if NotEquals(hide, this.m_hidden) {
@@ -746,28 +659,6 @@ public class CMUDrone extends CMCUnit {
     return (IsDefined(drone) && e.GetEntityID() == drone.GetEntityID()) || (this.m_proxySpawned && e.GetEntityID() == this.m_proxyId);
   }
 
-  private func RayFast(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
-    let a = from;
-    let i = 0;
-    while i < 4 {
-      if !this.RayFastOnce(a, to, hit) {
-        return false;
-      }
-      if !this.IsSelf(hit) {
-        return true;
-      }
-      this.m_selfHits += 1;
-      let dir = Vector4.Normalize(to - a);
-      a = Cast<Vector4>(hit.position) + dir * 0.02;
-      a.W = 1.0;
-      if Vector4.Dot(to - a, dir) <= 0.0 {
-        return false;
-      }
-      i += 1;
-    }
-    return false;
-  }
-
   private func Ray(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
     let a = from;
     let i = 0;
@@ -788,23 +679,6 @@ public class CMUDrone extends CMCUnit {
       i += 1;
     }
     return false;
-  }
-
-  private func RayFastOnce(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
-    if this.m_fastOff {
-      return this.RayOnce(from, to, hit);
-    }
-    let filter: QueryFilter;
-    QueryFilter.AddGroup(filter, n"Static");
-    QueryFilter.AddGroup(filter, n"Terrain");
-    QueryFilter.AddGroup(filter, n"Destructible");
-    QueryFilter.AddGroup(filter, n"Dynamic");
-    QueryFilter.AddGroup(filter, n"Vehicle");
-    let got = GameInstance.GetSpatialQueriesSystem(this.m_game).SyncRaycastByQueryFilter(from, to, filter, hit);
-    if got {
-      this.m_fastHits += 1;
-    }
-    return got;
   }
 
   private func RayOnce(from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
@@ -877,113 +751,15 @@ public class CMUDrone extends CMCUnit {
     return found;
   }
 
+  // What the drone really carries and what its record gives it to attack with, for the
+  // weapons phase (the Octant first: its machine guns and the game's mortars)
   private static func Dist2(a: Vector4, h: TraceResult) -> Float {
     let x = h.position.X - a.X;
     let y = h.position.Y - a.Y;
     let z = h.position.Z - a.Z;
     return x * x + y * y + z * z;
   }
-  // The step from `from` to where the model went, swept against the world. A contact is a
-  // rigid-body impulse at the point of the drone that touched (CMFlight.Contact): it stops
-  // the motion into the surface, bounces a little off walls, grips and slides on floors,
-  // and an off-centre or glancing hit spins it. A hard hit damages it.
-  private func Collide(drone: ref<NPCPuppet>, from: Vector4) -> Void {
-    let fl = this.m_flight;
-    let r = fl.p.radius;
-    let hit: TraceResult;
-    // (the step is swept by its leading contact points, Sweep(); a ray from the centre
-    // crossed the drone's own shell on the way out)
-    // the ground under it: measured for the HUD, and a contact only when the drone is in
-    // it. There is no minimum height; flying low is the pilot's call.
-    // The lowest point of the body at its real attitude: the lowest of its contact points
-    // (scanned from its mesh, as drawn). The ray starts a metre up, so a drone already
-    // part-way in still finds the surface.
-    let low = this.Lowest();
-    let r0 = MaxF(0.02, -low.Z);
-    fl.grounded = false;
-    let clear = 1000.0;   // how far the lowest point is above the ground
-    // a drone with a shell of its own looks for the ground from just under its lowest point
-    let top = fl.pos.Z + 1.0;   // (the drone's own body is skipped by the ray itself)
-    if this.Ray(new Vector4(fl.pos.X, fl.pos.Y, top, 1.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
-      let gz = hit.position.Z;
-      this.m_groundFrom = FloatToStringPrec(top - gz, 2) + " m below the ray start";
-      this.m_ground = fl.pos.Z - gz;
-      if fl.pos.Z < gz + r0 + 0.02 {
-        fl.grounded = Vector4.Length(fl.vel) < 2.0;
-        if !this.m_touchLogged {
-          this.m_touchLogged = true;
-          CMCSession.Log("drone: touched the ground, base " + FloatToStringPrec(fl.pos.Z - r0 - gz, 2) + " m above the surface the ray found");
-        }
-      } else {
-        this.m_touchLogged = false;
-      }
-      if fl.pos.Z < gz + r0 {
-        fl.pos.Z = gz + r0;
-        let up = new Vector4(0.0, 0.0, 1.0, 0.0);
-        // at the point that touches: off the centre, it tips the drone onto its other points
-        this.Impact(drone, fl.Contact(up, low, 0.0, 0.3));
-        if fl.holding {
-          fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
-        }
-      }
-      clear = fl.pos.Z - gz - r0;
-      // Settling: released within 30 cm of the ground with no climb key and barely moving,
-      // the height hold aims at the ground instead of where the keys were let go, so the
-      // drone lands on the road. It used to hold the height Ctrl was released at and hover
-      // a hand's width up, which looked like the third-person model floating above where
-      // the first-person view sat (a25 log: 0.3 m up, the model exactly at the physics).
-      if !fl.grounded && clear < 0.3 && this.m_climb <= 0.05 && this.m_climb >= -0.05 && Vector4.Length(fl.vel) < 1.5 && fl.holding {
-        fl.holdZ = gz + r0;
-      }
-    } else {
-      this.m_ground = -1.0;
-      this.m_groundFrom = "no ground found";
-    }
-    // The model's lean cap opens up near the ground: the body touching the road is drawn
-    // at its real attitude, pivoting about the centre of mass like the flight, so the third
-    // person model sits on the road where the physics (and the first-person view) does.
-    // A capped, near-level model held at a steeply pitched body's centre floated above the
-    // road (Omar, a23). Within half a metre it blends to the full attitude.
-    let near = ClampF(1.0 - clear / 0.5, 0.0, 1.0);
-    let want = fl.p.showTilt + (90.0 - fl.p.showTilt) * near;
-    this.m_show += (want - this.m_show) * MinF(1.0, this.m_dt * 8.0);
-  }
-  // the body's reach from its centre along `dir` (unit): the farthest of its contact
-  // points that way (the radius and lowest point before the scan)
-  private func Extent(dir: Vector4) -> Float {
-    let fl = this.m_flight;
-    if ArraySize(this.m_pts) == 0 {
-      let uz = AbsF(ClampF(fl.Up().Z, -1.0, 1.0));
-      let vert = fl.p.bottom * uz + fl.p.span * SqrtF(MaxF(0.0, 1.0 - uz * uz));
-      let h = SqrtF(dir.X * dir.X + dir.Y * dir.Y) * fl.p.radius;
-      let v = AbsF(dir.Z) * vert;
-      return SqrtF(h * h + v * v);
-    }
-    let best = 0.05;
-    for p in this.m_pts {
-      best = MaxF(best, Vector4.Dot(CMFlight.QRot(fl.q, p - this.m_c), dir));
-    }
-    return best;
-  }
 
-  // the lowest contact point, from the centre (world axes)
-  private func Lowest() -> Vector4 {
-    let fl = this.m_flight;
-    if ArraySize(this.m_pts) == 0 {
-      return new Vector4(0.0, 0.0, -fl.p.bottom, 0.0);
-    }
-    let low = new Vector4(0.0, 0.0, 1000.0, 0.0);
-    for p in this.m_pts {
-      let r = CMFlight.QRot(fl.q, p - this.m_c);
-      if r.Z < low.Z {
-        low = r;
-      }
-    }
-    return low;
-  }
-
-  // What the drone really carries and what its record gives it to attack with, for the
-  // weapons phase (the Octant first: its machine guns and the game's mortars)
   private func LogLoadout(drone: ref<NPCPuppet>) -> Void {
     let items: array<wref<gameItemData>>;
     GameInstance.GetTransactionSystem(this.m_game).GetItemList(drone, items);
@@ -1003,37 +779,6 @@ public class CMUDrone extends CMCUnit {
       CMCSession.Log("drone: record abilities " + ab);
 
     }
-  }
-
-  // The drone's own NPC systems while flown: off as DIAGNOSTICS says, back on at the end.
-  // Movement: its character movement, motion planner and drone component (they can smooth
-  // or pull the drawn position). Animation: its skeleton and animation controller.
-  private func NpcSystems(drone: ref<NPCPuppet>, on: Bool) -> Void {
-    let names: array<CName>;
-    if this.m_visTest == 1 || this.m_visTest == 3 {
-      ArrayPush(names, n"MoveComponent");
-      ArrayPush(names, n"moveMotionPlanner5034");
-      ArrayPush(names, n"Drone4625");
-    }
-    if this.m_visTest >= 2 {
-      ArrayPush(names, n"root");
-      ArrayPush(names, n"AnimationControllerComponent");
-    }
-    for name in names {
-      let c = drone.FindComponentByName(name);
-      if IsDefined(c) {
-        c.Toggle(on);
-      }
-    }
-  }
-
-  public static func VisTestName(v: Int32) -> String {
-    switch v {
-      case 1: return "MOVEMENT";
-      case 2: return "ANIMATION";
-      case 3: return "MOVEMENT + ANIMATION";
-    }
-    return "NONE";
   }
 
   // The drone's own model on or off: every mesh, skinned and rigid, drawn with none of its
@@ -1084,141 +829,9 @@ public class CMUDrone extends CMCUnit {
     this.m_hidden = !on;
   }
 
-  // Each contact point swept from where it was a frame ago to where it is now: a thin post
-  // or a fence rail the drone flies into is crossed by the point that hits it, even when it
-  // passes between the rays from the centre. The point stops at the surface; the rest is a
-  // contact there.
-  private func Sweep(drone: ref<NPCPuppet>, from: Vector4) -> Void {
-    let fl = this.m_flight;
-    if Vector4.Distance(fl.pos, from) < 0.02 {
-      return;
-    }
-    let hit: TraceResult;
-    for p in this.m_pts {
-      let was = from + CMFlight.QRot(this.m_prevQ, p - this.m_c);
-      let r = CMFlight.QRot(fl.q, p - this.m_c);
-      let now = fl.pos + r;
-      let move = now - was;
-      let len = Vector4.Length(move);
-      // leading points only: a trailing point's path runs back through the drone's own body
-      if len > 0.01 && Vector4.Dot(r, move) > 0.0 && this.m_selfFrames >= 10 {
-        let dir = move / len;
-        if this.RayFast(was, now + dir * 0.02, hit) && Vector4.Distance(was, Cast<Vector4>(hit.position)) > 0.02 {
-          let at = Cast<Vector4>(hit.position);
-          let n = CMUDrone.Normal(hit, dir);
-          let depth = Vector4.Dot(at - now, n);
-          if depth > 0.0 {
-            fl.pos += n * (depth + 0.005);
-            fl.pos.W = 1.0;
-            let floorish = n.Z > 0.6;
-            this.Impact(drone, fl.Contact(n, at - fl.pos, floorish ? 0.0 : 0.2, 0.3));
-          }
-        }
-      }
-    }
-  }
-
-  // A hit's surface normal, facing back along `dir` (the way in). Some hits (cars, props)
-  // come back without a usable normal: a zero vector normalised to nothing, so the drone
-  // was never pushed out and flew through. Those, and back faces, push straight back.
-  public static func Normal(hit: TraceResult, dir: Vector4) -> Vector4 {
-    let raw = Cast<Vector4>(hit.normal);
-    raw.W = 0.0;
-    if Vector4.Length(raw) < 0.5 {
-      return dir * -1.0;
-    }
-    let n = Vector4.Normalize(raw);
-    if Vector4.Dot(n, dir) > -0.05 {
-      return dir * -1.0;
-    }
-    return n;
-  }
-
-  // The first ten frames of a flight (it is hovering where its AI left it): each contact
-  // ray's nearest hit is taken as the drone's own shell. No contacts are made meanwhile.
-  private func LearnSelf() -> Void {
-    let fl = this.m_flight;
-    let hit: TraceResult;
-    if ArraySize(this.m_self) != ArraySize(this.m_pts) {
-      ArrayClear(this.m_self);
-      for p in this.m_pts {
-        ArrayPush(this.m_self, -1.0);
-      }
-    }
-    let i = 0;
-    for p in this.m_pts {
-      let r = CMFlight.QRot(fl.q, p - this.m_c);
-      let len = Vector4.Length(r);
-      if len > 0.02 && this.RayFast(fl.pos, fl.pos + r + (r / len) * 0.02, hit) {
-        let d = Vector4.Distance(fl.pos, Cast<Vector4>(hit.position));
-        if this.m_self[i] < 0.0 || d < this.m_self[i] {
-          this.m_self[i] = d;
-        }
-      }
-      i += 1;
-    }
-    this.m_selfFrames += 1;
-    if this.m_selfFrames == 10 {
-      let n = 0;
-      for d in this.m_self {
-        if d >= 0.0 {
-          n += 1;
-        }
-      }
-      this.m_hasSelf = n > 0;
-      CMCSession.Log("drone: its own shell found on " + IntToString(n) + " of " + IntToString(ArraySize(this.m_self)) + " contact rays" + (this.m_hasSelf ? " (ignored on those; the ground ray starts under it)" : ""));
-    }
-  }
-
-  // the types whose bodies are physical meshes (entity files: entPhysicalMeshComponent
-  // thrusters on the Octant, entPhysicalSkinnedMeshComponent body on the Griffin)
-  private func ShellKind() -> Bool = Equals(this.m_kind, "octant") || Equals(this.m_kind, "griffin")
-
   // stick expo: x^3 blended in, soft near the centre, full at the end
   public static func Expo(x: Float, e: Float) -> Float = x * (1.0 - e) + x * x * x * e
 
-  // The mesh contact points: a ray from the centre out to each of the drone's contact
-  // points (scanned from its real mesh: rotor and wing tips, nose, tail, belly, gun) against
-  // the world, dynamic objects and vehicles. A point inside something pushes the drone out
-  // along the surface and is a rigid-body contact at that point, so it rests on whatever
-  // part touches, a rotor clipping a wall tips it, and a car driving into it moves it. This
-  // replaces the four flat rays at one radius (the drone as a disc).
-  private func Contacts(drone: ref<NPCPuppet>) -> Void {
-    let fl = this.m_flight;
-    let hit: TraceResult;
-
-    let i = -1;
-    for p in this.m_pts {
-      i += 1;
-      let r = CMFlight.QRot(fl.q, p - this.m_c);
-      let len = Vector4.Length(r);
-      if len > 0.02 {
-        let dir = r / len;
-        let tip = fl.pos + r;
-        let mine = i < ArraySize(this.m_self) ? this.m_self[i] : -1.0;
-        // something nearer than its own shell on this ray is the world inside it
-        if this.RayFast(fl.pos, tip + dir * 0.02, hit) && (mine < 0.0 || Vector4.Distance(fl.pos, Cast<Vector4>(hit.position)) < mine - 0.03) {
-          let at = Cast<Vector4>(hit.position);
-          let n = CMUDrone.Normal(hit, dir);
-          let depth = Vector4.Dot(at - tip, n);
-          if depth > 0.0 {
-            fl.pos += n * depth;
-            fl.pos.W = 1.0;
-            let floorish = n.Z > 0.6;
-            this.Impact(drone, fl.Contact(n, at - fl.pos, floorish ? 0.0 : 0.2, 0.3));
-            if floorish {
-              if Vector4.Length(fl.vel) < 2.0 {
-                fl.grounded = true;
-              }
-              if fl.holding {
-                fl.holdZ = MaxF(fl.holdZ, fl.pos.Z);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
   // a collision this fast (m/s): past the type's limit it costs health, more the harder
   // it hits; a crash can destroy the drone (a crashed drone is lost)
   private func Impact(drone: ref<NPCPuppet>, speed: Float) -> Void {
@@ -1236,86 +849,16 @@ public class CMUDrone extends CMCUnit {
 
   // put the drone where the model says, by the chosen method
   private func Place(drone: ref<NPCPuppet>, now: Float) -> Void {
+    // the entity's own transform set each frame (Codeware) on its physics body's place, with
+    // the body's full orientation (its AI is off for the flight: nothing else moves it)
     let fl = this.m_flight;
-    switch this.m_method {
-      case 4:
-        // the entity's own transform set each frame (Codeware), with the body's full
-        // orientation; an AI teleport four times a second keeps its movement component where
-        // the body is
-        let wt: WorldTransform;
-        let root = this.Root();
-        let world: WorldPosition;
-        WorldPosition.SetVector4(world, root);
-        WorldTransform.SetWorldPosition(wt, world);
-        WorldTransform.SetOrientation(wt, fl.Shown(this.m_show));   // as flown, or the model's lean capped
-        this.m_placed = fl.pos;
-
-        drone.SetWorldTransform(wt);
-        // the sync lands a frame or more later, by when a fast drone has moved on: sent
-        // where it will be, and only once a second (four a second snapped it back at speed:
-        // the jitter when flying fast)
-        if !this.m_aiOff && now - this.m_cmdAt >= 1.0 {
-          let sync = new AITeleportCommand();
-          sync.position = root + fl.vel * 0.1;
-          sync.rotation = fl.yaw;
-          sync.doNavTest = false;
-          let ai4 = drone.GetAIControllerComponent();
-          if IsDefined(ai4) {
-            ai4.SendCommand(sync);
-          }
-          this.m_cmdAt = now;
-        }
-        break;
-      case 0:
-      case 3:
-        let e: EulerAngles;
-        e.Yaw = fl.yaw;
-        e.Pitch = fl.pitch;
-        e.Roll = fl.roll;
-        GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, this.Root(), e);
-        break;
-      case 1:
-        // a teleport lands the frame after it is sent: sent one frame ahead, it lands
-        // where the model is when that frame is drawn. It completes at once, so the last
-        // one isn't cancelled (cancelling could drop one still pending: a stalled frame)
-        let tp = new AITeleportCommand();
-        tp.position = this.Root() + fl.vel * this.m_dt;
-        tp.rotation = fl.yaw;
-        tp.doNavTest = false;
-        let ai = drone.GetAIControllerComponent();
-        if IsDefined(ai) {
-          ai.SendCommand(tp);
-        }
-        break;
-      default:
-        if now - this.m_cmdAt >= 0.25 {
-          let at = fl.pos + fl.vel * 0.5;
-          let world: WorldPosition;
-          WorldPosition.SetVector4(world, at);
-          let spec: AIPositionSpec;
-          AIPositionSpec.SetWorldPosition(spec, world);
-          let cmd = new AIMoveToCommand();
-          cmd.movementTarget = spec;
-          cmd.movementType = moveMovementType.Sprint;
-          cmd.ignoreNavigation = true;
-          cmd.finishWhenDestinationReached = true;
-          cmd.desiredDistanceFromTarget = 0.3;
-          this.Send(drone, cmd);
-          this.m_cmdAt = now;
-        }
-    }
-  }
-
-  private func Send(drone: ref<NPCPuppet>, cmd: ref<AICommand>) -> Void {
-    let ai = drone.GetAIControllerComponent();
-    if !IsDefined(ai) {
-      return;
-    }
-    if IsDefined(this.m_cmd) {
-      ai.CancelCommand(this.m_cmd);
-    }
-    ai.SendCommand(cmd);
-    this.m_cmd = cmd;
+    let wt: WorldTransform;
+    let world: WorldPosition;
+    WorldPosition.SetVector4(world, this.Root());
+    WorldTransform.SetWorldPosition(wt, world);
+    WorldTransform.SetOrientation(wt, fl.Shown(this.m_show));
+    this.m_placed = fl.pos;
+    drone.SetWorldTransform(wt);
   }
 
   private func Cancel(drone: ref<NPCPuppet>) -> Void {
@@ -1362,16 +905,12 @@ public class CMUDrone extends CMCUnit {
   private func Report(drone: ref<NPCPuppet>) -> Void {
     let fl = this.m_flight;
     let real = Quaternion.ToEulerAngles(drone.GetWorldOrientation());
-    let avg = this.m_errN > 0 ? this.m_errSum / Cast<Float>(this.m_errN) : -1.0;
-    let stalls = this.m_stalls;
-    this.m_stalls = 0;
-    // heights above the surface the ground ray found: the sight-view eye, the drawn body's
-    // centre and lowest point (rest pose, as placed)
+    // heights above the surface the ground ray found: the sight-view eye and the body's centre
     let heights = "";
     if this.m_ground >= 0.0 {
       let gz = fl.pos.Z - this.m_ground;
       let eye = this.Anchor().Z + this.SensorUp();
-      heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m, body bottom " + FloatToStringPrec(fl.pos.Z - this.Extent(new Vector4(0.0, 0.0, -1.0, 0.0)) - gz, 2) + " m";
+      heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m";
     }
     if this.m_lmgRounds > 0 {
       heights += ", lmg " + IntToString(this.m_lmgRounds) + " rounds, " + IntToString(this.m_lmgHits) + " struck a target (last " + this.m_lmgLast + ")";
@@ -1382,11 +921,9 @@ public class CMUDrone extends CMCUnit {
     let wname = IsDefined(CMWind.Get(this.m_game)) ? CMWind.Get(this.m_game).Weather() : "?";
     heights += ", wind " + FloatToStringPrec(SqrtF(wv.X * wv.X + wv.Y * wv.Y), 1) + " m/s (vert " + FloatToStringPrec(wv.Z, 1) + ", exposure " + FloatToStringPrec(this.m_exposure, 2) + ", weather " + wname + ")";
     heights += ", ground effect x" + FloatToStringPrec(fl.groundGain, 3) + (IsDefined(this.m_wash) ? " (downwash dust)" : "") + (this.m_hold ? ", gunship hold" : "");
-    heights += ", own-body hits skipped " + IntToString(this.m_selfHits) + ", contact rays hit " + IntToString(this.m_fastHits) + (this.m_fastOff ? " (per-group)" : "") + (this.m_hidden ? ", model hidden" : "");
-    this.m_fastHits = 0;
+    heights += ", own-body hits skipped " + IntToString(this.m_selfHits) + (this.m_hidden ? ", model hidden" : "");
     this.m_selfHits = 0;
-    CMCSession.Log("drone: " + CMUDrone.MethodName(this.m_method) + ", " + IntToString(this.m_frames) + " frames"
-      + (this.m_method == 2 ? "" : ", off by " + FloatToStringPrec(avg, 2) + " m avg / " + FloatToStringPrec(this.m_errMax, 2) + " m max, " + IntToString(stalls) + " stalled frames")
+    CMCSession.Log("drone: " + IntToString(this.m_frames) + " frames"
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
@@ -1396,9 +933,6 @@ public class CMUDrone extends CMCUnit {
       + ", body bone " + CMUDrone.V2(this.m_bone) + " vs flight centre " + CMUDrone.V2(this.m_placed) + " (bone less centre " + CMUDrone.V2(this.m_boneOff) + "), model lean cap " + FloatToStringPrec(this.m_show, 0)
       + heights
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
-    this.m_errSum = 0.0;
-    this.m_errMax = 0.0;
-    this.m_errN = 0;
     this.m_frames = 0;
     this.m_rayHits = 0;
     this.m_rayMiss = 0;
@@ -1406,7 +940,6 @@ public class CMUDrone extends CMCUnit {
     this.m_hitD = 0;
     this.m_hitV = 0;
     this.m_hitG = 0;
-    this.m_probe = 0;
   }
 
   // its own display (CMDroneHud), with the damage schematic of its type
@@ -2073,8 +1606,11 @@ public class CMUDrone extends CMCUnit {
     let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
     if !IsDefined(e) || Vector4.Length(e.GetWorldPosition()) < 1.0 {
       if now - this.m_proxyAt > 10.0 {
-        CMCSession.Log("drone V3: the physics body never appeared in 10 s; flying on the 6-DOF model");
-        this.m_phys = false;
+        // (is mnc\physics\proxy_<kind>.ent in the archive?) asked for again
+        CMCSession.Log("drone V3: the physics body never appeared in 10 s; asking again");
+        GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_proxyId);
+        this.m_proxySpawned = false;
+        this.m_proxyAt = now;
       }
       return;
     }
@@ -2084,7 +1620,6 @@ public class CMUDrone extends CMCUnit {
     }
     let fl = this.m_flight;
     this.m_proxyLive = true;
-    fl.external = true;
     this.m_physVel = fl.vel;
     CMPhysPlugin.SetVelocity(body, fl.vel);
     CMPhysPlugin.SetSpin(body, CMFlight.QRot(fl.q, fl.w));
@@ -2121,11 +1656,16 @@ public class CMUDrone extends CMCUnit {
     let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_proxyId);
     let body = IsDefined(e) ? this.PhysBody(e) : null;
     if !IsDefined(body) {
-      // the body is gone: the 6-DOF model takes over where the drone is
-      CMCSession.Log("drone V3: the physics body was lost; flying on the 6-DOF model");
+      // the body is gone (streamed out, removed): a new one is asked for where the drone is,
+      // which holds still meanwhile
+      CMCSession.Log("drone V3: the physics body was lost; asking for a new one");
+      if IsDefined(e) {
+        GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_proxyId);
+      }
       this.m_proxyLive = false;
-      this.m_phys = false;
-      fl.external = false;
+      this.m_proxySpawned = false;
+      this.m_proxyBody = null;
+      this.m_proxyAt = now;
       return;
     }
     // the body's real state
@@ -2278,7 +1818,6 @@ public class CMUDrone extends CMCUnit {
     }
     ArrayClear(this.m_podBodies);
     if IsDefined(this.m_flight) {
-      this.m_flight.external = false;
     }
     if IsDefined(drone) {
       this.PhysCollisions(drone, true);
@@ -2511,16 +2050,6 @@ public class CMUDrone extends CMCUnit {
 
   // a vector to the centimetre, for the log
   public static func V2(v: Vector4) -> String = "(" + FloatToStringPrec(v.X, 2) + ", " + FloatToStringPrec(v.Y, 2) + ", " + FloatToStringPrec(v.Z, 2) + ")"
-
-  public static func MethodName(m: Int32) -> String {
-    switch m {
-      case 0: return "FACILITY TELEPORT";
-      case 1: return "AI TELEPORT";
-      case 3: return "AI OFF + TELEPORT";
-      case 4: return "ENTITY TRANSFORM";
-    }
-    return "AI MOVE CARROT";
-  }
 
   public static func Kind(drone: ref<NPCPuppet>) -> String {
     let rec = StrLower(TDBID.ToStringDEBUG(drone.GetRecordID()));

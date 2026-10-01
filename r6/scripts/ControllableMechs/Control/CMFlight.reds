@@ -60,9 +60,8 @@ public class CMFlight {
   public let holding: Bool;
   public let grounded: Bool;       // resting on the ground (set by the unit's contacts)
   public let groundGain: Float;    // ground effect: the rotors' thrust near the ground, x (1 = none)
-  public let external: Bool;       // PhysX integrates (a V3 drone): Step only works out the forces
-  public let outForce: Vector4;    // external: rotors + air, world N (no gravity)
-  public let outTorque: Vector4;   // external: body-frame N m (no gyroscopic term)
+  public let outForce: Vector4;    // Step's result: rotors + air, world N (no gravity: PhysX's)
+  public let outTorque: Vector4;   // Step's result: body-frame N m (no gyroscopic term)
   public let wind: Vector4;        // the air's own motion here (m/s, world; CMWind): drag and
                                    // the blades' flapping act on the speed through the air
   public let p: ref<CMFlightProfile>;
@@ -257,56 +256,16 @@ public class CMFlight {
     bx -= ix * damp * this.w.X;
     by -= ix * damp * this.w.Y;
     bz -= iz * (this.grounded ? 4.0 : 1.0) * this.w.Z;
-    if this.external {
-      // PhysX moves the body (MNC Physics v3, a V3 drone): what the rotors and the air do to
-      // it, for the plugin to apply before every physics step. Gravity, the gyroscopic term
-      // and the integration are PhysX's own; the state (pos, q, vel, w) is read back from
-      // the body by the unit each frame.
-      let fe = CMFlight.QRot(this.q, new Vector4(0.0, 0.0, t0 + t1 + t2 + t3, 0.0));
-      let dragE = new Vector4(-0.6 * p.cdh * vb.X * AbsF(vb.X), -0.6 * p.cdh * vb.Y * AbsF(vb.Y), -0.6 * p.cdv * vb.Z * AbsF(vb.Z), 0.0);
-      fe += CMFlight.QRot(this.q, dragE);
-      fe -= air * (0.05 * m);
-      this.outForce = fe;
-      this.outTorque = new Vector4(bx, by, bz, 0.0);
-      this.Angles();
-      return;
-    }
-    // Euler's equation, with the gyroscopic term
-    let gx = this.w.Y * (iz * this.w.Z) - this.w.Z * (ix * this.w.Y);
-    let gy = this.w.Z * (ix * this.w.X) - this.w.X * (iz * this.w.Z);
-    let gz = this.w.X * (ix * this.w.Y) - this.w.Y * (ix * this.w.X);
-    this.w.X += (bx - gx) / ix * dt;
-    this.w.Y += (by - gy) / ix * dt;
-    this.w.Z += (bz - gz) / iz * dt;
-    // the orientation
-    let wq: Quaternion;
-    wq.i = this.w.X;
-    wq.j = this.w.Y;
-    wq.k = this.w.Z;
-    wq.r = 0.0;
-    let dq = CMFlight.QMul(this.q, wq);
-    this.q.i += 0.5 * dq.i * dt;
-    this.q.j += 0.5 * dq.j * dt;
-    this.q.k += 0.5 * dq.k * dt;
-    this.q.r += 0.5 * dq.r * dt;
-    let n = SqrtF(this.q.i * this.q.i + this.q.j * this.q.j + this.q.k * this.q.k + this.q.r * this.q.r);
-    this.q.i /= n;
-    this.q.j /= n;
-    this.q.k /= n;
-    this.q.r /= n;
-    // --- forces ---
-    let force = CMFlight.QRot(this.q, new Vector4(0.0, 0.0, t0 + t1 + t2 + t3, 0.0));
-    let drag = new Vector4(-0.6 * p.cdh * vb.X * AbsF(vb.X), -0.6 * p.cdh * vb.Y * AbsF(vb.Y), -0.6 * p.cdv * vb.Z * AbsF(vb.Z), 0.0);
-    force += CMFlight.QRot(this.q, drag);
-    force -= air * (0.05 * m);
-    force.Z -= m * 9.81;
-    this.vel.X += force.X / m * dt;
-    this.vel.Y += force.Y / m * dt;
-    this.vel.Z += force.Z / m * dt;
-    this.pos.X += this.vel.X * dt;
-    this.pos.Y += this.vel.Y * dt;
-    this.pos.Z += this.vel.Z * dt;
-    this.pos.W = 1.0;
+    // PhysX moves the body (MNC Physics v3): what the rotors and the air do to it, for the
+    // plugin to apply before every physics step. Gravity, the gyroscopic term and the
+    // integration are PhysX's own; the state (pos, q, vel, w) is read back from the body by
+    // the unit each frame.
+    let fe = CMFlight.QRot(this.q, new Vector4(0.0, 0.0, t0 + t1 + t2 + t3, 0.0));
+    let dragE = new Vector4(-0.6 * p.cdh * vb.X * AbsF(vb.X), -0.6 * p.cdh * vb.Y * AbsF(vb.Y), -0.6 * p.cdv * vb.Z * AbsF(vb.Z), 0.0);
+    fe += CMFlight.QRot(this.q, dragE);
+    fe -= air * (0.05 * m);
+    this.outForce = fe;
+    this.outTorque = new Vector4(bx, by, bz, 0.0);
     this.Angles();
   }
 
@@ -325,55 +284,6 @@ public class CMFlight {
     this.yaw = CMPilotRig.Wrap(Rad2Deg(2.0 * AtanF(this.q.k, this.q.r)));
     this.pitch = Rad2Deg(AsinF(ClampF(f.Z, -1.0, 1.0)));
     this.roll = Rad2Deg(AsinF(ClampF(-r.Z, -1.0, 1.0)));
-  }
-
-  // A contact at `r` from the centre of mass (world), against a surface facing `normal`:
-  // an impulse at that point stops the motion into it (with `bounce` of it back) and
-  // takes off up to `grip` x it of the sliding, so a glancing or off-centre hit spins the
-  // drone. Returns how fast it hit.
-  public func Contact(normal: Vector4, r: Vector4, bounce: Float, grip: Float) -> Float {
-    let wWorld = CMFlight.QRot(this.q, this.w);
-    let vc = this.vel + CMFlight.Cross(wWorld, r);
-    let vn = Vector4.Dot(vc, normal);
-    if vn >= 0.0 {
-      return 0.0;
-    }
-    let m = this.p.mass;
-    let ix = this.Ix();
-    let iz = this.Iz();
-    // the effective mass at the contact
-    let rn = CMFlight.QInvRot(this.q, CMFlight.Cross(r, normal));
-    let irn = CMFlight.QRot(this.q, new Vector4(rn.X / ix, rn.Y / ix, rn.Z / iz, 0.0));
-    let k = 1.0 / m + Vector4.Dot(CMFlight.Cross(irn, r), normal);
-    let j = -(1.0 + bounce) * vn / MaxF(0.0001, k);
-    // friction along the surface
-    let vt = vc - normal * vn;
-    let slide = Vector4.Length(vt);
-    let impulse = normal * j;
-    if slide > 0.001 {
-      // the effective mass along the slide (its lever arm differs from the normal's)
-      let tdir = vt / slide;
-      let rt = CMFlight.QInvRot(this.q, CMFlight.Cross(r, tdir));
-      let irt = CMFlight.QRot(this.q, new Vector4(rt.X / ix, rt.Y / ix, rt.Z / iz, 0.0));
-      let kt = 1.0 / m + Vector4.Dot(CMFlight.Cross(irt, r), tdir);
-      impulse -= tdir * MinF(grip * j, slide / MaxF(0.0001, kt));
-    }
-    this.vel += impulse / m;
-    let ang = CMFlight.QInvRot(this.q, CMFlight.Cross(r, impulse));
-    this.w.X += ang.X / ix;
-    this.w.Y += ang.Y / ix;
-    this.w.Z += ang.Z / iz;
-    this.LimitSpin();
-    return -vn;
-  }
-
-  // a tumble is capped at about 1,150 deg/s (a light drone scraping the ground at speed
-  // could otherwise be flung into an unreadable spin)
-  private func LimitSpin() -> Void {
-    let s = Vector4.Length(this.w);
-    if s > 20.0 {
-      this.w = this.w * (20.0 / s);
-    }
   }
 
   // How far below the centre of mass the model's base is, as it is tilted now. Only the

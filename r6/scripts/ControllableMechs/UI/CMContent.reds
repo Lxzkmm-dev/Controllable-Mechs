@@ -129,9 +129,6 @@ public class CMContent extends TKContent {
       case "spawndrone":
         p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg)));
         break;
-      case "spawndronev3":
-        p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg), true));
-        break;
       case "cfgprofile":
         cfg.SetCfgProfile(CMContent.Val(arg, 0));
         break;
@@ -167,20 +164,11 @@ public class CMContent extends TKContent {
         cfg.ResetDrone(cfg.CfgProfile());
         p.SetMessage("*" + StrUpper(cfg.CfgProfile()) + " FLIGHT SETTINGS RESET");
         break;
-      case "droneaioff":
-        cfg.SetDroneAiOff(Equals(CMContent.Str(arg), "1"));
-        break;
       case "dronefl":
         cfg.SetDroneFrameLog(Equals(CMContent.Str(arg), "1"));
         break;
-      case "dronevis":
-        cfg.SetDroneVisualTest(CMContent.Val(arg, 1));
-        break;
       case "dronelag":
         cfg.SetDroneCamLag(CMContent.Val(arg, 1));
-        break;
-      case "dronemove":
-        cfg.SetDroneMove(CMContent.Val(arg, 0));
         break;
       case "despawntest":
         link.DespawnTestMech();
@@ -325,11 +313,9 @@ public class CMContent extends TKContent {
     } else {
       p.Buttons("SPAWN A MINOTAUR", "", "", "MILITECH|ARASAKA|NCPD|KURT'S", "spawntest|spawntest|spawntest|spawntest", "mch_003__minotaur_militech_01|mch_003__minotaur_arasaka_01|mch_003__minotaur_police_01|mch_003__minotaur_kurt");
       p.SetTip("Spawns one 46 ft in front of you and links it, in that livery.");
-      p.Buttons("SPAWN A DRONE (TEST)", "", "", "BOMBUS|GRIFFIN|WYVERN|OCTANT", "spawndrone|spawndrone|spawndrone|spawndrone", "bombus|griffin|wyvern|octant");
-      if CMPhysStep.Present() {
-        p.Buttons("SPAWN A V3 DRONE (PHYSICS)", "Flown as a real PhysX body (MNC Physics plugin): real collisions, it shoves cars and props and is shoved back. Separate from the drones above, which keep the 6-DOF flight model", "", "BOMBUS V3|GRIFFIN V3|WYVERN V3|OCTANT V3", "spawndronev3|spawndronev3|spawndronev3|spawndronev3", "bombus|griffin|wyvern|octant");
-      } else {
-        p.Item("V3 DRONES (PHYSICS)", "Need the MNC Physics plugin, version 3 (red4ext\\plugins\\MNCPhysics)", "", "", "", "", false);
+      p.Buttons("SPAWN A DRONE (TEST)", "Drones fly as real PhysX bodies (the MNC Physics plugin): real collisions, they shove cars and props and are shoved back", "", "BOMBUS|GRIFFIN|WYVERN|OCTANT", "spawndrone|spawndrone|spawndrone|spawndrone", "bombus|griffin|wyvern|octant");
+      if !CMPhysStep.Present() || !CMPhysColl.Present() {
+        p.Item("DRONE FLIGHT", "Needs the MNC Physics plugin (red4ext\\plugins\\MNCPhysics, version 3.1); without it drones can be linked and ordered, not flown", "", "", "", "", false);
       }
     }
     // dev tools for part damage, while DIAGNOSTICS is on (repairs are a planned mechanic)
@@ -427,10 +413,7 @@ public class CMContent extends TKContent {
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
     p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
     if cfg.ShowDebug() {
-      p.Check("DRONE AI OFF WHILE FLYING (TEST)", "On: the drone's AI controller is switched off while you fly it and its hover-height animation input is held at zero, so the game stops treating it as an NPC that keeps its own altitude. Off: its AI stays on (from the next link-in)", cfg.DroneAiOff(), "droneaioff", "");
-      p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "ENTITY TRANSFORM|AI TELEPORT|AI MOVE CARROT", "4|1|2", "dronemove", "");
       p.Dropdown("DRONE CAMERA FRAME LAG", "How many frames the camera follows a flown drone behind. Its mesh is drawn from where it was a frame earlier, 0 by default; 1 or 2 only to test if the drone jitters in the chase view (applies at once)", IntToString(cfg.DroneCamLag()), "0|1|2", "0|1|2", "dronelag", "");
-      p.Dropdown("DRONE NPC SYSTEMS OFF (TEST)", "Which of the drone's own NPC systems are off while you fly it, to find what draws it off the camera in the chase view (from the next link-in)", IntToString(cfg.DroneVisualTest()), "NONE|MOVEMENT|ANIMATION|BOTH", "0|1|2|3", "dronevis", "");
       p.Check("DRONE FRAME LOG", "Logs every frame for four seconds the first time a flown drone passes 8 m/s (where the flight, the drone and the camera each are), to find the chase-view jitter", cfg.DroneFrameLog(), "dronefl", "");
       p.Buttons("PHYSICS SPIKE (RIGID BODIES)", "Drones as real physics bodies, the first tests. DROP: a physics box falls ahead of you (walk or drive into it). KICK: one push through its physics body. HOVER: held 2 m up for 30 s on pushes alone. Results go to the log", "", "DROP|HOVER|PLUGIN TILT|PLUGIN GRAVITY|PLUGIN|REMOVE", "physspike|physspike|physspike|physspike|physspike|physspike", "drop|hover|plugintilt|plugingravity|plugin|remove");
     }
