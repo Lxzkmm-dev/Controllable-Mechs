@@ -182,6 +182,7 @@ public class CMUDrone extends CMCUnit {
       this.m_poseFrames = 30;   // the skeleton is frozen as measured: hold that pose
     }
     CMCSession.Log("drone: NPC systems off for the flight: " + CMUDrone.VisTestName(this.m_visTest));
+    this.LogLoadout(drone);
     CMCSession.Log("drone: drawn pose " + (this.m_poseOk ? "via " + this.m_poseFrom : "not measured") + ", lift " + CMUDrone.V2(this.m_tt) + ", turned " + CMUDrone.V2(CMUDrone.QEuler(this.m_tqSeen)) + " deg, " + IntToString(ArraySize(this.m_hull)) + " contact points, centre " + CMUDrone.V2(this.m_c) + ", sensor " + FloatToStringPrec(this.m_sensUp, 2) + " up " + FloatToStringPrec(this.m_sensFwd, 2) + " fwd");
     CMCSession.Log("drone: " + this.m_name + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID())
       + (this.m_aiOff ? ", AI off" : ", AI on") + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", move method " + CMUDrone.MethodName(this.m_method));
@@ -805,6 +806,29 @@ public class CMUDrone extends CMCUnit {
       }
     }
     return low;
+  }
+
+  // What the drone really carries and what its record gives it to attack with, for the
+  // weapons phase (the Octant first: its machine guns and the game's mortars)
+  private func LogLoadout(drone: ref<NPCPuppet>) -> Void {
+    let items: array<wref<gameItemData>>;
+    GameInstance.GetTransactionSystem(this.m_game).GetItemList(drone, items);
+    let names = "";
+    for item in items {
+      names += (StrLen(names) > 0 ? ", " : "") + TDBID.ToStringDEBUG(ItemID.GetTDBID(item.GetID()));
+    }
+    CMCSession.Log("drone: carries " + (StrLen(names) > 0 ? names : "nothing"));
+    let rec = TweakDBInterface.GetCharacterRecord(drone.GetRecordID());
+    if IsDefined(rec) {
+      let ab = "";
+      let list: array<wref<GameplayAbility_Record>>;
+      rec.Abilities(list);
+      for a in list {
+        ab += (StrLen(ab) > 0 ? ", " : "") + TDBID.ToStringDEBUG(a.GetID());
+      }
+      CMCSession.Log("drone: record abilities " + ab);
+
+    }
   }
 
   // The drone's own NPC systems while flown: off as DIAGNOSTICS says, back on at the end.

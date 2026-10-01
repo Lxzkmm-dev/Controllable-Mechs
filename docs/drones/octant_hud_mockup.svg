@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080" font-family="Consolas, monospace">
+  <!-- a stand-in scene: dusk ground seen from above -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3138"/><stop offset="0.42" stop-color="#3b4048"/><stop offset="0.43" stop-color="#4a4740"/><stop offset="1" stop-color="#2f2c27"/>
+    </linearGradient>
+    <style>
+      .g { stroke: #7dff9a; fill: none; stroke-width: 2; }
+      .gt { fill: #7dff9a; font-size: 22px; }
+      .gs { fill: #7dff9a; font-size: 17px; opacity: 0.85; }
+      .dim { opacity: 0.55; }
+      .amber { fill: #ffc24d; }
+      .red { fill: #ff5a4d; }
+    </style>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <rect x="820" y="610" width="140" height="60" fill="#5a5850" transform="rotate(-18 890 640)"/>
+  <rect x="1180" y="720" width="90" height="40" fill="#55524a"/>
+
+  <!-- heading tape -->
+  <g class="g">
+    <line x1="660" y1="92" x2="1260" y2="92"/>
+    <line x1="700" y1="92" x2="700" y2="80"/><line x1="780" y1="92" x2="780" y2="84"/><line x1="860" y1="92" x2="860" y2="80"/>
+    <line x1="940" y1="92" x2="940" y2="84"/><line x1="1020" y1="92" x2="1020" y2="84"/><line x1="1100" y1="92" x2="1100" y2="80"/>
+    <line x1="1180" y1="92" x2="1180" y2="84"/><line x1="1220" y1="92" x2="1220" y2="80"/>
+    <path d="M948 100 L960 112 L972 100"/>
+    <rect x="918" y="40" width="84" height="32"/>
+  </g>
+  <text class="gs" x="688" y="74">12</text><text class="gs" x="848" y="74">14</text><text class="gs" x="1088" y="74">17</text><text class="gs" x="1208" y="74">18</text>
+  <text class="gt" x="932" y="64">158</text>
+
+  <!-- speed tape (left) and altitude tape (right): thin, a box for the value -->
+  <g class="g">
+    <line x1="430" y1="300" x2="430" y2="780"/>
+    <line x1="430" y1="340" x2="446" y2="340"/><line x1="430" y1="420" x2="440" y2="420"/><line x1="430" y1="500" x2="446" y2="500"/>
+    <line x1="430" y1="620" x2="440" y2="620"/><line x1="430" y1="700" x2="446" y2="700"/><line x1="430" y1="780" x2="440" y2="780"/>
+    <path d="M440 540 L452 528 L520 528 L520 552 L452 552 Z" transform="translate(-110 0)"/>
+    <line x1="1490" y1="300" x2="1490" y2="780"/>
+    <line x1="1474" y1="340" x2="1490" y2="340"/><line x1="1480" y1="420" x2="1490" y2="420"/><line x1="1474" y1="500" x2="1490" y2="500"/>
+    <line x1="1480" y1="620" x2="1490" y2="620"/><line x1="1474" y1="700" x2="1490" y2="700"/><line x1="1480" y1="780" x2="1490" y2="780"/>
+    <path d="M1500 528 L1580 528 L1580 552 L1500 552 L1488 540 Z"/>
+  </g>
+  <text class="gt" x="348" y="548">14.2</text><text class="gs" x="380" y="290">M/S</text>
+  <text class="gt" x="1508" y="548">036</text><text class="gs" x="1498" y="290">ALT M</text>
+  <text class="gs" x="1508" y="582">VS -1.4</text>
+
+  <!-- horizon wings and two pitch rungs, rolled with the body (here 6 deg) -->
+  <g class="g" transform="rotate(-6 960 540)">
+    <path d="M760 540 L880 540 L880 552"/><path d="M1160 540 L1040 540 L1040 552"/>
+    <g class="dim"><line x1="820" y1="440" x2="900" y2="440"/><line x1="1020" y1="440" x2="1100" y2="440"/><line x1="820" y1="640" x2="900" y2="640" stroke-dasharray="10 8"/><line x1="1020" y1="640" x2="1100" y2="640" stroke-dasharray="10 8"/></g>
+  </g>
+  <text class="gs dim" x="1110" y="436">10</text><text class="gs dim" x="1110" y="646">-10</text>
+
+  <!-- the sensor's crosshair: gapped, with a centre point -->
+  <g class="g">
+    <line x1="960" y1="470" x2="960" y2="520"/><line x1="960" y1="560" x2="960" y2="610"/>
+    <line x1="890" y1="540" x2="940" y2="540"/><line x1="980" y1="540" x2="1030" y2="540"/>
+    <circle cx="960" cy="540" r="3" fill="#7dff9a"/>
+  </g>
+  <text class="gt" x="900" y="660">LRF 0214 M</text>
+
+  <!-- mortar: the predicted impact on the ground, its burst radius and time of flight -->
+  <g stroke="#ffc24d" fill="none" stroke-width="2">
+    <ellipse cx="1012" cy="700" rx="70" ry="28" stroke-dasharray="12 8"/>
+    <line x1="1012" y1="686" x2="1012" y2="714"/><line x1="996" y1="700" x2="1028" y2="700"/>
+  </g>
+  <text class="gs amber" x="1090" y="706">IMPACT  T+3.8 S</text>
+
+  <!-- upper left: mode block -->
+  <text class="gt" x="80" y="80">ZETATECH OCTANT</text>
+  <text class="gs" x="80" y="108">OVERWATCH // SENSOR WHT</text>
+  <text class="gs" x="80" y="134">LINK 96%   RNG 0.31 KM</text>
+
+  <!-- upper right: attitude and power -->
+  <text class="gs" x="1640" y="80">PITCH  -04</text>
+  <text class="gs" x="1640" y="106">ROLL   +06</text>
+  <text class="gs" x="1640" y="132">SPOOL  52%</text>
+
+  <!-- lower left: weapons, the selected one boxed -->
+  <g class="g"><rect x="70" y="900" width="330" height="54"/></g>
+  <text class="gt" x="86" y="935">PRI  MORTAR   04 RDY</text>
+  <text class="gs" x="86" y="986">SEC  LMG x2   220 | 220</text>
+  <text class="gs dim" x="86" y="1014">[LMB] FIRE   [B] SELECT   [RMB] ZOOM</text>
+
+  <!-- lower right: hull and the four rotors -->
+  <text class="gs" x="1560" y="935">HULL 100%</text>
+  <g class="g"><rect x="1660" y="918" width="180" height="16"/><rect x="1663" y="921" width="174" height="10" fill="#7dff9a" stroke="none"/></g>
+  <text class="gs" x="1560" y="980">ROTORS</text>
+  <g class="g"><circle cx="1690" cy="975" r="9"/><circle cx="1730" cy="975" r="9"/><circle cx="1770" cy="975" r="9"/><circle cx="1810" cy="975" r="9"/></g>
+
+  <!-- the frame: four thin corners -->
+  <g class="g dim">
+    <path d="M40 140 L40 40 L140 40"/><path d="M1880 140 L1880 40 L1780 40"/>
+    <path d="M40 940 L40 1040 L140 1040"/><path d="M1880 940 L1880 1040 L1780 1040"/>
+  </g>
+</svg>
