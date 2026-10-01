@@ -293,15 +293,29 @@ public class CMUDrone extends CMCUnit {
   // the body bone's offset from the origin, in the drone's frame, past its rest pose;
   // smoothed (the slot reads last frame's pose) and kept within 3 m
   private func MeasureLift(drone: ref<NPCPuppet>) -> Void {
-    if !IsNameValid(this.m_liftComp) {
-      return;
-    }
-    let sc = drone.FindComponentByName(this.m_liftComp) as SlotComponent;
     let wt: WorldTransform;
-    if !IsDefined(sc) || !sc.GetSlotTransform(this.m_liftSlot, wt) {
-      return;
+    let at: Vector4;
+    if Equals(this.m_kind, "octant") {
+      // The Octant's Center slot names a Spine bone its rig doesn't have (av_zetatech_octant
+      // .rig: Root, base, Trajectory and the arms), so its reading is meaningless. Its
+      // skeleton-bound Slot8842 carries the two front arm roots, children of the body bone;
+      // their midpoint rests 0.761 m up in the rig (base at 0.77, rotated, arms 0.614 out).
+      let arms = drone.FindComponentByName(n"Slot8842") as SlotComponent;
+      let wr: WorldTransform;
+      if !IsDefined(arms) || !arms.GetSlotTransform(n"l_front_01", wt) || !arms.GetSlotTransform(n"r_front_01", wr) {
+        return;
+      }
+      at = (WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt)) + WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wr))) * 0.5;
+    } else {
+      if !IsNameValid(this.m_liftComp) {
+        return;
+      }
+      let sc = drone.FindComponentByName(this.m_liftComp) as SlotComponent;
+      if !IsDefined(sc) || !sc.GetSlotTransform(this.m_liftSlot, wt) {
+        return;
+      }
+      at = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
     }
-    let at = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
     this.m_bone = at;
     this.m_boneOff = at - this.m_placed;
     let rel = CMFlight.QInvRot(drone.GetWorldOrientation(), at - drone.GetWorldPosition());
@@ -311,10 +325,10 @@ public class CMUDrone extends CMCUnit {
     if len > 3.0 {
       rel = rel * (3.0 / len);
     }
-    // the Octant's slots sit on a different skeleton (Spine, Head) whose rest pose isn't
-    // known yet: measured for the log, not applied
+    // the Octant's arm midpoint swings with its sway: only its height is taken
     if Equals(this.m_kind, "octant") {
-      rel = new Vector4(0.0, 0.0, 0.0, 0.0);
+      rel.X = 0.0;
+      rel.Y = 0.0;
     }
     this.m_lift += (rel - this.m_lift) * 0.1;
     this.m_lift.W = 0.0;
@@ -324,7 +338,7 @@ public class CMUDrone extends CMCUnit {
   public static func BindZ(kind: String) -> Float {
     switch kind {
       case "bombus": return 0.127;
-      case "octant": return 0.77;
+      case "octant": return 0.761;   // the front arms' midpoint (see MeasureLift)
     }
     return 0.0;   // griffin, wyvern
   }
