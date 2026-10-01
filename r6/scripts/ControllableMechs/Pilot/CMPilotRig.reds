@@ -50,6 +50,7 @@ public class CMPilotRig {
   private let m_maxPitchRate: Float;
   private let m_stride: Float;
   private let m_bobAmp: Float;
+  private let m_noStride: Bool;   // a unit without footfalls (a drone): no stride bob or jolts
   private let m_fovBase: Float;
   private let m_fovZoom: Float;
 
@@ -116,6 +117,14 @@ public class CMPilotRig {
 
   public func SetStepWeight(k: Float) -> Void {
     this.m_stepK = k;
+  }
+
+  // Off for units that don't walk. StepK() reads a weight of 0 as 1 (unset), so a drone
+  // (step weight 0) got the full stride: the camera bobbed 5 cm and kicked on every
+  // "footfall" as it flew (a41 frame log: the camera's height over the drone swinging
+  // 0.79-0.90 m every 0.4 s): the chase-view jitter.
+  public func SetStride(on: Bool) -> Void {
+    this.m_noStride = !on;
   }
 
   private func StepK() -> Float = this.m_stepK > 0.0 ? this.m_stepK : 1.0
@@ -199,7 +208,7 @@ public class CMPilotRig {
     }
 
     // stride: a jolt and a little roll on each footfall
-    let walk = ClampF(this.speed / 3.0, 0.0, 1.0);
+    let walk = this.m_noStride ? 0.0 : ClampF(this.speed / 3.0, 0.0, 1.0);
     if walk > 0.05 {
       this.m_phase += dt * this.speed / this.m_stride * Pi();
       let step = FloorF(this.m_phase / Pi());

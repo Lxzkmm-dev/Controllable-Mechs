@@ -93,6 +93,9 @@ public class CMCSession extends ScriptableSystem {
   private let m_synced: Bool;
   // the chase camera, read once per pilot session (CONFIG can't change while piloting)
   private let m_chaseUp: Float;
+  private let m_dtSmooth: Float;   // the frame step (see OnFrame)
+  private let m_clockReal: Float;
+  private let m_clockUsed: Float;
   private let m_chaseDist: Float;
   private let m_chaseSide: Float;
   private let m_opticsHeld: Bool;   // the optics key as last seen (with the sensor out, it no longer follows zoom)
@@ -383,6 +386,9 @@ public class CMCSession extends ScriptableSystem {
       player.m_cmcSession = this;   // the game's own actions now come to us
     }
     this.m_lastTime = this.Now();
+    this.m_dtSmooth = 0.016;
+    this.m_clockReal = 0.0;
+    this.m_clockUsed = 0.0;
     this.m_slow = 1.0;
     this.m_timerLoop = false;
     this.m_watchFrames = 0;
@@ -512,11 +518,19 @@ public class CMCSession extends ScriptableSystem {
     }
     this.m_frames += 1;
     let now = this.Now();
-    let dt = ClampF(now - this.m_lastTime, 0.0, 0.1);
+    let raw = ClampF(now - this.m_lastTime, 0.0, 0.1);
     this.m_lastTime = now;
-    if dt <= 0.0 {
-      dt = 0.016;
+    if raw <= 0.0 {
+      raw = 0.016;
     }
+    // The engine clock ticks in 1/128 s, so even frames read as 15.6 or 23.4 ms (a41 frame
+    // log): stepped by those, everything moved unevenly from frame to frame. The step is the
+    // frame time smoothed, plus a share of whatever the smoothed clock has fallen behind or
+    // run ahead of the real one, so no time is lost or gained over a flight.
+    this.m_dtSmooth += (raw - this.m_dtSmooth) * 0.15;
+    this.m_clockReal += raw;
+    let dt = ClampF(this.m_dtSmooth + (this.m_clockReal - this.m_clockUsed) * 0.1, 0.002, 0.1);
+    this.m_clockUsed += dt;
     if !this.m_unit.IsAlive() {
       this.End(this.m_unit.LostReason(), false);
       return;
@@ -726,6 +740,7 @@ public class CMCSession extends ScriptableSystem {
     this.rig.SetWeight(this.LOOK_STIFFNESS * t, this.LOOK_DAMPING * SqrtF(t), this.LOOK_YAW_RATE * k * t, this.LOOK_PITCH_RATE * k * t, this.LOOK_LEAD * k);
     this.rig.SetZoomFov(this.OPTICS_FOV);
     this.rig.SetStepWeight(this.STOMP * (IsDefined(this.m_unit) ? this.m_unit.StepWeight() : 1.0));
+    this.rig.SetStride(!IsDefined(this.m_unit) || this.m_unit.StepWeight() > 0.0);
     this.rig.SetRecoilScale(Cast<Float>(CMPilotSystem.Get(this.GetGameInstance()).RecoilPct()) / 100.0);
   }
 
