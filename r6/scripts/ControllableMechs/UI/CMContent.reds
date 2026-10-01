@@ -91,6 +91,16 @@ public class CMContent extends TKContent {
       case "spawntest":
         p.SetMessage(link.SpawnTestMech(StringToName(CMContent.Str(arg))));
         break;
+      case "avdrop":
+        let unit = link.Unit();
+        let player = GetPlayer(this.game);
+        if !IsDefined(unit) || !IsDefined(player) {
+          p.SetMessage("!NO UNIT LINKED");
+          break;
+        }
+        let why = CMNce.AirliftCallIn(unit, player.GetWorldPosition(), CMPilotRig.YawOf(player.GetWorldForward()));
+        p.SetMessage(StrLen(why) == 0 ? "*AV INBOUND: THE UNIT DROPS NEAR YOU" : why);
+        break;
       case "spawndrone":
         p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg)));
         break;
@@ -263,6 +273,11 @@ public class CMContent extends TKContent {
     p.Heading("UNIT ORDERS");
     p.Buttons("Command the linked unit", "", "", "FOLLOW|HOLD|MOVE TO TARGET", "follow|hold|move", "||");
     p.SetTip("MOVE TO TARGET sends the unit to what you look at when you press it, or 50 ft ahead of you.");
+    // AV DROP through Night City Empires' airlift (only when NCE is installed)
+    if CMNce.Installed() {
+      let ready = CMNce.AirliftReady();
+      p.Item("AV DROP", StrLen(ready) == 0 ? "Night City Empires flies an AV in to open sky near you and sets the linked unit down beside you (NCE's AV DROP price)" : "Night City Empires airlift: " + CMLinkSystem.Plain(ready), "", "CALL IN", "avdrop", "", StrLen(ready) == 0);
+    }
     p.Gap();
     p.Button("CLOSE LINK", "unlink", "", true);
     this.Test(p, link);
