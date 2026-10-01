@@ -239,12 +239,14 @@ public class CMUDrone extends CMCUnit {
   // Where the drone's origin goes: the body turns about its centre of mass (the model's
   // position), and the origin hangs below that along the body's up axis. Turning about the
   // origin itself, at the base of the Bombus and Wyvern, swung the body like a see-saw.
-  // The origin also goes down by however far the drone's animation lifts the body off it,
-  // so the body is drawn where the flight is.
+  // (a23-a26 also lowered it by a measured "animation lift". That measurement came from
+  // fx_slots, a slot component with no skeleton binding, which reports the entity origin
+  // rather than the body bone: it read -0.13 m and so raised the drawn body 0.13 m off the
+  // physics, the Bombus floating in third person. The lift is now logged only.)
   private func Root() -> Vector4 {
     let fl = this.m_flight;
     let q = fl.Shown(this.m_show);
-    let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com - CMFlight.QRot(q, this.m_lift);
+    let r = fl.pos - CMFlight.QRot(q, new Vector4(0.0, 0.0, 1.0, 0.0)) * fl.p.com;
     r.W = 1.0;
     return r;
   }
@@ -258,10 +260,12 @@ public class CMUDrone extends CMCUnit {
     this.m_liftComp = n"";
     this.m_bindZ = CMUDrone.BindZ(this.m_kind);
     let wt: WorldTransform;
-    for comp in [n"fx_slots", n"Item_Attachment_Slot"] {
+    // Slot88444 is the Bombus slot component bound to its skeleton (base bone); fx_slots
+    // has no binding and only gives the origin, so it is the last resort (log only)
+    for comp in [n"Slot88444", n"Item_Attachment_Slot", n"fx_slots"] {
       let sc = drone.FindComponentByName(comp) as SlotComponent;
       if IsDefined(sc) {
-        for slot in [n"Body", n"base", n"Base"] {
+        for slot in [n"base", n"Body", n"Base"] {
           if !IsNameValid(this.m_liftComp) && sc.GetSlotTransform(slot, wt) {
             this.m_liftComp = comp;
             this.m_liftSlot = slot;
@@ -269,7 +273,7 @@ public class CMUDrone extends CMCUnit {
         }
       }
     }
-    CMCSession.Log("drone: body bone " + (IsNameValid(this.m_liftComp) ? "via " + NameToString(this.m_liftComp) + "/" + NameToString(this.m_liftSlot) : "not found, its animation lift isn't corrected") + ", rest height " + FloatToStringPrec(this.m_bindZ, 3) + " m");
+    CMCSession.Log("drone: body bone " + (IsNameValid(this.m_liftComp) ? "via " + NameToString(this.m_liftComp) + "/" + NameToString(this.m_liftSlot) : "not found") + ", rest height " + FloatToStringPrec(this.m_bindZ, 3) + " m");
   }
 
   // the body bone's offset from the origin, in the drone's frame, past its rest pose;
