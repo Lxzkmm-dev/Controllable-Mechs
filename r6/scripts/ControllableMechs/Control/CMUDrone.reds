@@ -74,6 +74,7 @@ public class CMUDrone extends CMCUnit {
   private let m_sight: Bool;           // the sight view is on (from the session, each tick)
   private let m_rigYaw: Float;         // the view's heading, this tick
   private let m_camLag: Int32;         // frames the camera follows behind (DIAGNOSTICS)
+  private let m_visTest: Int32;        // which NPC systems are off while flown (DIAGNOSTICS)
   private let m_hideInSight: Bool;
   private let m_fastHits: Int32;       // contact-ray hits (log)
   private let m_fastOff: Bool;         // the one-query filter found nothing where it should:
@@ -154,6 +155,14 @@ public class CMUDrone extends CMCUnit {
         ai.Toggle(false);
       }
     }
+    // the drone's own NPC machinery switched off for the flight (DIAGNOSTICS > DRONE NPC
+    // SYSTEMS OFF): its movement and/or its animation, after the pose was measured
+    this.m_visTest = cfg.DroneVisualTest();
+    this.NpcSystems(drone, false);
+    if this.m_visTest >= 2 {
+      this.m_poseFrames = 30;   // the skeleton is frozen as measured: hold that pose
+    }
+    CMCSession.Log("drone: NPC systems off for the flight: " + CMUDrone.VisTestName(this.m_visTest));
     CMCSession.Log("drone: drawn pose " + (this.m_poseOk ? "via " + this.m_poseFrom : "not measured") + ", lift " + CMUDrone.V2(this.m_tt) + ", turned " + CMUDrone.V2(CMUDrone.QEuler(this.m_tqSeen)) + " deg, " + IntToString(ArraySize(this.m_hull)) + " contact points, centre " + CMUDrone.V2(this.m_c) + ", sensor " + FloatToStringPrec(this.m_sensUp, 2) + " up " + FloatToStringPrec(this.m_sensFwd, 2) + " fwd");
     CMCSession.Log("drone: " + this.m_name + ", record " + TDBID.ToStringDEBUG(drone.GetRecordID())
       + (this.m_aiOff ? ", AI off" : ", AI on") + ", self-levelling " + IntToString(RoundF(this.m_flight.level * 100.0)) + "%, tilt " + FloatToStringPrec(prof.tilt, 0) + ", rate " + FloatToStringPrec(prof.tiltRate, 0) + ", move method " + CMUDrone.MethodName(this.m_method));
@@ -166,6 +175,7 @@ public class CMUDrone extends CMCUnit {
       if this.m_hidden {
         this.ShowModel(drone, true);
       }
+      this.NpcSystems(drone, true);
       this.Cancel(drone);
       this.SetGait(drone, n"Walk");   // the drone's own default
       if this.m_aiOff {
@@ -734,6 +744,37 @@ public class CMUDrone extends CMCUnit {
       }
     }
     return low;
+  }
+
+  // The drone's own NPC systems while flown: off as DIAGNOSTICS says, back on at the end.
+  // Movement: its character movement, motion planner and drone component (they can smooth
+  // or pull the drawn position). Animation: its skeleton and animation controller.
+  private func NpcSystems(drone: ref<NPCPuppet>, on: Bool) -> Void {
+    let names: array<CName>;
+    if this.m_visTest == 1 || this.m_visTest == 3 {
+      ArrayPush(names, n"MoveComponent");
+      ArrayPush(names, n"moveMotionPlanner5034");
+      ArrayPush(names, n"Drone4625");
+    }
+    if this.m_visTest >= 2 {
+      ArrayPush(names, n"root");
+      ArrayPush(names, n"AnimationControllerComponent");
+    }
+    for name in names {
+      let c = drone.FindComponentByName(name);
+      if IsDefined(c) {
+        c.Toggle(on);
+      }
+    }
+  }
+
+  public static func VisTestName(v: Int32) -> String {
+    switch v {
+      case 1: return "MOVEMENT";
+      case 2: return "ANIMATION";
+      case 3: return "MOVEMENT + ANIMATION";
+    }
+    return "NONE";
   }
 
   // The drone's own model on or off: every mesh component (skinned or rigid) toggled.

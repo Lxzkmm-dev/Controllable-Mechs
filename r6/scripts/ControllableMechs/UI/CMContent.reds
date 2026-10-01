@@ -129,6 +129,9 @@ public class CMContent extends TKContent {
       case "droneaioff":
         cfg.SetDroneAiOff(Equals(CMContent.Str(arg), "1"));
         break;
+      case "dronevis":
+        cfg.SetDroneVisualTest(CMContent.Val(arg, 1));
+        break;
       case "dronelag":
         cfg.SetDroneCamLag(CMContent.Val(arg, 1));
         break;
@@ -371,7 +374,8 @@ public class CMContent extends TKContent {
     if cfg.ShowDebug() {
       p.Check("DRONE AI OFF WHILE FLYING (TEST)", "On: the drone's AI controller is switched off while you fly it and its hover-height animation input is held at zero, so the game stops treating it as an NPC that keeps its own altitude. Off: its AI stays on (from the next link-in)", cfg.DroneAiOff(), "droneaioff", "");
       p.Dropdown("DRONE MOVE METHOD (TEST)", "How a flown drone is put where its flight model says each frame; the log says how close each one lands", IntToString(cfg.DroneMove()), "ENTITY TRANSFORM|AI TELEPORT|AI MOVE CARROT", "4|1|2", "dronemove", "");
-      p.Dropdown("DRONE CAMERA FRAME LAG", "How many frames the camera follows a flown drone behind. Its mesh is drawn from where it was a frame earlier, so 1 frames it exactly; try 0 or 2 if the drone jitters in the chase view (applies at once)", IntToString(cfg.DroneCamLag()), "0|1|2", "0|1|2", "dronelag", "");
+      p.Dropdown("DRONE CAMERA FRAME LAG", "How many frames the camera follows a flown drone behind. Its mesh is drawn from where it was a frame earlier, 0 by default; 1 or 2 only to test if the drone jitters in the chase view (applies at once)", IntToString(cfg.DroneCamLag()), "0|1|2", "0|1|2", "dronelag", "");
+      p.Dropdown("DRONE NPC SYSTEMS OFF (TEST)", "Which of the drone's own NPC systems are off while you fly it, to find what draws it off the camera in the chase view (from the next link-in)", IntToString(cfg.DroneVisualTest()), "NONE|MOVEMENT|ANIMATION|BOTH", "0|1|2|3", "dronevis", "");
     }
   }
 
