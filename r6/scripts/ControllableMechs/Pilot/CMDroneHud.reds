@@ -352,7 +352,7 @@ public class CMDroneHud extends CMPilotHud {
     this.m_sec = this.Txt(root, 176.0, 1848.0, "", 38, false);
     // the secondary's heat, along the bottom of its box
     this.m_heat = CMPilotHud.Bar(root, 152.0, 1898.0, 0.0, 6.0, CMPilotHud.Caution(), 1.0);
-    this.Txt(root, 176.0, 1930.0, "[LMB] FIRE   [B] SELECT   [RMB] ZOOM", 26, false).SetOpacity(0.55);
+    this.Txt(root, 176.0, 1930.0, "[LMB] FIRE   [B] SELECT   [RMB] ZOOM   [T] SENSOR", 26, false).SetOpacity(0.55);
   }
 
   // the damage schematic, its parts from the atlas (tools/drones/schematic.py: each part's
@@ -398,7 +398,7 @@ public class CMDroneHud extends CMPilotHud {
       return;
     }
     this.m_name.SetText(s.title);
-    this.m_role.SetText(s.role);
+    this.m_role.SetText(s.role + " // SENSOR " + s.sensor);
     this.m_link.SetText("LINK " + IntToString(RoundF(s.signal * 100.0)) + "%   RNG " + FloatToStringPrec(s.distance / 1000.0, 2) + " KM");
 
     this.m_lrf.SetText(s.range > 0.0 && s.range < 2000.0 ? "LRF " + CMPilotHud.Pad4(RoundF(s.range)) + " M" : "LRF ---- M");

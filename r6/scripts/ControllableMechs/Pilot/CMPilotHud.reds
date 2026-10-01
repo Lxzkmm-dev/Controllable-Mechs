@@ -1345,7 +1345,8 @@ public class CMPilotHudState {
   public let parts: array<Float>; // each CMPart's integrity, 0-1 (the torso is the hull)
   public let warning: String;
   // a drone's display (CMDroneHud)
-  public let role: String;        // its role and sensor line
+  public let role: String;        // its role line
+  public let sensor: String;      // the sensor's mode (DAY, WHT, THERMAL, RED HOT)
   public let alt: Float;          // m above the ground (-1 unknown)
   public let vs: Float;           // vertical speed, m/s
   public let pitch: Float;

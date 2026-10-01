@@ -94,6 +94,7 @@ public class CMCSession extends ScriptableSystem {
   // the chase camera, read once per pilot session (CONFIG can't change while piloting)
   private let m_chaseUp: Float;
   private let m_dtSmooth: Float;   // the frame step (see OnFrame)
+  private let m_thermal: Int32;    // the sensor's thermal mode (CMThermal), 0 = off
   private let m_clockReal: Float;
   private let m_clockUsed: Float;
   private let m_chaseDist: Float;
@@ -387,6 +388,7 @@ public class CMCSession extends ScriptableSystem {
     }
     this.m_lastTime = this.Now();
     this.m_dtSmooth = 0.016;
+    this.m_thermal = 0;
     this.m_clockReal = 0.0;
     this.m_clockUsed = 0.0;
     this.m_slow = 1.0;
@@ -412,6 +414,10 @@ public class CMCSession extends ScriptableSystem {
     let game = this.GetGameInstance();
     this.m_gen += 1;   // stops the frame loop, the watchdog and any pending timeout
     this.m_state = 0;
+    if this.m_thermal != 0 {
+      CMThermal.Set(game, 0);   // the sensor's thermal mode goes with the link
+      this.m_thermal = 0;
+    }
     this.m_lastExit = this.Now();
     let player = GetPlayer(game);
     if IsDefined(player) {
@@ -634,6 +640,7 @@ public class CMCSession extends ScriptableSystem {
     s.speed = this.rig.speed;
     s.fireMode = this.m_fireMode;
     s.warning = "";
+    s.sensor = CMThermal.Name(this.m_thermal);
     this.m_unit.Hud(this, s);
     this.m_hud.Refresh(s);
   }
@@ -957,6 +964,16 @@ public class CMCSession extends ScriptableSystem {
       case EInputKey.IK_MiddleMouse: this.RawKey(CMCKey.Mmb(), down); break;
       case EInputKey.IK_Space: this.RawKey(CMCKey.Up(), down); break;
       case EInputKey.IK_LControl: this.RawKey(CMCKey.Down(), down); break;
+      case EInputKey.IK_T:
+        // the sensor's thermal modes (CMThermal): off, WHT, THERMAL, RED HOT
+        if press {
+          this.m_thermal = (this.m_thermal + 1) % CMThermal.Count();
+          if !CMThermal.Set(this.GetGameInstance(), this.m_thermal) {
+            this.m_thermal = 0;
+          }
+          CMCSession.Log("sensor: " + CMThermal.Name(this.m_thermal));
+        }
+        break;
       case EInputKey.IK_V:
         if press {
           this.SetChase(!this.m_chase);

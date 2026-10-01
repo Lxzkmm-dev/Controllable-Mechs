@@ -1254,11 +1254,11 @@ public class CMUDrone extends CMCUnit {
 
   public static func Role(kind: String) -> String {
     switch kind {
-      case "octant": return "OVERWATCH // SENSOR WHT";
-      case "bombus": return "RECON // SENSOR DAY";
-      case "griffin": return "STRIKE // SENSOR DAY";
+      case "octant": return "OVERWATCH";
+      case "bombus": return "RECON";
+      case "griffin": return "STRIKE";
     }
-    return "ESCORT // SENSOR DAY";
+    return "ESCORT";
   }
 
   // ---- part damage (the Octant first): body, the four thrusters, the gun ---------------
