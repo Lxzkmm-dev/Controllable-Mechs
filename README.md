@@ -9,3 +9,6 @@ Do not check this branch out in the live MO2 folder; fetch it and copy what is n
 
 Credit: the thermal effects and LUTs are by the author of Kiroshi Optics Thermal Vision,
 used with permission. Their credit goes in MNC's README and Nexus page.
+
+Source: https://www.nexusmods.com/cyberpunk2077/mods/32729 . The author's Nexus permissions allow
+uploading with credit, modification with credit, and asset use with credit (not in paid mods).
