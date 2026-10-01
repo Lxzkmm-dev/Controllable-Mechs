@@ -59,6 +59,7 @@ public class CMFlight {
   public let holdZ: Float;         // the altitude held with no climb input
   public let holding: Bool;
   public let grounded: Bool;       // resting on the ground (set by the unit's contacts)
+  public let groundGain: Float;    // ground effect: the rotors' thrust near the ground, x (1 = none)
   public let p: ref<CMFlightProfile>;
   // derived each step, for the camera, the HUD and the log (degrees)
   public let yaw: Float;
@@ -85,8 +86,22 @@ public class CMFlight {
     }
     f.holdZ = pos.Z;
     f.holding = true;
+    f.groundGain = 1.0;
     f.Angles();
     return f;
+  }
+
+  // Ground effect: within about a rotor's width of the ground the downwash has nowhere to
+  // go and the rotors push off a cushion of air (Cheeseman and Bennett: thrust in ground
+  // effect / out of it = 1 / (1 - (R / 4z)^2)). R is the whole downwash's radius (the
+  // rotors together, from the span), z the rotors' height over the ground; capped at +20%.
+  public func SetGround(height: Float) -> Void {
+    if height < 0.0 {
+      this.groundGain = 1.0;
+      return;
+    }
+    let q = this.p.span * 0.8 / (4.0 * MaxF(0.05, height));
+    this.groundGain = q >= 0.9 ? 1.2 : MinF(1.2, 1.0 / (1.0 - q * q));
   }
 
   // ---- quaternion maths (i, j, k, r = x, y, z, w) ----
@@ -217,10 +232,11 @@ public class CMFlight {
       this.spool[i] += (cmd[i] - this.spool[i]) * MinF(1.0, dt / MaxF(0.01, p.spool));
       i += 1;
     }
-    let t0 = this.spool[0] * this.eff[0] * p.thrust;
-    let t1 = this.spool[1] * this.eff[1] * p.thrust;
-    let t2 = this.spool[2] * this.eff[2] * p.thrust;
-    let t3 = this.spool[3] * this.eff[3] * p.thrust;
+    let tg = p.thrust * this.groundGain;
+    let t0 = this.spool[0] * this.eff[0] * tg;
+    let t1 = this.spool[1] * this.eff[1] * tg;
+    let t2 = this.spool[2] * this.eff[2] * tg;
+    let t3 = this.spool[3] * this.eff[3] * tg;
     // --- torques on the body ---
     let bx = d * (t0 + t1 - t2 - t3);                // front heavier: nose up
     let by = d * (t0 - t1 + t2 - t3);                // left heavier: right side down

@@ -133,6 +133,7 @@ public class CMUDrone extends CMCUnit {
     this.ResetParts();
     this.m_hold = false;
     this.DropShots();
+    this.StopWash();
     this.m_tq = CMUDrone.QIdentity();
     this.m_tqSeen = CMUDrone.QIdentity();
     this.m_tt = new Vector4(0.0, 0.0, 0.0, 0.0);
@@ -195,6 +196,7 @@ public class CMUDrone extends CMCUnit {
 
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
     this.DropShots();
+    this.StopWash();
     if this.m_hold {
       // the chase view it was in before the hold, for next time
       this.m_hold = false;
@@ -429,6 +431,8 @@ public class CMUDrone extends CMCUnit {
       heading = this.m_holdYaw;
     }
     let from = this.m_flight.pos;
+    // ground effect: the rotors' cushion near the ground (its height from the last frame)
+    this.m_flight.SetGround(this.m_ground);
     // the flight model in small steps
     let left = dt;
     while left > 0.0001 {
@@ -465,6 +469,7 @@ public class CMUDrone extends CMCUnit {
       hud.SetFlight(fl.pitch, fl.roll, Vector4.Length(fl.vel), this.m_ground, fl.vel.Z);
     }
     this.Weapons(s, now, dt, hud);
+    this.Downwash(now);
     this.Remember();
     this.Lean(drone, dt);
     if now >= this.m_logAt {
@@ -1297,6 +1302,7 @@ public class CMUDrone extends CMCUnit {
       let eye = this.Anchor().Z + this.SensorUp();
       heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m, body bottom " + FloatToStringPrec(fl.pos.Z - this.Extent(new Vector4(0.0, 0.0, -1.0, 0.0)) - gz, 2) + " m";
     }
+    heights += ", ground effect x" + FloatToStringPrec(fl.groundGain, 3) + (IsDefined(this.m_wash) ? " (downwash dust)" : "") + (this.m_hold ? ", gunship hold" : "");
     heights += ", own-body hits skipped " + IntToString(this.m_selfHits) + ", contact rays hit " + IntToString(this.m_fastHits) + (this.m_fastOff ? " (per-group)" : "") + (this.m_hidden ? ", model hidden" : "");
     this.m_fastHits = 0;
     this.m_selfHits = 0;
@@ -1842,6 +1848,48 @@ public class CMUDrone extends CMCUnit {
       CMCHits.Blame(drone, 0.6);
     }
     attack.StartAttack();
+  }
+
+  // ---- the downwash: low over the ground, the rotors kick up dust (the game's AV dust
+  // kick-up, moved under the drone every frame). Its emitters loop for an effect 6 s long,
+  // so a fresh one takes over every WASH_RENEW seconds. Below WashHeight() only: the
+  // bigger the drone, the higher its wash reaches the ground.
+  private let m_wash: ref<FxInstance>;
+  private let m_washAt: Float;
+  private let WASH_RENEW: Float = 4.0;
+
+  private func WashHeight() -> Float {
+    switch this.m_kind {
+      case "bombus": return 1.2;
+      case "octant": return 6.0;
+    }
+    return 3.5;
+  }
+
+  private func Downwash(now: Float) -> Void {
+    let fl = this.m_flight;
+    if this.m_ground < 0.0 || this.m_ground > this.WashHeight() {
+      this.StopWash();
+      return;
+    }
+    let p = new Vector4(fl.pos.X, fl.pos.Y, fl.pos.Z - this.m_ground + 0.05, 1.0);
+    let up = new Vector4(0.0, 0.0, 1.0, 0.0);
+    if !IsDefined(this.m_wash) || now >= this.m_washAt {
+      if IsDefined(this.m_wash) {
+        this.m_wash.BreakLoop();
+      }
+      this.m_wash = GameInstance.GetFxSystem(this.m_game).SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\av\\v_av_dust_kickup_no_debris.effect"), CMUMinotaur.At(p, up), true);
+      this.m_washAt = now + this.WASH_RENEW;
+      return;
+    }
+    this.m_wash.UpdateTransform(CMUMinotaur.At(p, up));
+  }
+
+  private func StopWash() -> Void {
+    if IsDefined(this.m_wash) {
+      this.m_wash.BreakLoop();
+    }
+    this.m_wash = null;
   }
 
   // ---- the gunship hold (H, the Octant): it holds its place, height and heading, and the
