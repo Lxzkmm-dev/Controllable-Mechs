@@ -11,6 +11,13 @@ Plan: docs/ROADMAP_0.7.0.md.
   - **HUD removal:** every HUD animation is stopped first, including the schematic's blinks and hit flashes, the warning panel, the hit flash and the direction markers.
   - **Breadcrumbs:** with DIAGNOSTICS on, a log line is written before each effect start, attach, weak spot kill and explosion, so a crash names its last step.
 - **Minotaur liveries:** MOTOR POOL spawns the Minotaur as Militech, Arasaka, NCPD or Kurt's, and the HUD names it by livery. `SpawnTestMech()` still takes no argument, for Night City Empires.
+- **Drone flight, round 7** (Omar's a17 test: the model lean limit feels great, and V no longer crouches, but V still jumps, drones still phase through everything, and there is jitter at speed):
+  - **The rays still find nothing:** a17 logged 0 hits out of about 300 rays a second.
+    - Each query type (static, dynamic, vehicle) is now counted separately.
+    - The exact ground ray of the last build that worked (8d130e5) runs alongside as a control, and the drone's position is logged, to pin down why.
+  - **Cyberware jumps blocked too:** the charge, double and hover jumps (Reinforced Tendons, Lynx Paws). Only the plain jump had been blocked.
+  - **Jitter at speed:** the movement-component sync teleport landed late and snapped a fast drone back four times a second. It now goes once a second, sent to where the drone will be.
+  - **Build:** 0.7.0-a18.
 - **Drone flight, round 6** (Omar: "none of the fixes worked"):
   - **Collision rays never counted** from the 6-DOF build on. The log shows "-1 m up" (no ground found) on every line since 20:14, and no hits at all, so drones phased through everything.
     - The ray helper is rewritten: each query has its own result, and the nearest is picked by plain X/Y/Z distance.

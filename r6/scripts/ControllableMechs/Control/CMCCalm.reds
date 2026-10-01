@@ -222,3 +222,42 @@ protected const func EnterCondition(const stateContext: ref<StateContext>, const
   }
   return wrappedMethod(stateContext, scriptInterface);
 }
+// the cyberware jumps (Reinforced Tendons, Lynx Paws) too: the plain jump's block alone
+// left V jumping
+@wrapMethod(ChargeJumpDecisions)
+protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
+  let player = scriptInterface.executionOwner as PlayerPuppet;
+  if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    if wrappedMethod(stateContext, scriptInterface) && CMPilotSystem.Get(player.GetGame()).ShowDebug() {
+      CMCHits.Trace(player.GetGame(), "operator: a ChargeJumpDecisions jump was refused");
+    }
+    return false;
+  }
+  return wrappedMethod(stateContext, scriptInterface);
+}
+// the cyberware jumps (Reinforced Tendons, Lynx Paws) too: the plain jump's block alone
+// left V jumping
+@wrapMethod(DoubleJumpDecisions)
+protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
+  let player = scriptInterface.executionOwner as PlayerPuppet;
+  if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    if wrappedMethod(stateContext, scriptInterface) && CMPilotSystem.Get(player.GetGame()).ShowDebug() {
+      CMCHits.Trace(player.GetGame(), "operator: a DoubleJumpDecisions jump was refused");
+    }
+    return false;
+  }
+  return wrappedMethod(stateContext, scriptInterface);
+}
+// the cyberware jumps (Reinforced Tendons, Lynx Paws) too: the plain jump's block alone
+// left V jumping
+@wrapMethod(HoverJumpDecisions)
+protected const func EnterCondition(const stateContext: ref<StateContext>, const scriptInterface: ref<StateGameScriptInterface>) -> Bool {
+  let player = scriptInterface.executionOwner as PlayerPuppet;
+  if IsDefined(player) && IsDefined(player.m_cmcSession) {
+    if wrappedMethod(stateContext, scriptInterface) && CMPilotSystem.Get(player.GetGame()).ShowDebug() {
+      CMCHits.Trace(player.GetGame(), "operator: a HoverJumpDecisions jump was refused");
+    }
+    return false;
+  }
+  return wrappedMethod(stateContext, scriptInterface);
+}

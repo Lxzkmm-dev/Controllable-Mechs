@@ -47,6 +47,10 @@ public class CMUDrone extends CMCUnit {
   private let m_stickF: Float;         // the keys as a stick: ramped in, with expo
   private let m_rayHits: Int32;        // collision rays that found something / didn't (log)
   private let m_rayMiss: Int32;
+  private let m_hitS: Int32;           // per query type: static, dynamic, vehicle (log)
+  private let m_hitD: Int32;
+  private let m_hitV: Int32;
+  private let m_probe: Int32;          // the old inline ground ray, kept as a control (log)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
 
@@ -241,6 +245,15 @@ public class CMUDrone extends CMCUnit {
       hit = hv;
       found = true;
     }
+    if gotS {
+      this.m_hitS += 1;
+    }
+    if gotD {
+      this.m_hitD += 1;
+    }
+    if gotV {
+      this.m_hitV += 1;
+    }
     if found {
       this.m_rayHits += 1;
     } else {
@@ -287,6 +300,11 @@ public class CMUDrone extends CMCUnit {
     // measured size: the centre alone let the body sink through the ground. The ray starts
     // a metre up, so a drone already part-way in still finds the surface above it.
     let r0 = fl.Reach();
+    // control: the exact ground ray the 8d130e5 build used, which did find the ground
+    let probe: TraceResult;
+    if GameInstance.GetSpatialQueriesSystem(this.m_game).SyncRaycastByCollisionPreset(fl.pos + new Vector4(0.0, 0.0, 0.18, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), n"World Static", probe, true) {
+      this.m_probe += 1;
+    }
     if this.Ray(fl.pos + new Vector4(0.0, 0.0, 1.0, 0.0), fl.pos - new Vector4(0.0, 0.0, 40.0, 0.0), hit) {
       let gz = hit.position.Z;
       this.m_groundFrom = FloatToStringPrec(fl.pos.Z + 1.0 - gz, 2) + " m below the ray start";
@@ -366,9 +384,12 @@ public class CMUDrone extends CMCUnit {
         WorldTransform.SetOrientation(wt, fl.Shown(fl.p.showTilt));   // as flown, or the model's lean capped
 
         drone.SetWorldTransform(wt);
-        if now - this.m_cmdAt >= 0.25 {
+        // the sync lands a frame or more later, by when a fast drone has moved on: sent
+        // where it will be, and only once a second (four a second snapped it back at speed:
+        // the jitter when flying fast)
+        if now - this.m_cmdAt >= 1.0 {
           let sync = new AITeleportCommand();
-          sync.position = root;
+          sync.position = root + fl.vel * 0.1;
           sync.rotation = fl.yaw;
           sync.doNavTest = false;
           let ai4 = drone.GetAIControllerComponent();
@@ -480,7 +501,7 @@ public class CMUDrone extends CMCUnit {
       + ", speed " + FloatToStringPrec(Vector4.Length(fl.vel), 1) + " m/s, climb " + FloatToStringPrec(fl.vel.Z, 1)
       + ", tilt p" + FloatToStringPrec(fl.pitch, 1) + " r" + FloatToStringPrec(fl.roll, 1)
       + ", spool " + FloatToStringPrec(fl.Spool() * 100.0, 0) + "%, " + FloatToStringPrec(this.m_ground, 1) + " m up"
-      + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (ground " + this.m_groundFrom + ")"
+      + ", rays hit " + IntToString(this.m_rayHits) + " / missed " + IntToString(this.m_rayMiss) + " (static " + IntToString(this.m_hitS) + ", dynamic " + IntToString(this.m_hitD) + ", vehicle " + IntToString(this.m_hitV) + ", control " + IntToString(this.m_probe) + "; ground " + this.m_groundFrom + ")" + ", at " + CMCHits.V(this.m_flight.pos)
       + ", gait " + NameToString(this.m_gait)
       + ", real tilt p" + FloatToStringPrec(real.Pitch, 1) + " r" + FloatToStringPrec(real.Roll, 1));
     this.m_errSum = 0.0;
@@ -489,6 +510,10 @@ public class CMUDrone extends CMCUnit {
     this.m_frames = 0;
     this.m_rayHits = 0;
     this.m_rayMiss = 0;
+    this.m_hitS = 0;
+    this.m_hitD = 0;
+    this.m_hitV = 0;
+    this.m_probe = 0;
   }
 
   public func Hud(s: ref<CMCSession>, st: ref<CMPilotHudState>) -> Void {
