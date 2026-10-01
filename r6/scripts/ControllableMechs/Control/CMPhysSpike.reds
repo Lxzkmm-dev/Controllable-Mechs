@@ -38,6 +38,7 @@ public class CMPhysSpike extends ScriptableSystem {
   private let m_errMax: Float;
   private let m_errN: Int32;
   private let m_frames: Int32;
+  private let m_holdSet: Bool;         // the hold height is known (the box was placed)
   private let m_q: Quaternion;         // the body's attitude last frame (its spin is measured)
   private let m_qOk: Bool;
   private let m_resp: array<Float>;    // R4: the spin each push variant gave (rad/s)
@@ -226,7 +227,7 @@ public class CMPhysSpike extends ScriptableSystem {
     if !IsDefined(this.Fresh(e)) {
       return "!NO BODY HANDLE";
     }
-    this.m_holdZ = e.GetWorldPosition().Z + 2.0;
+    this.m_holdSet = false;   // taken from the first frame the box is placed (Tick)
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
     this.m_errN = 0;
@@ -247,7 +248,7 @@ public class CMPhysSpike extends ScriptableSystem {
     if !IsDefined(e) {
       return "!DROP A BOX FIRST";
     }
-    this.m_holdZ = e.GetWorldPosition().Z + 2.0;
+    this.m_holdSet = false;   // taken from the first frame the box is placed (Tick)
     this.m_errSum = 0.0;
     this.m_errMax = 0.0;
     this.m_errN = 0;
@@ -428,9 +429,19 @@ public class CMPhysSpike extends ScriptableSystem {
     this.m_prev = p;
     this.m_prevAt = now;
     this.m_frames += 1;
-    let age = now - this.m_started;
     let body = this.Fresh(e);
-    let q = IsDefined(body) ? body.GetTransform().orientation : CMPhysSpike.QId();
+    // the attitude from the entity: the body handle's transform reads all zeros (a4)
+    let q = e.GetWorldOrientation();
+    // the hold height, from the first frame the box is really placed (a4: HOVER and TILT
+    // pressed in the terminal, with the game paused, read it unplaced at 0 and held it 8 m
+    // under the street)
+    if !this.m_holdSet && this.m_mode >= 1 && Vector4.Length(p) > 1.0 {
+      this.m_holdSet = true;
+      this.m_holdZ = p.Z + 2.0;
+      this.m_started = now;   // the run's clock starts once it can hold
+      CMPhysSpike.Log("hold height set from the placed box: z " + FloatToStringPrec(this.m_holdZ, 2));
+    }
+    let age = now - this.m_started;
     let w = new Vector4(0.0, 0.0, 0.0, 0.0);
     if dt > 0.0001 && this.m_qOk {
       // the spin, from the turn since last frame (2 x the turn quaternion's vector / dt)
@@ -440,7 +451,7 @@ public class CMPhysSpike extends ScriptableSystem {
     }
     this.m_q = q;
     this.m_qOk = true;
-    if this.m_mode >= 1 && IsDefined(body) {
+    if this.m_mode >= 1 && IsDefined(body) && this.m_holdSet {
       // gravity, cancelled over this frame, and the height hold (a spring and a damper on
       // the measured climb rate), as one impulse through the centre of mass, through a body
       // handle taken after the box was placed (a2: the event route moves only vehicles)
