@@ -71,6 +71,25 @@ Omar has the author's permission for analysis. No code is taken; these are the i
 - The map grid (tens of MB of data; our drones are small and fly low, so live ray checks are enough).
 - The Lua/CET structure.
 
+### Two more mods checked (2026-10-01, at Omar's request; analysis only)
+
+**Air Inertia Returns** (tidusmd, MIT; about 150 lines of CET Lua):
+- **What it does:** it hooks V's on-foot locomotion. On leaving the ground it adds an impulse of 45% of V's last ground velocity, and it adds a downward push when V lands on sliding ground.
+- **Ground check:** it casts rays against the Static, Dynamic and Vehicle collision groups.
+- **Lesson:** the drone must collide with dynamic and vehicle geometry too, not only the static world. Its impulse call is on V's own state machine and can't drive a drone.
+
+**VAXIS's ULTRA Physics Overhaul v1.5:** this mod has no physics code. It has:
+- a 262 MB archive making about 3,370 decoration meshes physics-enabled;
+- edited `engine\physics` collision tables (groups, presets, overrides, query presets);
+- one TweakDB value (`MovementActions.PauseByDynamicCollisionCooldown.duration` set to 0).
+
+**Lesson:** with it installed, many props are dynamic, and "World Static" rays don't see them. So:
+- The drone's collision step must also query dynamic and vehicle geometry.
+- The mech's ground and ledge checks should be reviewed for the same gap.
+- Its query preset table lists combined presets ("AI and Vehicles", "Destructables and Debris", "Terrain and Gates").
+
+**Result:** neither mod has a flight or rigid-body model. DAV remains the flight reference, for ideas only. A script can't shove dynamic props or cars realistically, so contacts with them stop or deflect the drone.
+
 ## 4. Architecture
 
 - **`CMUDrone`**, a new `CMCUnit` like `CMUMinotaur`. It has the same session hooks (Begin, Tick, Hud, TakeHit, End), AI suppression (`Pacify`, the `m_cmPiloted` flag and the threat wraps), V credit and aggro.
