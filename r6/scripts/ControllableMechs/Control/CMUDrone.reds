@@ -75,7 +75,6 @@ public class CMUDrone extends CMCUnit {
   private let m_placed: Vector4;       // the flight's centre at the last placement
   private let m_heldWt: WorldTransform; // the hull's transform from the frame before (placed a frame late)
   private let m_heldOk: Bool;
-  private let m_syncAt: Float;         // when its movement is next set to where it is drawn
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
 
@@ -184,20 +183,28 @@ public class CMUDrone extends CMCUnit {
       // its AI (or its death, for a destroyed drone) put it there again: the wreck appeared
       // in front of V where it was spawned (Omar, Phase 4). It is teleported to where it
       // really is first, then its AI is given back.
+      // A destroyed drone keeps its AI off: switched back on, its AI put the wreck back where
+      // the flight began (a27, Omar); a wreck needs no AI.
       let here = drone.GetWorldPosition();
       let face: EulerAngles;
       face.Yaw = IsDefined(this.m_flight) ? this.m_flight.yaw : CMPilotRig.YawOf(drone.GetWorldForward());
-      GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, here, face);
       let ai = drone.GetAIControllerComponent();
-      if IsDefined(ai) {
-        ai.Toggle(true);
-        if ScriptedPuppet.IsAlive(drone) {
+      if ScriptedPuppet.IsAlive(drone) {
+        GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, here, face);
+        if IsDefined(ai) {
+          ai.Toggle(true);
           let tp = new AITeleportCommand();
           tp.position = here;
           tp.rotation = face.Yaw;
           tp.doNavTest = false;
           ai.SendCommand(tp);
         }
+      } else {
+        CMCSession.Log("drone: destroyed at " + CMCHits.V(here) + "; its AI stays off");
+        let cb = new CMWreckLogCb();
+        cb.drone = drone;
+        cb.fell = here;
+        GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, 2.0, false);
       }
       this.Pacify(drone, false);
     }
@@ -843,15 +850,6 @@ public class CMUDrone extends CMCUnit {
     WorldTransform.SetWorldPosition(wt, world);
     WorldTransform.SetOrientation(wt, q);
     this.m_placed = fl.pos;
-    // The game's own idea of where it is (its movement) kept with it every half second:
-    // moved by its transform with its AI off, it stayed where the flight began, and a drone
-    // destroyed in flight fell there, in front of V (Omar, Phase 4)
-    if this.m_proxyLive && this.m_heldOk && now >= this.m_syncAt {
-      this.m_syncAt = now + 0.5;
-      let face: EulerAngles;
-      face.Yaw = fl.yaw;
-      GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, WorldPosition.ToVector4(WorldTransform.GetWorldPosition(this.m_heldWt)), face);
-    }
     // A frame late (a23, confirmed by Omar): the engine draws the pilot camera two frames
     // after it is set and the drone one frame after (a21/a22 frame logs: the engine's camera
     // 2 x v x dt behind where it was put, the drone 1 x v x dt), so the view trailed the
@@ -1445,13 +1443,10 @@ public class CMUDrone extends CMCUnit {
       }
       let drone = this.m_drone;
       if IsDefined(target) && (!IsDefined(drone) || target.GetEntityID() != drone.GetEntityID()) {
-        // the hit's area takes in both where it struck and the target's own origin (an
-        // area attack finds what is in it by the origin: at its feet for a person, so a
-        // 0.5 m area round a hit to the chest found nobody, a55)
-        let o = target.GetWorldPosition();
-        let c = (end + o) * 0.5;
-        c.W = 1.0;
-        this.Blast(c, t"Attacks.CM_DroneRound", Vector4.Distance(end, o) * 0.5 + 0.5, this.RoundDamage(target));
+        // The round's damage straight onto what it struck, V the instigator. a55-a27 sent it
+        // as a small area attack: its record's 0.6 m reach left nothing for a target a metre
+        // from the area's centre, and its explosion effect went off on every round (Omar).
+        GameInstance.GetStatPoolsSystem(this.m_game).RequestChangingStatPoolValue(Cast<StatsObjectID>(target.GetEntityID()), gamedataStatPoolType.Health, -this.RoundDamage(target), GetPlayer(this.m_game), false, false);
         this.m_lmgHits += 1;
         this.m_lmgLast = NameToString(target.GetClassName());
       }
@@ -2188,4 +2183,21 @@ public class CMDroneShot {
   public let age: Float;         // s in the air (a round below zero waits its turn)
   public let life: Float;        // s: the carrier's and a round's flight, the missile's fuel
   public let fx: ref<FxInstance>;
+}
+
+// where a destroyed drone's wreck is two seconds on, against where it went down (the wreck
+// that turned up in front of V, Phase 4)
+public class CMWreckLogCb extends DelayCallback {
+  public let drone: wref<NPCPuppet>;
+  public let fell: Vector4;
+
+  public func Call() -> Void {
+    let d = this.drone;
+    if !IsDefined(d) {
+      CMCSession.Log("drone: the wreck is gone two seconds on");
+      return;
+    }
+    let p = d.GetWorldPosition();
+    CMCSession.Log("drone: the wreck two seconds on is at " + CMCHits.V(p) + ", " + FloatToStringPrec(Vector4.Distance(p, this.fell), 1) + " m from where it went down");
+  }
 }
