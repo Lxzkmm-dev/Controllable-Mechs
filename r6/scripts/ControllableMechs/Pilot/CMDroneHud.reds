@@ -63,7 +63,7 @@ public class CMDroneHud extends CMPilotHud {
   private let m_impactT: ref<inkText>;
   private let m_zoomT: ref<inkText>;
   private let m_cross: ref<inkCanvas>;
-  private let m_schemParts: array<ref<inkImage>>;
+  private let m_schemParts: array<ref<inkWidget>>;
   private let m_schemNames: array<CName>;
   private let m_flashT: Float;
 
@@ -387,6 +387,12 @@ public class CMDroneHud extends CMPilotHud {
       this.Part(box, k, n"octant_thruster_bl", 11.0, 310.0, 126.0, 136.0);
       this.Part(box, k, n"octant_thruster_br", 400.0, 310.0, 127.0, 136.0);
       this.Part(box, k, n"octant_gun", 242.0, 5.0, 53.0, 56.0);
+      // the parts the atlas has no layer for (a32: the rocket pods, the mortar, the sensor),
+      // as plates on the body where they sit, in the schematic's order (CMUDrone parts 6-9)
+      this.Plate(box, k, 150.0, 215.0, 44.0, 110.0);   // rocket pod, left
+      this.Plate(box, k, 343.0, 215.0, 44.0, 110.0);   // rocket pod, right
+      this.Plate(box, k, 238.0, 290.0, 62.0, 62.0);    // mortar, on top
+      this.Plate(box, k, 246.0, 70.0, 46.0, 30.0);     // sensor, the nose
     }
     this.m_hullT = this.Txt(root, x0, 1960.0, "HULL 100%", 30, false);
     this.Frame(root, x0 + 200.0, 1966.0, 300.0, 24.0, 0.9);
@@ -404,6 +410,17 @@ public class CMDroneHud extends CMPilotHud {
     img.Reparent(box);
     ArrayPush(this.m_schemParts, img);
     ArrayPush(this.m_schemNames, name);
+  }
+
+  private func Plate(box: ref<inkCanvas>, k: Float, x: Float, y: Float, w: Float, h: Float) -> Void {
+    let r = new inkRectangle();
+    r.SetMargin(inkMargin(x * k, y * k, 0.0, 0.0));
+    r.SetSize(Vector2(w * k, h * k));
+    r.SetTintColor(this.G());
+    r.SetInteractive(false);
+    r.Reparent(box);
+    ArrayPush(this.m_schemParts, r);
+    ArrayPush(this.m_schemNames, n"plate");
   }
 
   // ---- each frame / tick -----------------------------------------------------------

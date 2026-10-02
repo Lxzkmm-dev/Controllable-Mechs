@@ -61,6 +61,8 @@ public class CMFlight {
   public let holding: Bool;
   public let grounded: Bool;       // resting on the ground (set by the unit's contacts)
   public let groundGain: Float;    // ground effect: the rotors' thrust near the ground, x (1 = none)
+  public let failing: Int32;       // rotors lost (the Octant's part damage): 1 limps, 2+ spins out
+  public let clock: Float;         // s flown (the failing buffet)
   public let outForce: Vector4;    // Step's result: rotors + air, world N (no gravity: PhysX's)
   public let outTorque: Vector4;   // Step's result: body-frame N m (no gyroscopic term)
   public let wind: Vector4;        // the air's own motion here (m/s, world; CMWind): drag and
@@ -152,6 +154,12 @@ public class CMFlight {
   public func Step(dt: Float, fwd: Float, side: Float, c: Float, view: Float) -> Void {
     let p = this.p;
     let m = p.mass;
+    this.clock += dt;
+    // two rotors lost: control mostly gone (Omar: you spin out and lose control)
+    if this.failing >= 2 {
+      fwd *= 0.2;
+      side *= 0.2;
+    }
     let stick = SqrtF(fwd * fwd + side * side);
     if stick > 1.0 {
       fwd /= stick;
@@ -257,6 +265,21 @@ public class CMFlight {
     bx -= ix * damp * this.w.X;
     by -= ix * damp * this.w.Y;
     bz -= iz * (this.grounded ? 4.0 : 1.0) * this.w.Z;
+    // A lost rotor (the Octant). One: it limps, harder to fly but flyable. The dead pod is
+    // given part of its thrust back (ApplyParts), and the body buffets and pulls into a yaw
+    // the pilot has to fight. Two or more: it spins out, a hard yaw spin with the stick
+    // nearly gone, and half its lift gone with them (Omar: losing one should make flight
+    // harder but playable; losing two, spin out).
+    if !this.grounded && this.failing == 1 {
+      bx += ix * 1.2 * SinF(this.clock * 3.1);
+      by += ix * 0.9 * SinF(this.clock * 2.3 + 1.0);
+      bz += iz * 0.7;
+    }
+    if !this.grounded && this.failing >= 2 {
+      bz += iz * 6.0;
+      bx += ix * 1.5 * SinF(this.clock * 4.0);
+      by += ix * 1.5 * SinF(this.clock * 3.3 + 0.7);
+    }
     // PhysX moves the body (MNC Physics v3): what the rotors and the air do to it, for the
     // plugin to apply before every physics step. Gravity, the gyroscopic term and the
     // integration are PhysX's own; the state (pos, q, vel, w) is read back from the body by

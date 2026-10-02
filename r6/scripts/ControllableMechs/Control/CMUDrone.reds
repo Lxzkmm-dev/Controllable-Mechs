@@ -1046,25 +1046,15 @@ public class CMUDrone extends CMCUnit {
       st.secText = "SEC  ----";
       st.terText = "";
     }
+    // the damage schematic: the body is the hull's health, then each part's
     ArrayClear(st.droneParts);
+    let pi = 0;
     for hp in this.m_partHp {
-      ArrayPush(st.droneParts, hp);
+      ArrayPush(st.droneParts, pi == 0 ? st.integrity : hp);
+      pi += 1;
     }
-    // the damaged and lost parts, worst first
-    let lostT = "";
-    let dmgT = "";
-    let i = 1;
-    while i < ArraySize(this.m_partHp) {
-      if this.m_partHp[i] <= 0.0 {
-        lostT += (StrLen(lostT) > 0 ? "  " : "") + CMUDrone.OctantPartName(i);
-      } else {
-        if this.m_partHp[i] < 0.5 {
-          dmgT += (StrLen(dmgT) > 0 ? "  " : "") + CMUDrone.OctantPartName(i);
-        }
-      }
-      i += 1;
-    }
-    st.warning = (StrLen(lostT) > 0 ? "LOST: " + lostT : "") + (StrLen(lostT) > 0 && StrLen(dmgT) > 0 ? "   " : "") + (StrLen(dmgT) > 0 ? "DMG: " + dmgT : "");
+    // (the parts show on the schematic, as the mech's do; Omar: no text)
+    st.warning = "";
   }
 
   public static func Role(kind: String) -> String {
@@ -2250,9 +2240,20 @@ public class CMUDrone extends CMCUnit {
   // where a part is on the drawn model now (world)
   private func PartPos(i: Int32) -> Vector4 {
     let fl = this.m_flight;
-    if i == 8 || i == 0 {
-      // the mortar on top of the hull, the hull at its centre
-      let p = fl.pos + CMFlight.QRot(fl.q, new Vector4(0.0, 0.0, i == 8 ? 0.7 : 0.0, 0.0));
+    if i == 0 || i >= 5 {
+      // the hull, the LMG, the rocket pods, the mortar and the sensor on the hull, from its
+      // centre of mass (the model's gun, wing and perception slots put a31's effects in
+      // the air under it, Omar)
+      let local = new Vector4(0.0, 0.0, 0.3, 0.0);
+      switch i {
+        case 5: local = new Vector4(0.0, 1.5, -0.45, 0.0); break;
+        case 6: local = new Vector4(-1.15, 0.1, 0.15, 0.0); break;
+        case 7: local = new Vector4(1.15, 0.1, 0.15, 0.0); break;
+        case 8: local = new Vector4(0.0, -0.1, 0.75, 0.0); break;
+        case 9: local = new Vector4(0.0, 1.65, 0.0, 0.0); break;
+        default: break;
+      }
+      let p = fl.pos + CMFlight.QRot(fl.q, local);
       p.W = 1.0;
       return p;
     }
@@ -2336,13 +2337,23 @@ public class CMUDrone extends CMCUnit {
       return;
     }
     let fl = this.m_flight;
+    let dead = 0;
     let i = 1;
     while i <= 4 {
-      let hp = this.m_partHp[i];
-      // a damaged pod pushes less; a destroyed one, nothing (the flight model's rotor i-1)
-      fl.eff[i - 1] = hp > 0.0 ? 0.35 + 0.65 * hp : 0.0;
+      if this.m_partHp[i] <= 0.0 {
+        dead += 1;
+      }
       i += 1;
     }
+    i = 1;
+    while i <= 4 {
+      let hp = this.m_partHp[i];
+      // a damaged pod pushes less; a destroyed one gives some thrust back while it is the
+      // only one lost (it limps: a31 dropped it like a stone, Omar), none once two are
+      fl.eff[i - 1] = hp > 0.0 ? 0.35 + 0.65 * hp : (dead == 1 ? 0.45 : 0.0);
+      i += 1;
+    }
+    fl.failing = dead;
     // the rocket pods' load: two rockets for each pod still on
     let pods = (this.m_partHp[6] > 0.0 ? 1 : 0) + (this.m_partHp[7] > 0.0 ? 1 : 0);
     this.m_rockets = Min(this.m_rockets, pods * 2);
@@ -2373,22 +2384,30 @@ public class CMUDrone extends CMCUnit {
       this.m_partFx2[p].BreakLoop();
       this.m_partFx2[p] = null;
     }
+    // a31's electric short was far too much (Omar): smoke and small spark loops instead,
+    // more of both once destroyed; fire only for a pod set to burn on and a dying hull
     if level == 1 {
       this.m_partFx[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\drone\\octant\\octant_damage_smoke.effect"), at, true);
+      this.m_partFx2[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\devices\\_damage\\d_damage_sparks_small_loop.effect"), at, true);
       return;
     }
     if level == 2 {
       if live {
-        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\drone\\octant\\octant_explosion_engine.effect"), at, true);
+        fx.SpawnEffect(CMUMinotaur.Fx(p >= 1 && p <= 4 ? r"base\\fx\\vehicles\\drone\\octant\\octant_explosion_engine.effect" : r"base\\fx\\devices\\_damage\\d_damage_smoke_sparks_burst_01.effect"), at, true);
         GameObject.PlaySoundEvent(this.m_drone, n"dev_generic_impact_metal");
       }
       if p >= 1 && p <= 4 && this.m_podsBreak {
         this.HidePod(p);
         this.m_partFx[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\drone\\octant\\octant_damage_smoke.effect"), at, true);
+        this.m_partFx2[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\environment\\sparks\\e_sparks_cable_electric_failure_medium_constant_falling.effect"), at, true);
         return;
       }
-      this.m_partFx[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\quest\\placeholders\\sq009_drone_fire.effect"), at, true);
-      this.m_partFx2[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\quest\\placeholders\\sq009_drone_electric_short.effect"), at, true);
+      if (p >= 1 && p <= 4) || p == 0 {
+        this.m_partFx[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\quest\\placeholders\\sq009_drone_fire.effect"), at, true);
+      } else {
+        this.m_partFx[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\drone\\octant\\octant_damage_smoke.effect"), at, true);
+      }
+      this.m_partFx2[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\environment\\sparks\\e_sparks_cable_electric_failure_medium_constant_falling.effect"), at, true);
     }
   }
 
@@ -2456,9 +2475,12 @@ public class CMUDrone extends CMCUnit {
           ArrayPush(this.m_podHidden, c);
           ArrayPush(this.m_podMasks, m.chunkMask);
           m.chunkMask = 0ul;
+          // the chunk mask alone left the pod drawn (a31, Omar): the component off as well
+          c.Toggle(false);
         }
       }
     }
+    CMCSession.Log("drone: pod " + code + " broken off (" + IntToString(ArraySize(this.m_podHidden)) + " meshes hidden so far)");
   }
 
   // every hidden pod drawn again (restored parts; the end of the flight)
@@ -2468,6 +2490,7 @@ public class CMUDrone extends CMCUnit {
       let m = this.m_podHidden[i] as MeshComponent;
       if IsDefined(m) {
         m.chunkMask = this.m_podMasks[i];
+        m.Toggle(true);
       }
       i += 1;
     }
