@@ -43,7 +43,7 @@ public class CMDroneHud extends CMPilotHud {
   private let m_W: Float;            // the design space's width (2160 high)
   private let m_bootLeft: Float;
 
-  private let m_hdgTicks: array<ref<inkRectangle>>;
+  private let m_hdgTicks: array<ref<inkImage>>;
   private let m_hdgLabels: array<ref<inkText>>;
   private let m_hdgBox: ref<inkText>;
   private let m_speedText: ref<inkText>;
@@ -111,7 +111,7 @@ public class CMDroneHud extends CMPilotHud {
   private let m_ocBda: ref<inkText>;
   private let m_ocKills: Int32;
   private let m_ocThreat: ref<inkText>;
-  private let m_ocThreatTick: ref<inkRectangle>;
+  private let m_ocThreatTick: ref<inkImage>;
   private let m_ocThreatT: Float;
   private let m_ocThreatB: Float;
   private let m_ocHeading: Float;
@@ -214,7 +214,8 @@ public class CMDroneHud extends CMPilotHud {
   private func G() -> HDRColor = CMPilotHud.Amber()
   private func Lbl() -> HDRColor = new HDRColor(0.22, 0.70, 0.32, 1.0)    // a table's labels
   private func Hi() -> HDRColor = new HDRColor(0.82, 1.05, 0.86, 1.0)     // titles, values
-  private func Line(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, op: Float) -> ref<inkRectangle> = CMPilotHud.Bar(root, x, y, w, h, this.G(), op)
+  // a straight line: a thin soft pill (a53: no hard rectangles)
+  private func Line(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, op: Float) -> ref<inkImage> = CMKit.Ln(root, x, y, w, h, this.G(), op)
   private func Txt(root: ref<inkCanvas>, x: Float, y: Float, text: String, size: Int32, centred: Bool) -> ref<inkText> {
     let t = CMPilotHud.Label(root, inkEAnchor.TopLeft, x, y, text, size, n"Medium", this.G());
     if centred {
@@ -277,7 +278,7 @@ public class CMDroneHud extends CMPilotHud {
     this.m_holdT.SetTintColor(CMPilotHud.Caution());
     this.m_holdBox.SetVisible(false);
     // a threat's bearing: a red tick on the tape and its line beside it
-    this.m_ocThreatTick = CMPilotHud.Bar(root, cx, 136.0, 8.0, 40.0, CMPilotHud.Red(), 1.0);
+    this.m_ocThreatTick = CMKit.VPill(root, cx, 136.0, 8.0, 40.0, CMPilotHud.Red(), 1.0);
     this.m_ocThreatTick.SetVisible(false);
     this.m_ocThreat = this.Txt(root, cx + 640.0, 140.0, "", 32, false);
     this.m_ocThreat.SetTintColor(CMPilotHud.Red());
@@ -383,14 +384,7 @@ public class CMDroneHud extends CMPilotHud {
     }
     let b = 20.0;
     let L = 10.0;
-    this.Line(c, ox - b, oy - b, L, 3.0, 1.0);
-    this.Line(c, ox - b, oy - b, 3.0, L, 1.0);
-    this.Line(c, ox + b - L, oy - b, L, 3.0, 1.0);
-    this.Line(c, ox + b - 3.0, oy - b, 3.0, L, 1.0);
-    this.Line(c, ox - b, oy + b - 3.0, L, 3.0, 1.0);
-    this.Line(c, ox - b, oy + b - L, 3.0, L, 1.0);
-    this.Line(c, ox + b - L, oy + b - 3.0, L, 3.0, 1.0);
-    this.Line(c, ox + b - 3.0, oy + b - L, 3.0, L, 1.0);
+    CMKit.Brackets(c, ox - b, oy - b, b * 2.0, b * 2.0, 14.0, this.G(), 1.0);
     CMKit.Disc(c, ox, oy, 4.0, this.G(), 1.0);
     // the laser range, the L cue and LASING
     this.m_lrf = this.Txt(root, cx - 20.0, cy + 330.0, "LRF ---- M", 36, false);

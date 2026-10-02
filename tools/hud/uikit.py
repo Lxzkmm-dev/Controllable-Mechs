@@ -91,6 +91,28 @@ def parts():
             return math.hypot(x - (px + vx * t), y - (py + vy * t))
         return cov(min(seg(6, 34, 32, 8), seg(32, 8, 58, 34)) - 3.5)
     P["chevron"] = (shape(64, 40, chev), None)
+
+    def seg(x, y, px, py, qx, qy):
+        vx, vy = qx - px, qy - py
+        t = max(0.0, min(1.0, ((x - px) * vx + (y - py) * vy) / (vx * vx + vy * vy)))
+        return math.hypot(x - (px + vx * t), y - (py + vy * t))
+    # bracket corners (top-left; the HUDs turn them for the others), round-ended: a light one
+    # for small brackets and a thin one drawn larger for big frames
+    for name, size, s in (("corner", 32, 4.0), ("corner_l", 128, 5.0)):
+        h = s / 2.0 + 0.5
+        P[name] = (shape(size, size, lambda x, y, size=size, h=h, s=s: cov(min(seg(x, y, h, h, size - h, h), seg(x, y, h, h, h, size - h)) - s / 2.0)), None)
+    # the Griffin's banner: a trapezoid, wide at the top, slanted ends; fill and line
+    def trap_sd(x, y, w, hgt, sl):
+        def edge(px, py, qx, qy):
+            nx, ny = qy - py, -(qx - px)
+            l = math.hypot(nx, ny)
+            return ((x - px) * nx + (y - py) * ny) / l
+        pts = [(1.0, 1.0), (w - 1.0, 1.0), (w - 1.0 - sl, hgt - 1.0), (1.0 + sl, hgt - 1.0)]
+        return max(edge(*pts[i], *pts[(i + 1) % 4]) for i in range(4))
+    P["banner_fill"] = (shape(192, 64, lambda x, y: cov(trap_sd(x, y, 192, 64, 48))), (60, 0, 60, 0))
+    P["banner_line"] = (shape(192, 64, lambda x, y: cov(abs(trap_sd(x, y, 192, 64, 48) + 1.5) - 1.5)), (60, 0, 60, 0))
+    # an edge fade: opaque at the top, gone at the bottom (vignettes, turned for each edge)
+    P["fade"] = (shape(8, 64, lambda x, y: (1.0 - y / 64.0) ** 2), (0, 0, 0, 0))
     return P
 
 

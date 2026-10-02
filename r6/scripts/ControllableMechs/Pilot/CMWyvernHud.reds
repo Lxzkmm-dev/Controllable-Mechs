@@ -95,28 +95,15 @@ public class CMWyvernHud extends CMBombusHud {
   protected func BuildFeed(root: ref<inkCanvas>) -> Void {
     let x0 = this.WyL();
     let w = this.WyR() - x0;
-    CMPilotHud.Bar(root, x0, 0.0, w, 2160.0, new HDRColor(0.08, 0.16, 0.20, 1.0), 0.15);
-    let e = 0;
-    while e < 3 {
-      let d = Cast<Float>(e) * 40.0;
-      CMPilotHud.Bar(root, 0.0, d, this.FW(), 40.0, this.Blk(), 0.06);
-      CMPilotHud.Bar(root, 0.0, 2120.0 - d, this.FW(), 40.0, this.Blk(), 0.06);
-      e += 1;
-    }
+    CMPilotHud.Bar(root, 0.0, 0.0, this.FW(), 2160.0, new HDRColor(0.08, 0.16, 0.20, 1.0), 0.15);   // the cold grade over the whole feed
+    CMKit.Vignette(root, this.FW(), 2160.0, 180.0, 0.35);
     let L = 90.0;
     let fx = x0 + 120.0;
     let fy = 110.0;
     let fw = w - 240.0;
     let fh = 1940.0;
     let c = this.Acc();
-    CMPilotHud.Bar(root, fx, fy, L, 4.0, c, 0.8);
-    CMPilotHud.Bar(root, fx, fy, 4.0, L, c, 0.8);
-    CMPilotHud.Bar(root, fx + fw - L, fy, L, 4.0, c, 0.8);
-    CMPilotHud.Bar(root, fx + fw - 4.0, fy, 4.0, L, c, 0.8);
-    CMPilotHud.Bar(root, fx, fy + fh - 4.0, L, 4.0, c, 0.8);
-    CMPilotHud.Bar(root, fx, fy + fh - L, 4.0, L, c, 0.8);
-    CMPilotHud.Bar(root, fx + fw - L, fy + fh - 4.0, L, 4.0, c, 0.8);
-    CMPilotHud.Bar(root, fx + fw - 4.0, fy + fh - L, 4.0, L, c, 0.8);
+    CMKit.Brackets(root, fx, fy, fw, fh, L, c, 0.8);
   }
 
   protected func BuildOsd(root: ref<inkCanvas>) -> Void {
@@ -179,15 +166,15 @@ public class CMWyvernHud extends CMBombusHud {
     let zx = x1 - 230.0;
     let z = 0;
     while z < 9 {
-      CMPilotHud.Bar(root, zx, 560.0 + Cast<Float>(z) * 90.0, z % 2 == 0 ? 40.0 : 22.0, 3.0, this.Acc(), 0.8);
+      CMKit.Ln(root, zx, 560.0 + Cast<Float>(z) * 90.0, z % 2 == 0 ? 40.0 : 22.0, 4.0, this.Acc(), 0.8);
       z += 1;
     }
     this.m_wyZoomMark = CMPilotHud.Label(root, inkEAnchor.TopLeft, zx - 16.0, 560.0, "> X1", 30, n"Semi-Bold", this.Amb());
     this.m_wyZoomMark.SetAnchorPoint(Vector2(1.0, 0.5));
     // the focus box, the crosshair
     this.Brackets(root, cx - 150.0, cy - 110.0, 300.0, 220.0);
-    CMPilotHud.Bar(root, cx - 14.0, cy - 2.0, 28.0, 4.0, this.Ink(), 1.0);
-    CMPilotHud.Bar(root, cx - 2.0, cy - 14.0, 4.0, 28.0, this.Ink(), 1.0);
+    CMKit.Ln(root, cx - 14.0, cy - 2.0, 28.0, 4.0, this.Ink(), 1.0);
+    CMKit.Ln(root, cx - 2.0, cy - 14.0, 4.0, 28.0, this.Ink(), 1.0);
     // the scan ring: a dim circle, and the bright one that fills clockwise from the top
     CMInk.Circle(root, cx, cy, this.WY_RING_R, this.Acc(), 0.25);
     this.m_wyRing = CMInk.Ring(root, cx, cy, this.WY_RING_R, this.WY_RING_N, 8.0, this.Acc(), 1.0);
@@ -206,8 +193,8 @@ public class CMWyvernHud extends CMBombusHud {
     CMInk.Circle(root, rx, ry, rr, this.Acc(), 0.6);
     CMInk.Circle(root, rx, ry, rr * 0.66, this.Acc(), 0.45);
     CMInk.Circle(root, rx, ry, rr * 0.33, this.Acc(), 0.45);
-    CMPilotHud.Bar(root, rx - rr, ry - 1.0, rr * 2.0, 2.0, this.Acc(), 0.3);
-    CMPilotHud.Bar(root, rx - 1.0, ry - rr, 2.0, rr * 2.0, this.Acc(), 0.3);
+    CMKit.Ln(root, rx - rr, ry - 1.0, rr * 2.0, 2.0, this.Acc(), 0.3);
+    CMKit.Ln(root, rx - 1.0, ry - rr, 2.0, rr * 2.0, this.Acc(), 0.3);
     this.m_wySweep = CMKit.Stroke(root, this.Acc(), 0.85);
     let d = 0;
     while d < 32 {

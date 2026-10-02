@@ -40,14 +40,14 @@ public class CMBombusHud extends CMDroneHud {
   private let m_fCells: array<ref<inkImage>>;
   private let m_fBars: array<ref<inkImage>>;
   private let m_fThrS: ref<CMSlider>;
-  private let m_fBand: ref<inkRectangle>;
+  private let m_fBand: ref<inkImage>;
   private let m_fClock: Float;          // s flown (the OSD timer, the battery's sag)
   private let m_fBlink: Float;
   private let m_fHitT: Float;
   private let m_fBoot: Float;
   // the strike pieces (round 2): the target's brackets and range, the blast ring, the arming
   // strip and the impact countdown, the motor bars
-  private let m_fTgtBars: array<ref<inkRectangle>>;
+  private let m_fTgtBars: array<ref<inkImage>>;
   private let m_fTgtT: ref<inkText>;
   private let m_fTgtD: ref<inkText>;
   private let m_fRingSegs: array<ref<inkImage>>;
@@ -173,16 +173,9 @@ public class CMBombusHud extends CMDroneHud {
       CMPilotHud.Bar(root, 0.0, y, this.m_fW, 2.0, this.Blk(), 0.10);
       y += 7.0;
     }
-    let e = 0;
-    while e < 4 {
-      let d = Cast<Float>(e) * 40.0;
-      CMPilotHud.Bar(root, 0.0, d, this.m_fW, 40.0, this.Blk(), 0.10);
-      CMPilotHud.Bar(root, 0.0, 2120.0 - d, this.m_fW, 40.0, this.Blk(), 0.10);
-      CMPilotHud.Bar(root, d, 0.0, 40.0, 2160.0, this.Blk(), 0.10);
-      CMPilotHud.Bar(root, this.m_fW - 40.0 - d, 0.0, 40.0, 2160.0, this.Blk(), 0.10);
-      e += 1;
-    }
-    this.m_fBand = CMPilotHud.Bar(root, 0.0, 0.0, this.m_fW, 26.0, this.Ink(), 0.05);
+    // the edges darkened: a soft vignette (a53: it was four stepped bands)
+    CMKit.Vignette(root, this.m_fW, 2160.0, 220.0, 0.55);
+    this.m_fBand = CMKit.Img(root, n"pill_glow_h", 0.0, 0.0, this.m_fW, 40.0, this.Ink(), 0.05);
   }
 
   // a line of OSD text with its black shadow (align 0 left, 1 centred, 2 right)
@@ -216,14 +209,7 @@ public class CMBombusHud extends CMDroneHud {
   protected func Brackets(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float) -> Void {
     let L = 26.0;
     let c = this.Acc();
-    CMPilotHud.Bar(root, x, y, L, 3.0, c, 0.8);
-    CMPilotHud.Bar(root, x, y, 3.0, L, c, 0.8);
-    CMPilotHud.Bar(root, x + w - L, y, L, 3.0, c, 0.8);
-    CMPilotHud.Bar(root, x + w - 3.0, y, 3.0, L, c, 0.8);
-    CMPilotHud.Bar(root, x, y + h - 3.0, L, 3.0, c, 0.8);
-    CMPilotHud.Bar(root, x, y + h - L, 3.0, L, c, 0.8);
-    CMPilotHud.Bar(root, x + w - L, y + h - 3.0, L, 3.0, c, 0.8);
-    CMPilotHud.Bar(root, x + w - 3.0, y + h - L, 3.0, L, c, 0.8);
+    CMKit.Brackets(root, x, y, w, h, L, c, 0.8);
   }
 
   protected func BuildOsd(root: ref<inkCanvas>) -> Void {
@@ -274,28 +260,25 @@ public class CMBombusHud extends CMDroneHud {
     let k = -6;
     while k <= 6 {
       let tall = k % 3 == 0;
-      CMPilotHud.Bar(root, cx + Cast<Float>(k) * 55.0 - 2.0, 214.0, 4.0, tall ? 26.0 : 14.0, this.Ink(), 0.8);
+      CMKit.Ln(root, cx + Cast<Float>(k) * 55.0 - 2.0, 214.0, 4.0, tall ? 26.0 : 14.0, this.Ink(), 0.8);
       k += 1;
     }
-    CMPilotHud.Bar(root, cx - 2.0, 244.0, 4.0, 22.0, this.Acc(), 1.0);
+    CMKit.Img(root, n"tri", cx - 10.0, 244.0, 20.0, 18.0, this.Acc(), 1.0);
     // speed and height in brackets either side of the crosshair
     this.Brackets(root, cx - 1060.0, 1020.0, 260.0, 120.0);
     this.Brackets(root, cx + 800.0, 1020.0, 260.0, 120.0);
     // the crosshair: a small -+-
-    CMPilotHud.Bar(root, cx - 70.0, cy - 2.0, 44.0, 4.0, this.Ink(), 0.95);
-    CMPilotHud.Bar(root, cx + 26.0, cy - 2.0, 44.0, 4.0, this.Ink(), 0.95);
-    CMPilotHud.Bar(root, cx - 2.0, cy - 14.0, 4.0, 28.0, this.Ink(), 0.95);
+    CMKit.Ln(root, cx - 70.0, cy - 2.0, 44.0, 4.0, this.Ink(), 0.95);
+    CMKit.Ln(root, cx + 26.0, cy - 2.0, 44.0, 4.0, this.Ink(), 0.95);
+    CMKit.Ln(root, cx - 2.0, cy - 14.0, 4.0, 28.0, this.Ink(), 0.95);
     // the home arrow under it: a chevron turned toward V
     let home = new inkCanvas();
     home.SetMargin(inkMargin(cx - 40.0, 1130.0, 0.0, 0.0));
     home.SetSize(Vector2(80.0, 80.0));
     home.SetRenderTransformPivot(Vector2(0.5, 0.5));
     home.Reparent(root);
-    let l = CMPilotHud.Bar(home, 18.0, 30.0, 34.0, 6.0, this.Acc(), 1.0);
-    l.SetRotation(-45.0);
-    let r = CMPilotHud.Bar(home, 30.0, 30.0, 34.0, 6.0, this.Acc(), 1.0);
-    r.SetRotation(45.0);
-    CMPilotHud.Bar(home, 37.0, 30.0, 6.0, 34.0, this.Acc(), 1.0);
+    CMKit.Img(home, n"tri", 22.0, 8.0, 36.0, 32.0, this.Acc(), 1.0);
+    CMKit.VPill(home, 36.0, 34.0, 8.0, 36.0, this.Acc(), 1.0);
     this.m_fHome = home;
     // the attitude: a small boxed horizon, bottom left (Omar: no line across the middle)
     let ax = x0 + 220.0;
@@ -312,12 +295,12 @@ public class CMBombusHud extends CMDroneHud {
     bar.SetRenderTransformPivot(Vector2(0.5, 0.5));
     bar.Reparent(box);
     CMKit.Pill(bar, 0.0, -1.0, 200.0, 6.0, this.Acc(), 1.0);
-    CMPilotHud.Bar(bar, 96.0, 4.0, 8.0, 14.0, this.Acc(), 0.7);     // the ground side
+    CMKit.VPill(bar, 96.0, 4.0, 8.0, 14.0, this.Acc(), 0.7);     // the ground side
     this.m_fAhi = bar;
     // the aircraft symbol fixed in the middle of the box
-    CMPilotHud.Bar(box, 70.0, 108.0, 40.0, 4.0, this.Ink(), 1.0);
-    CMPilotHud.Bar(box, 140.0, 108.0, 40.0, 4.0, this.Ink(), 1.0);
-    CMPilotHud.Bar(box, 122.0, 104.0, 6.0, 12.0, this.Ink(), 1.0);
+    CMKit.Ln(box, 70.0, 107.0, 40.0, 6.0, this.Ink(), 1.0);
+    CMKit.Ln(box, 140.0, 107.0, 40.0, 6.0, this.Ink(), 1.0);
+    CMKit.Disc(box, 125.0, 110.0, 6.0, this.Ink(), 1.0);
     // the throttle gauge beside it
     let tx = ax + 290.0;
     CMKit.Fill(root, tx, ay, 40.0, 220.0, CMInk.Glass(), CMInk.GlassOp());
@@ -336,11 +319,8 @@ public class CMBombusHud extends CMDroneHud {
   // the impact countdown, the motor bars beside the throttle
   private func BuildStrike(root: ref<inkCanvas>, ax: Float, ay: Float, tx: Float) -> Void {
     let cx = this.m_fW * 0.5;
+    this.m_fTgtBars = CMKit.Corners(root, this.Ink(), 1.0, false);
     let n = 0;
-    while n < 8 {
-      ArrayPush(this.m_fTgtBars, CMPilotHud.Bar(root, 0.0, 0.0, 4.0, 4.0, this.Ink(), 1.0));
-      n += 1;
-    }
     this.m_fTgtT = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 30, n"Semi-Bold", this.Ink());
     this.m_fTgtT.SetAnchorPoint(Vector2(0.5, 1.0));
     this.m_fTgtD = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 30, n"Semi-Bold", this.Ink());
@@ -382,7 +362,7 @@ public class CMBombusHud extends CMDroneHud {
 
   // every frame: what the reticle is on, the blast ring, the strip, the motors
   public func Track(t: ref<CMDroneTrack>) -> Void {
-    if !IsDefined(this.m_fRoot) || ArraySize(this.m_fTgtBars) < 8 {
+    if !IsDefined(this.m_fRoot) || ArraySize(this.m_fTgtBars) < 4 {
       return;
     }
     let cx = this.m_fW * 0.5;
@@ -398,14 +378,8 @@ public class CMBombusHud extends CMDroneHud {
       let x = cx + c.scr.X - hw * 0.5;
       let y = cy + c.scr.Y - hh * 0.5;
       let L = MinF(40.0, hw * 0.4);
-      this.FBar(0, x, y, L, 5.0, col);
-      this.FBar(1, x, y, 5.0, L, col);
-      this.FBar(2, x + hw - L, y, L, 5.0, col);
-      this.FBar(3, x + hw - 5.0, y, 5.0, L, col);
-      this.FBar(4, x, y + hh - 5.0, L, 5.0, col);
-      this.FBar(5, x, y + hh - L, 5.0, L, col);
-      this.FBar(6, x + hw - L, y + hh - 5.0, L, 5.0, col);
-      this.FBar(7, x + hw - 5.0, y + hh - L, 5.0, L, col);
+      CMKit.PlaceCorners(this.m_fTgtBars, 0, x, y, hw, hh, L);
+      CMKit.ShowCorners(this.m_fTgtBars, 0, true, col);
       this.m_fTgtT.SetMargin(inkMargin(x + hw * 0.5, y - 8.0, 0.0, 0.0));
       this.m_fTgtT.SetText("TGT // " + c.Label());
       this.m_fTgtT.SetTintColor(col);
@@ -477,12 +451,6 @@ public class CMBombusHud extends CMDroneHud {
     }
   }
 
-  private func FBar(i: Int32, x: Float, y: Float, w: Float, h: Float, c: HDRColor) -> Void {
-    let b = this.m_fTgtBars[i];
-    b.SetMargin(inkMargin(x, y, 0.0, 0.0));
-    b.SetSize(Vector2(w, h));
-    b.SetTintColor(c);
-  }
 
   // the airframe, scanned from the Bombus's own meshes, bottom right
   protected func BuildSprite(root: ref<inkCanvas>) -> Void {

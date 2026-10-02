@@ -29,13 +29,13 @@ public class CMGriffinHud extends CMBombusHud {
   private let m_grSprite: array<ref<inkImage>>;
   private let m_grClock: Float;
   private let m_grBoot: Float;
-  private let m_grLockBars: array<ref<inkRectangle>>;
+  private let m_grLockBars: array<ref<inkImage>>;
   private let m_grLockHp: ref<inkImage>;
   private let m_grLockHpBg: ref<inkImage>;
   private let m_grLockT: ref<inkText>;
   private let m_grLockD: ref<inkText>;
   private let m_grLead: ref<inkCanvas>;
-  private let m_grHostBars: array<ref<inkRectangle>>;   // every hostile in view: 8 corner bars each (a51)
+  private let m_grHostBars: array<ref<inkImage>>;   // every hostile in view: 4 corners each (a51, a53)
   private let m_grHostD: array<ref<inkText>>;
   private let m_grLeadLine: ref<inkImage>;
   private let m_grHeatArc: array<ref<inkWidget>>;   // both guns' lit arcs, 15 segments each
@@ -90,13 +90,7 @@ public class CMGriffinHud extends CMBombusHud {
 
   // a clean digital feed: only the edges a little darker
   protected func BuildFeed(root: ref<inkCanvas>) -> Void {
-    let e = 0;
-    while e < 3 {
-      let d = Cast<Float>(e) * 40.0;
-      CMPilotHud.Bar(root, 0.0, d, this.FW(), 40.0, this.Blk(), 0.06);
-      CMPilotHud.Bar(root, 0.0, 2120.0 - d, this.FW(), 40.0, this.Blk(), 0.06);
-      e += 1;
-    }
+    CMKit.Vignette(root, this.FW(), 2160.0, 160.0, 0.3);
   }
 
   protected func BuildOsd(root: ref<inkCanvas>) -> Void {
@@ -106,11 +100,7 @@ public class CMGriffinHud extends CMBombusHud {
     let cy = 1080.0;
     // the banner: an angled plate, chevrons either side
     let tb = 120.0;
-    CMPilotHud.Bar(root, cx - 720.0, tb + 3.0, 1440.0, 74.0, CMInk.Glass(), CMInk.GlassOp());
-    CMPilotHud.Bar(root, cx - 760.0, tb, 1520.0, 4.0, this.Acc(), 1.0);
-    CMPilotHud.Bar(root, cx - 700.0, tb + 76.0, 1400.0, 4.0, this.Acc(), 1.0);
-    CMInk.Line(root, cx - 760.0, tb + 2.0, cx - 700.0, tb + 78.0, 4.0, this.Acc(), 1.0);
-    CMInk.Line(root, cx + 760.0, tb + 2.0, cx + 700.0, tb + 78.0, 4.0, this.Acc(), 1.0);
+    CMKit.Banner(root, cx - 760.0, tb, 1520.0, 80.0, this.Acc());
     let sg = -1;
     while sg <= 1 {
       let k = 0;
@@ -164,9 +154,9 @@ public class CMGriffinHud extends CMBombusHud {
     this.SetT(this.GR_RAMMO, "UNLTD");
     // the gun cross: a ring, its arms, a centre pip
     CMInk.Circle(root, cx, cy, 60.0, this.Acc(), 1.0);
-    CMPilotHud.Bar(root, cx - 120.0, cy - 2.0, 50.0, 4.0, this.Acc(), 1.0);
-    CMPilotHud.Bar(root, cx + 70.0, cy - 2.0, 50.0, 4.0, this.Acc(), 1.0);
-    CMPilotHud.Bar(root, cx - 2.0, cy - 120.0, 4.0, 50.0, this.Acc(), 1.0);
+    CMKit.Ln(root, cx - 120.0, cy - 2.0, 50.0, 5.0, this.Acc(), 1.0);
+    CMKit.Ln(root, cx + 70.0, cy - 2.0, 50.0, 5.0, this.Acc(), 1.0);
+    CMKit.Ln(root, cx - 2.0, cy - 120.0, 5.0, 50.0, this.Acc(), 1.0);
     CMKit.Disc(root, cx, cy, 6.0, this.Acc(), 1.0);
     // each gun's heat: an arc over its HEAT, 140 degrees, lit from its left end (the two
     // guns share the heat, as the Octant's do)
@@ -193,17 +183,15 @@ public class CMGriffinHud extends CMBombusHud {
     this.Brackets(root, cx + 740.0, 1020.0, 260.0, 120.0);
     this.m_grSpool = CMSlider.Make(root, cx - 1000.0, 1112.0, 240.0, 18.0, false, this.Acc());
     // the lock: eight corner bars, its health, its words; the lead pip and its line
+    this.m_grLockBars = CMKit.Corners(root, this.Hot(), 1.0, false);
     let n = 0;
-    while n < 8 {
-      ArrayPush(this.m_grLockBars, CMPilotHud.Bar(root, 0.0, 0.0, 4.0, 4.0, this.Hot(), 1.0));
-      n += 1;
-    }
     // the other hostiles in view: red corners round each, its distance under it (Omar, a51)
     let hb = 0;
-    while hb < 12 * 8 {
-      let b = CMPilotHud.Bar(root, 0.0, 0.0, 4.0, 4.0, this.Hot(), 0.85);
-      b.SetVisible(false);
-      ArrayPush(this.m_grHostBars, b);
+    while hb < 12 {
+      for b in CMKit.Corners(root, this.Hot(), 0.85, false) {
+        b.SetVisible(false);
+        ArrayPush(this.m_grHostBars, b);
+      }
       hb += 1;
     }
     hb = 0;
@@ -393,14 +381,8 @@ public class CMGriffinHud extends CMBombusHud {
     let y = cy + c.scr.Y - hh * 0.5;
     let L = MinF(34.0, hw * 0.4);
     // the eight corner bars: top left (2), top right (2), bottom left (2), bottom right (2)
-    this.GrBar(0, x, y, L, 4.0, col);
-    this.GrBar(1, x, y, 4.0, L, col);
-    this.GrBar(2, x + hw - L, y, L, 4.0, col);
-    this.GrBar(3, x + hw - 4.0, y, 4.0, L, col);
-    this.GrBar(4, x, y + hh - 4.0, L, 4.0, col);
-    this.GrBar(5, x, y + hh - L, 4.0, L, col);
-    this.GrBar(6, x + hw - L, y + hh - 4.0, L, 4.0, col);
-    this.GrBar(7, x + hw - 4.0, y + hh - L, 4.0, L, col);
+    CMKit.PlaceCorners(this.m_grLockBars, 0, x, y, hw, hh, L);
+    CMKit.ShowCorners(this.m_grLockBars, 0, true, col);
     this.m_grLockT.SetMargin(inkMargin(x + hw * 0.5, y - 10.0, 0.0, 0.0));
     this.m_grLockT.SetText((c.kind == 2 ? "LOCK  //  " : "TRACK  //  ") + c.Label());
     this.m_grLockT.SetTintColor(col);
@@ -440,15 +422,8 @@ public class CMGriffinHud extends CMBombusHud {
         let x = cx + c.scr.X - hw * 0.5;
         let y = cy + c.scr.Y - hh * 0.5;
         let L = MinF(26.0, hw * 0.35);
-        let b = n * 8;
-        this.HostBar(b, x, y, L, 3.0);
-        this.HostBar(b + 1, x, y, 3.0, L);
-        this.HostBar(b + 2, x + hw - L, y, L, 3.0);
-        this.HostBar(b + 3, x + hw - 3.0, y, 3.0, L);
-        this.HostBar(b + 4, x, y + hh - 3.0, L, 3.0);
-        this.HostBar(b + 5, x, y + hh - L, 3.0, L);
-        this.HostBar(b + 6, x + hw - L, y + hh - 3.0, L, 3.0);
-        this.HostBar(b + 7, x + hw - 3.0, y + hh - L, 3.0, L);
+        CMKit.PlaceCorners(this.m_grHostBars, n * 4, x, y, hw, hh, L);
+        CMKit.ShowCorners(this.m_grHostBars, n * 4, true, this.Hot());
         let d = this.m_grHostD[n];
         d.SetVisible(true);
         d.SetMargin(inkMargin(x + hw * 0.5, y + hh + 6.0, 0.0, 0.0));
@@ -457,28 +432,10 @@ public class CMGriffinHud extends CMBombusHud {
       }
     }
     while n < ArraySize(this.m_grHostD) {
-      let k = 0;
-      while k < 8 {
-        this.m_grHostBars[n * 8 + k].SetVisible(false);
-        k += 1;
-      }
+      CMKit.ShowCorners(this.m_grHostBars, n * 4, false, this.Hot());
       this.m_grHostD[n].SetVisible(false);
       n += 1;
     }
-  }
-
-  private func HostBar(i: Int32, x: Float, y: Float, w: Float, h: Float) -> Void {
-    let b = this.m_grHostBars[i];
-    b.SetVisible(true);
-    b.SetMargin(inkMargin(x, y, 0.0, 0.0));
-    b.SetSize(Vector2(w, h));
-  }
-
-  private func GrBar(i: Int32, x: Float, y: Float, w: Float, h: Float, c: HDRColor) -> Void {
-    let b = this.m_grLockBars[i];
-    b.SetMargin(inkMargin(x, y, 0.0, 0.0));
-    b.SetSize(Vector2(w, h));
-    b.SetTintColor(c);
   }
 
   // shot at: a chevron toward the shooter (`off`: the session's yaw off the view, + left)

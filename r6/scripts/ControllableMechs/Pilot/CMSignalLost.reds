@@ -133,7 +133,7 @@ public class CMSignalLost {
     let st = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 1060.0, sub, 48, n"Semi-Bold", white);
     st.SetAnchorPoint(Vector2(0.5, 0.0));
     st.SetOpacity(0.85);
-    CMPilotHud.Bar(root, cx - 700.0, 1040.0, 1400.0, 4.0, rule, 0.9);
+    CMKit.Pill(root, cx - 700.0, 1038.0, 1400.0, 6.0, rule, 0.9);
     this.m_foot = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 1180.0, foot, 36, n"Medium", white);
     this.m_foot.SetAnchorPoint(Vector2(0.5, 0.0));
     // the feed's last flash

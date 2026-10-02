@@ -310,6 +310,82 @@ public abstract class CMKit {
     img.SetMargin(inkMargin(cx - r, cy - r, 0.0, 0.0));
     img.SetSize(Vector2(r * 2.0, r * 2.0));
   }
+
+  // a straight line, axis-aligned: a thin pill (soft, round-ended), lying or standing by its
+  // shape
+  public static func Ln(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> {
+    if w >= h {
+      return CMKit.Pill(root, x, y, w, h, c, op);
+    }
+    return CMKit.VPill(root, x, y, w, h, c, op);
+  }
+
+  // four bracket corners (one image each, turned): top left, top right, bottom right,
+  // bottom left; PlaceCorners puts them round a box with legs L long
+  public static func Corners(root: ref<inkCanvas>, c: HDRColor, op: Float, big: Bool) -> array<ref<inkImage>> {
+    let out: array<ref<inkImage>>;
+    let i = 0;
+    while i < 4 {
+      let img = CMKit.Img(root, big ? n"corner_l" : n"corner", 0.0, 0.0, 26.0, 26.0, c, op);
+      img.SetRenderTransformPivot(Vector2(0.5, 0.5));
+      img.SetRotation(Cast<Float>(i) * 90.0);
+      ArrayPush(out, img);
+      i += 1;
+    }
+    return out;
+  }
+
+  public static func PlaceCorners(cs: array<ref<inkImage>>, at: Int32, x: Float, y: Float, w: Float, h: Float, L: Float) -> Void {
+    if at + 3 >= ArraySize(cs) {
+      return;
+    }
+    let xs = [x, x + w - L, x + w - L, x];
+    let ys = [y, y, y + h - L, y + h - L];
+    let i = 0;
+    while i < 4 {
+      let img = cs[at + i];
+      img.SetMargin(inkMargin(xs[i], ys[i], 0.0, 0.0));
+      img.SetSize(Vector2(L, L));
+      i += 1;
+    }
+  }
+
+  public static func ShowCorners(cs: array<ref<inkImage>>, at: Int32, on: Bool, c: HDRColor) -> Void {
+    let i = 0;
+    while i < 4 && at + i < ArraySize(cs) {
+      cs[at + i].SetVisible(on);
+      cs[at + i].SetTintColor(c);
+      i += 1;
+    }
+  }
+
+  // a bracket box in one call (static)
+  public static func Brackets(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, L: Float, c: HDRColor, op: Float) -> Void {
+    let cs = CMKit.Corners(root, c, op, L > 60.0);
+    CMKit.PlaceCorners(cs, 0, x, y, w, h, L);
+  }
+
+  // the Griffin's banner plate: a trapezoid (wide at the top), glass and a line
+  public static func Banner(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, line: HDRColor) -> Void {
+    CMKit.Nine(root, n"banner_fill", inkMargin(60.0, 0.0, 60.0, 0.0), x, y, w, h, CMInk.Glass(), CMInk.GlassOp());
+    CMKit.Nine(root, n"banner_line", inkMargin(60.0, 0.0, 60.0, 0.0), x, y, w, h, line, 1.0);
+  }
+
+  // a soft dark fade in from each edge of the screen (a vignette)
+  public static func Vignette(root: ref<inkCanvas>, W: Float, H: Float, depth: Float, op: Float) -> Void {
+    let k = new HDRColor(0.0, 0.0, 0.0, 1.0);
+    CMKit.Img(root, n"fade", 0.0, 0.0, W, depth, k, op);
+    let b = CMKit.Img(root, n"fade", 0.0, H - depth, W, depth, k, op);
+    b.SetRenderTransformPivot(Vector2(0.5, 0.5));
+    b.SetRotation(180.0);
+    // the sides: a fade H long turned on its side, centred on each edge
+    let l = CMKit.Img(root, n"fade", depth * 0.5 - H * 0.5, H * 0.5 - depth * 0.5, H, depth, k, op);
+    l.SetRenderTransformPivot(Vector2(0.5, 0.5));
+    l.SetRotation(-90.0);
+    let r = CMKit.Img(root, n"fade", W - depth * 0.5 - H * 0.5, H * 0.5 - depth * 0.5, H, depth, k, op);
+    r.SetRenderTransformPivot(Vector2(0.5, 0.5));
+    r.SetRotation(90.0);
+  }
 }
 
 // A smooth meter: a dim pill track and a bright pill fill (round caps both), horizontal
