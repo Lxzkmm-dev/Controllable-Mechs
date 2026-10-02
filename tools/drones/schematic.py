@@ -96,6 +96,28 @@ def wyvern_part(mesh, c, sub="", bones=()):
     return "body"
 
 
+def wyvern_pose(q, bones):
+    # The Wyvern's six wings rest folded upright against its sides (x +-0.03..0.15, z
+    # 0.04..0.40), so a top-down scan showed a slim body with no thrusters (Omar). In flight
+    # they swing out round a hinge on the body's side into the X they fly in: each corner
+    # on a wing bone is turned WYVERN_SPREAD degrees about the forward axis through it.
+    side = 0
+    if any(b.startswith("left_wing") for b in bones):
+        side = -1
+    elif any(b.startswith("right_wing") for b in bones):
+        side = 1
+    if side == 0:
+        return q
+    hx, hz = 0.09 * side, 0.22
+    a = math.radians(WYVERN_SPREAD) * side
+    dx, dz = q[0] - hx, q[2] - hz
+    return (hx + dx * math.cos(a) + dz * math.sin(a), q[1], hz - dx * math.sin(a) + dz * math.cos(a))
+
+
+WYVERN_SPREAD = 50.0
+POSES = {"wyvern": wyvern_pose}
+
+
 # rigid meshes in their slot's frame: where each slot sits in the rest pose (rig bones
 # composed with Slot8842's slot offsets, all unturned): av_zetatech_octant.rig / .ent
 PLACED = {
@@ -212,6 +234,8 @@ def main():
             if f.endswith(".glb") and any(f.startswith(p) for p in prefixes):
                 off = next((o for p, o in PLACED.items() if f.startswith(p)), (0.0, 0.0, 0.0))
                 for t, sub, bones in read_glb_skinned(os.path.join(src, folder, f)):
+                    if kind in POSES:
+                        t = tuple(POSES[kind](q, [b]) for q, b in zip(t, bones)) if bones else t
                     t = tuple(tuple(q[i] + off[i] for i in range(3)) for q in t)
                     c = tuple((t[0][i] + t[1][i] + t[2][i]) / 3 for i in range(3))
                     tris.append((t[0], t[1], t[2], parts.index(part_of(f, c, sub, bones))))
