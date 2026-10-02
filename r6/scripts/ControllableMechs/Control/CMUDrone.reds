@@ -1056,6 +1056,12 @@ public class CMUDrone extends CMCUnit {
       st.terText = "ROCKETS  LSR   " + IntToString(this.m_rockets) + "/" + IntToString(pods * 2) + "     " + (pods == 0 ? "LOST" : (this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + "S"));
     } else {
       if Equals(this.m_kind, "bombus") {
+        // the FPV OSD's home arrow: where V is, off the view
+        st.home = 999.0;
+        let pl = GetPlayer(this.m_game);
+        if IsDefined(pl) {
+          st.home = CMPilotRig.Wrap(s.rig.yaw - CMPilotRig.YawOf(pl.GetWorldPosition() - this.m_flight.pos));
+        }
         // the FPV OSD's lines (CMBombusHud): the payload, its arming, the flight mode
         st.priText = "PAYLOAD // " + CMUDrone.PayloadName(this.m_payload);
         st.secText = this.m_payload > 0 ? (this.m_detonated ? "RELEASED" : "ARMED") : "DISARMED";

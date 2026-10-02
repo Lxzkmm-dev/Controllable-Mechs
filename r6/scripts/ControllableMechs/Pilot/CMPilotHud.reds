@@ -1359,6 +1359,7 @@ public class CMPilotHudState {
   public let holdText: String;    // a hold mode's banner ("" = off): the drone's gunship hold
   public let windText: String;    // the wind where the drone is (CMWind)
   public let droneParts: array<Float>;   // each schematic part's health, 0-1
+  public let home: Float;         // where V (the operator) is, degrees off the view (+ right); 999 unknown
 }
 
 // one part on the damage schematic
