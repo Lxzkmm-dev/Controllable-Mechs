@@ -9,15 +9,16 @@
 //   top left      the airframe // HUNTER, LIGHT ASSAULT, kills and the streak (kills less
 //                 than 10 s apart)
 //   top right     the link and the flight's clock
-//   centre        the gun cross; each gun's rounds and heat either side (SAFE: the Griffin's
-//                 guns aren't linked in pilot mode yet)
+//   centre        the gun cross; its two LMGs either side (a45, the Octant's guns), their
+//                 state and their shared heat on an arc
 //   the lock      red corners round what the reticle is on (CMDroneSense; held a moment
 //                 after it leaves), LOCK // its kind over it, its health and distance under
 //                 it, and the lead pip: where to aim for a round to meet it
 //   TAKING FIRE   a red chevron at the edge of the view toward whoever just hit the drone
 //   left / right  speed with the rotors' spool as a bar under it, height and vertical speed
 //   bottom left   the attitude gauge: the nose's angle on an arc, HOVER / CRUISE; the
-//                 weapons' block
+//                 weapons' block: the LMGs and the laser-guided rocket pod (two a load), the
+//                 selected one marked (B), the keys
 //   bottom right  the airframe: the Griffin scanned from its own meshes, tinted by the hull
 // Built on the Bombus's display (CMBombusHud: its frame, text and bracket helpers); no
 // field shares a name with it or its parents (a49).
@@ -35,6 +36,7 @@ public class CMGriffinHud extends CMBombusHud {
   private let m_grLockD: ref<inkText>;
   private let m_grLead: ref<inkCanvas>;
   private let m_grLeadLine: ref<inkRectangle>;
+  private let m_grHeatArc: array<ref<inkRectangle>>;   // both guns' lit arcs, 15 segments each
   private let m_grSpoolBar: array<ref<inkRectangle>>;
   private let m_grNeedle: ref<inkRectangle>;
   private let m_grThreat: array<ref<inkCanvas>>;
@@ -70,6 +72,7 @@ public class CMGriffinHud extends CMBombusHud {
   private let GR_PODS: Int32 = 21;
   private let GR_WARN: Int32 = 22;
   private let GR_RNG: Int32 = 23;
+  private let GR_KEYS: Int32 = 24;
 
   private let GR_GAUGE_R: Float = 120.0;
 
@@ -148,26 +151,34 @@ public class CMGriffinHud extends CMBombusHud {
     this.SetT(this.GR_LHEAT, "HEAT");
     this.SetT(this.GR_RHEAT, "HEAT");
     this.SetT(this.GR_SPOOL, "SPOOL");
-    this.SetT(this.GR_WPN, "TWIN 7.62   //   SAFE");
-    this.SetT(this.GR_WPN2, "GUNS NOT LINKED IN PILOT MODE YET   //   [RMB] ZOOM   [T] SENSOR");
-    this.SetT(this.GR_LAMMO, "----");
-    this.SetT(this.GR_RAMMO, "----");
+    this.Osd(root, x0 + 200.0, 1952.0, 22, 0);         // the keys
+    this.Tint(this.GR_KEYS, this.Acc());
+    this.SetT(this.GR_KEYS, "[LMB] FIRE   [B] SELECT   [G] ROCKETS   [RMB] ZOOM   [T] SENSOR");
+    this.SetT(this.GR_LAMMO, "UNLTD");
+    this.SetT(this.GR_RAMMO, "UNLTD");
     // the gun cross: a ring, its arms, a centre pip
     CMInk.Ring(root, cx, cy, 60.0, 36, 3.0, this.Acc(), 1.0);
     CMPilotHud.Bar(root, cx - 120.0, cy - 2.0, 50.0, 4.0, this.Acc(), 1.0);
     CMPilotHud.Bar(root, cx + 70.0, cy - 2.0, 50.0, 4.0, this.Acc(), 1.0);
     CMPilotHud.Bar(root, cx - 2.0, cy - 120.0, 4.0, 50.0, this.Acc(), 1.0);
     CMPilotHud.Bar(root, cx - 5.0, cy - 5.0, 10.0, 10.0, this.Acc(), 1.0);
-    // each gun's heat: an arc over its HEAT, 140 degrees (dim: the guns aren't linked yet)
+    // each gun's heat: an arc over its HEAT, 140 degrees, lit from its left end (the two
+    // guns share the heat, as the Octant's do)
     let side = 0;
     while side < 2 {
       let gx = cx + (side == 0 ? -200.0 : 200.0);
       let ring = CMInk.Ring(root, gx, cy + 70.0, 46.0, 36, 6.0, this.Acc(), 0.25);
+      let lit = CMInk.Ring(root, gx, cy + 70.0, 46.0, 36, 6.0, CMPilotHud.Caution(), 1.0);
       let j = 0;
       while j < 36 {
         let a = Cast<Float>(j) * 10.0;
         ring[j].SetVisible(a >= 290.0 || a <= 70.0);
+        lit[j].SetVisible(false);
         j += 1;
+      }
+      // from 290 round through the top to 70
+      for k in [29, 30, 31, 32, 33, 34, 35, 0, 1, 2, 3, 4, 5, 6, 7] {
+        ArrayPush(this.m_grHeatArc, lit[k]);
       }
       side += 1;
     }
@@ -222,7 +233,7 @@ public class CMGriffinHud extends CMBombusHud {
       q += 1;
     }
     this.m_grNeedle = CMPilotHud.Bar(root, gx, gy, this.GR_GAUGE_R, 6.0, this.Ink(), 1.0);
-    this.Brackets(root, x0 + 180.0, 1840.0, 1000.0, 110.0);
+    this.Brackets(root, x0 + 180.0, 1840.0, 1000.0, 150.0);
   }
 
   // the Griffin, scanned from its own meshes, bottom right
@@ -300,6 +311,29 @@ public class CMGriffinHud extends CMBombusHud {
     for img in this.m_grSprite {
       img.SetTintColor(c);
     }
+    // the guns: their shared heat on both arcs, their state either side of the cross
+    let heat = ClampF(s.secHeat, 0.0, 1.0);
+    let n = 0;
+    while n < ArraySize(this.m_grHeatArc) {
+      let lit = heat * 15.0 > Cast<Float>(n % 15) + 0.05;
+      this.m_grHeatArc[n].SetVisible(lit);
+      this.m_grHeatArc[n].SetTintColor(heat >= 0.99 ? this.Hot() : CMPilotHud.Caution());
+      n += 1;
+    }
+    let gs = ArraySize(s.wStat) > 0 ? s.wStat[0] : "RDY";
+    let gc = Equals(gs, "OVERHEAT") ? this.Hot() : (Equals(gs, "HOT") ? CMPilotHud.Caution() : this.Ink());
+    this.SetT(this.GR_LAMMO, Equals(gs, "OVERHEAT") ? "OVHT" : "UNLTD");
+    this.SetT(this.GR_RAMMO, Equals(gs, "OVERHEAT") ? "OVHT" : "UNLTD");
+    this.Tint(this.GR_LAMMO, gc);
+    this.Tint(this.GR_RAMMO, gc);
+    // the weapons block: the selected one marked
+    let gunLine = ArraySize(s.wSub) > 0 ? s.wSub[0] : "LMG 7.62 x2";
+    let rkLine = ArraySize(s.wSub) > 1 ? s.wSub[1] : "";
+    let rkStat = ArraySize(s.wStat) > 1 ? s.wStat[1] : "";
+    this.SetT(this.GR_WPN, (s.weapon == 0 ? ">  " : "    ") + gunLine + "   " + gs);
+    this.SetT(this.GR_WPN2, (s.weapon == 1 ? ">  " : "    ") + rkLine + "   " + rkStat);
+    this.Tint(this.GR_WPN, s.weapon == 0 ? this.Ink() : this.Acc());
+    this.Tint(this.GR_WPN2, s.weapon == 1 ? this.Ink() : (StrBeginsWith(rkStat, "RLD") ? CMPilotHud.Caution() : this.Acc()));
   }
 
   public func SetFlight(pitch: Float, roll: Float, speed: Float, alt: Float, vs: Float) -> Void {

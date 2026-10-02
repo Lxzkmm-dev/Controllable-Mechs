@@ -148,8 +148,11 @@ public class CMUDrone extends CMCUnit {
     this.m_logAt = s.Now() + 1.0;
     this.m_frames = 0;
     this.m_gait = n"";
-    this.m_rockets = this.ROCKET_POD;
+    this.m_rockets = Equals(this.m_kind, "griffin") ? 2 : this.ROCKET_POD;
     this.m_podReady = 0.0;
+    this.m_wpn = 0;
+    this.m_heat = 0.0;
+    this.m_overheat = false;
     this.ApplyParts(false);   // the parts' state as the link kept it (the flight exists now)
     this.m_aiSyncAt = 0.0;
     this.m_aiOffAt = 0.0;
@@ -1078,7 +1081,7 @@ public class CMUDrone extends CMCUnit {
     }
     // weapons (the Octant's: the mortar, unlimited; the two machine guns, on heat; the
     // missile), the selected one bright
-    st.weapon = this.m_wpn;
+    st.weapon = this.m_wpn;   // the Griffin: 0 its LMGs, 1 its rocket pod
     st.secSelected = this.m_wpn == 1;
     st.secHeat = this.m_heat;
     st.holdText = this.m_hold ? "GUNSHIP // HOLDING      [" + CMKeys.GunshipName(GetPlayer(this.m_game)) + "] RELEASE" : "";
@@ -1111,10 +1114,26 @@ public class CMUDrone extends CMCUnit {
         st.secText = this.m_payload > 0 ? (this.m_detonated ? "RELEASED" : "ARMED") : "DISARMED";
         st.terText = this.m_flight.level >= 0.8 ? "ANGLE" : (this.m_flight.level >= 0.3 ? "HORIZON" : "ACRO");
       } else {
-      st.weapon = 0;
-      st.priText = "PRI  ----";
-      st.secText = "SEC  ----";
-      st.terText = "";
+        // the Griffin's and Wyvern's guns (round 2), and the Griffin's rocket pod: a status and
+        // a line each (wStat / wSub: 0 the LMGs, 1 the pod), the heat, the rockets
+        let now = s.Now();
+        let gunStat = this.m_overheat ? "OVERHEAT" : (this.m_heat >= 0.7 ? "HOT" : "RDY");
+        ArrayClear(st.wStat);
+        ArrayClear(st.wSub);
+        ArrayPush(st.wStat, gunStat);
+        ArrayPush(st.wSub, "LMG 7.62 x2   UNLTD   HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%");
+        st.priText = "LMG x2   " + gunStat;
+        st.secText = "";
+        st.terText = "";
+        st.rkMax = this.RocketCap();
+        st.rkLeft = this.m_rockets;
+        st.rkLoad = this.m_rockets > 0 ? 1.0 : ClampF(1.0 - (this.m_podReady - now) / this.ROCKET_RELOAD, 0.0, 1.0);
+        if st.rkMax > 0 {
+          let rkStat = this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + " S";
+          ArrayPush(st.wStat, rkStat);
+          ArrayPush(st.wSub, "ROCKETS // LASER GUIDED   " + IntToString(this.m_rockets) + " / " + IntToString(st.rkMax));
+          st.secText = "ROCKETS  " + IntToString(this.m_rockets) + "/" + IntToString(st.rkMax) + "   " + rkStat;
+        }
       }
     }
     // the damage schematic: the body is the hull's health, then each part's
@@ -1217,12 +1236,16 @@ public class CMUDrone extends CMCUnit {
       this.Detonate(true);
       return;
     }
-    if !Equals(this.m_kind, "octant") || ArraySize(this.m_partHp) < 6 {
+    if !this.Armed() {
+      return;
+    }
+    let octant = Equals(this.m_kind, "octant");
+    if octant && ArraySize(this.m_partHp) < 6 {
       return;
     }
     let drone = this.m_drone;
-    let gun = this.m_partHp[5] > 0.0;
-    let mortar = this.m_partHp[8] > 0.0;
+    let gun = !octant || this.m_partHp[5] > 0.0;
+    let mortar = octant && this.m_partHp[8] > 0.0;
     // the guns cool
     this.m_heat = MaxF(0.0, this.m_heat - this.LMG_COOL * dt);
     if this.m_overheat && this.m_heat < 0.33 {
@@ -1231,24 +1254,27 @@ public class CMUDrone extends CMCUnit {
     }
     // the rocket pod reloads once it is empty
     if this.m_rockets <= 0 && this.m_podReady > 0.0 && now >= this.m_podReady {
-      this.m_rockets = this.RocketPods() * 2;
+      this.m_rockets = this.RocketCap();
       this.m_podReady = 0.0;
       GameObject.PlaySoundEvent(drone, n"w_gun_hmg_militech_overheat_close");
     }
     // the mortar's mark: the ground the reticle is on, when it is in range
-    this.AimMortar(s);
-    if IsDefined(hud) {
-      let o = this.Screen(s, this.m_impactAt);
-      hud.SetImpact(gun && this.m_wpn == 0 && this.m_impactOk && AbsF(o.X) < 1900.0 && AbsF(o.Y) < 1050.0, o.X, o.Y, this.m_tof);
+    if octant {
+      this.AimMortar(s);
+      if IsDefined(hud) {
+        let o = this.Screen(s, this.m_impactAt);
+        hud.SetImpact(gun && this.m_wpn == 0 && this.m_impactOk && AbsF(o.X) < 1900.0 && AbsF(o.Y) < 1050.0, o.X, o.Y, this.m_tof);
+      }
     }
     let firing = false;
+    let wt = this.WpnType();
     if s.Key(CMCKey.Lmb()) {
-      if this.m_wpn == 1 {
+      if wt == 1 {
         if gun {
           firing = this.FireLmg(s, now);
         }
       } else {
-        if this.m_wpn == 2 {
+        if wt == 2 {
           this.FireMissile(s, now);
         } else {
           if mortar {
@@ -1263,13 +1289,17 @@ public class CMUDrone extends CMCUnit {
     }
   }
 
-  // B: the next weapon (the Octant's; the other drones have none yet)
+  // B: the next weapon (the Octant's three, the Griffin's two; the Wyvern has its guns only)
   public func Select(s: ref<CMCSession>) -> Bool {
-    if !Equals(this.m_kind, "octant") {
-      return false;
+    if Equals(this.m_kind, "octant") {
+      this.m_wpn = (this.m_wpn + 1) % 3;
+    } else {
+      if !Equals(this.m_kind, "griffin") {
+        return false;
+      }
+      this.m_wpn = (this.m_wpn + 1) % 2;
     }
-    this.m_wpn = (this.m_wpn + 1) % 3;
-    CMCSession.Log("weapons: " + CMUDrone.WeaponName(this.m_wpn) + " selected");
+    CMCSession.Log("weapons: " + CMUDrone.WeaponName(this.WpnType()) + " selected");
     return true;
   }
 
@@ -1281,7 +1311,7 @@ public class CMUDrone extends CMCUnit {
       }
       return;
     }
-    if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 {
+    if (Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6) || Equals(this.m_kind, "griffin") {
       this.FireMissile(s, s.Now());
     }
   }
@@ -1516,7 +1546,7 @@ public class CMUDrone extends CMCUnit {
     }
     // DIAGNOSTICS > OCTANT LMG ARC (a test): the guns only bear this far off the nose
     this.m_offArc = false;
-    if this.m_lmgArc > 0.0 {
+    if this.m_lmgArc > 0.0 && Equals(this.m_kind, "octant") {
       let nose = CMFlight.QRot(this.m_flight.q, new Vector4(0.0, 1.0, 0.0, 0.0));
       let to = Vector4.Normalize(s.aim - this.m_flight.pos);
       if Rad2Deg(AcosF(ClampF(Vector4.Dot(nose, to), -1.0, 1.0))) > this.m_lmgArc {
@@ -1529,7 +1559,7 @@ public class CMUDrone extends CMCUnit {
     while now >= this.m_lmgNext {
       this.m_lmgNext = MaxF(this.m_lmgNext + this.LMG_RATE, now - this.LMG_RATE);
       this.m_lmgLeft = !this.m_lmgLeft;
-      let muzzle = this.SlotPos(this.m_lmgLeft ? n"front_weapon_l_barrel" : n"front_weapon_r_barrel", this.Muzzle(this.m_lmgLeft ? -0.12 : 0.12));
+      let muzzle = this.LmgMuzzle(this.m_lmgLeft);
       let aim = s.aim;
       let dist = Vector4.Distance(muzzle, aim);
       let worn = ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5;
@@ -1585,8 +1615,9 @@ public class CMUDrone extends CMCUnit {
       ArrayPush(this.m_shots, round);
       this.m_lmgRounds += 1;
       this.m_bdaRounds += 1;
-      // the kick: a heavy gun (a35: twice a29's, and a jolt down the frame)
-      s.rig.Recoil(0.26);
+      // the kick: a heavy gun (a35: twice a29's, and a jolt down the frame); the lighter
+      // drones' guns kick a little less
+      s.rig.Recoil(Equals(this.m_kind, "octant") ? 0.26 : 0.2);
       this.m_heat += this.LMG_HEAT * (ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5 ? 1.5 : 1.0);
       fired = true;
       if this.m_heat >= 1.0 {
@@ -1718,12 +1749,35 @@ public class CMUDrone extends CMCUnit {
     return fallback;
   }
 
-  // the gun under the nose (the Octant's front gun mesh, rig frame), `side` metres across
+  // the gun under the nose (the Octant's front gun mesh, rig frame), `side` metres across;
+  // the Griffin's wing guns and the Wyvern's nose gun sit nearer the body
   private func Muzzle(side: Float) -> Vector4 {
     let fl = this.m_flight;
-    let p = fl.pos + CMFlight.QRot(fl.q, new Vector4(side, 1.45, -0.45, 0.0) - this.m_c);
+    let at = new Vector4(side, 1.45, -0.45, 0.0);
+    if Equals(this.m_kind, "griffin") {
+      at = new Vector4(side, 0.72, -0.05, 0.0);   // the wing pods' fronts (mesh scan: y to 0.69)
+    } else {
+      if Equals(this.m_kind, "wyvern") {
+        at = new Vector4(side, 0.46, 0.04, 0.0);  // the gun under its nose (mesh scan: y 0.20-0.43, z -0.01-0.09)
+      }
+    }
+    let p = fl.pos + CMFlight.QRot(fl.q, at - this.m_c);
     p.W = 1.0;
     return p;
+  }
+
+  // where an LMG round leaves (round 2, Omar: the Octant's guns on the Griffin and Wyvern):
+  // the Octant's two barrels under its nose (its entity's barrel slots); the Griffin's at the
+  // fronts of its two wing pods; the Wyvern's gun under its nose as two barrels side by side
+  // (the Griffin's and Wyvern's from their meshes: their entities have no barrel slots)
+  private func LmgMuzzle(left: Bool) -> Vector4 {
+    if Equals(this.m_kind, "griffin") {
+      return this.Muzzle(left ? -0.46 : 0.46);
+    }
+    if Equals(this.m_kind, "wyvern") {
+      return this.Muzzle(left ? -0.06 : 0.06);
+    }
+    return this.SlotPos(left ? n"front_weapon_l_barrel" : n"front_weapon_r_barrel", this.Muzzle(left ? -0.12 : 0.12));
   }
 
   // an area attack at `at`, V's (her kills, XP and heat), on those it hits the drone's
@@ -2405,6 +2459,30 @@ public class CMUDrone extends CMCUnit {
   private let m_jetsOwn: Bool;                 // the entity's four-jet effect is off, ours on
 
   public static func OctantParts() -> Int32 = 10
+
+  // the rockets a full load holds: the Octant two for each pod still on, the Griffin's one
+  // laser-guided pod two (Omar, a45), none on the others
+  private func RocketCap() -> Int32 {
+    if Equals(this.m_kind, "octant") {
+      return this.RocketPods() * 2;
+    }
+    return Equals(this.m_kind, "griffin") ? 2 : 0;
+  }
+
+  // what the selected weapon is (0 mortar, 1 LMG x2, 2 rockets): the Octant's three in
+  // order; the Griffin's LMGs then its rocket pod; the Wyvern's LMGs only
+  private func WpnType() -> Int32 {
+    if Equals(this.m_kind, "octant") {
+      return this.m_wpn;
+    }
+    if Equals(this.m_kind, "griffin") {
+      return this.m_wpn == 1 ? 2 : 1;
+    }
+    return 1;
+  }
+
+  // the drones with guns (round 2: the Griffin and the Wyvern too)
+  private func Armed() -> Bool = Equals(this.m_kind, "octant") || Equals(this.m_kind, "griffin") || Equals(this.m_kind, "wyvern")
 
   // the rocket pods still on (0-2)
   private func RocketPods() -> Int32 {

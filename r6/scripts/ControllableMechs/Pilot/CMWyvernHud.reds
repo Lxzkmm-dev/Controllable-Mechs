@@ -45,6 +45,8 @@ public class CMWyvernHud extends CMBombusHud {
   private let m_wySpool: Float;
   private let m_wySpeed: Float;
   private let m_wyFocus: String;       // the sensor's mode and focus, from the last refresh
+  private let m_wyHeat: array<ref<inkRectangle>>;   // the guns' heat pips
+  private let m_wyGunHeat: Float;
 
   // the text lines (indices of the text list, in BuildOsd's order)
   private let WY_NAME: Int32 = 0;
@@ -70,6 +72,8 @@ public class CMWyvernHud extends CMBombusHud {
   private let WY_HULL: Int32 = 31;
   private let WY_ROTORS: Int32 = 32;
   private let WY_WARN: Int32 = 33;
+  private let WY_GUN: Int32 = 34;
+  private let WY_KEYS: Int32 = 35;
 
   private let WY_RING_R: Float = 250.0;
   private let WY_RING_N: Int32 = 60;
@@ -149,10 +153,22 @@ public class CMWyvernHud extends CMBombusHud {
     this.Osd(root, x1 - 335.0, 1975.0, 26, 1);         // airframe
     this.Osd(root, x1 - 335.0, 2015.0, 24, 1);         // rotors
     this.Osd(root, cx, 820.0, 52, 1);                  // warnings
+    this.Osd(root, lx, 1080.0, 30, 0);                 // the guns (a45)
+    this.Osd(root, lx, 1176.0, 22, 0);                 // their keys
+    // the guns' heat
+    CMPilotHud.Bar(root, lx - 20.0, 1060.0, 600.0, 160.0, this.Blk(), 0.3);
+    this.Brackets(root, lx - 20.0, 1060.0, 600.0, 160.0);
+    let hp = 0;
+    while hp < 10 {
+      ArrayPush(this.m_wyHeat, CMPilotHud.Bar(root, lx + Cast<Float>(hp) * 40.0, 1130.0, 32.0, 22.0, this.Amb(), 1.0));
+      hp += 1;
+    }
     for i in [this.WY_ROLE, this.WY_FOV, this.WY_GRID, this.WY_ZOOM, this.WY_SCAN, this.WY_PING, this.WY_RADAR, this.WY_SIG, this.WY_DET, this.WY_VS, this.WY_ROTORS] {
       this.Tint(i, this.Acc());
     }
     this.Tint(this.WY_SIGV, this.Amb());
+    this.Tint(this.WY_KEYS, this.Acc());
+    this.SetT(this.WY_KEYS, "[LMB] FIRE   [G] PING   [RMB] ZOOM   [T] SENSOR");
     this.Tint(this.WY_WARN, CMPilotHud.Red());
     this.SetT(this.WY_ZOOM, "ZOOM");
     this.SetT(this.WY_SIG, "SIGNATURE");
@@ -281,6 +297,17 @@ public class CMWyvernHud extends CMBombusHud {
       img.SetTintColor(c);
     }
     this.m_wyFocus = "SNS " + s.sensor + (s.range > 0.0 && s.range < 2000.0 ? "   AF LOCK" : "   AF HUNT");
+    // the guns: their line and their heat
+    let gs = ArraySize(s.wStat) > 0 ? s.wStat[0] : "RDY";
+    this.SetT(this.WY_GUN, (ArraySize(s.wSub) > 0 ? s.wSub[0] : "LMG 7.62 x2") + "   " + gs);
+    this.Tint(this.WY_GUN, Equals(gs, "OVERHEAT") ? CMPilotHud.Red() : (Equals(gs, "HOT") ? this.Amb() : this.Ink()));
+    this.m_wyGunHeat = ClampF(s.secHeat, 0.0, 1.0);
+    let p = 0;
+    while p < ArraySize(this.m_wyHeat) {
+      this.m_wyHeat[p].SetOpacity(this.m_wyGunHeat * 10.0 > Cast<Float>(p) + 0.05 ? 1.0 : 0.15);
+      this.m_wyHeat[p].SetTintColor(this.m_wyGunHeat >= 0.99 ? CMPilotHud.Red() : this.Amb());
+      p += 1;
+    }
   }
 
   public func SetFlight(pitch: Float, roll: Float, speed: Float, alt: Float, vs: Float) -> Void {
@@ -422,7 +449,8 @@ public class CMWyvernHud extends CMBombusHud {
       n += 1;
     }
     // how loud it is, and who has noticed
-    let sig = ClampF(0.1 + this.m_wySpool * 0.4 + this.m_wySpeed / 25.0 * 0.5, 0.0, 1.0);
+    // (its guns are loud: their heat counts too)
+    let sig = ClampF(0.1 + this.m_wySpool * 0.4 + this.m_wySpeed / 25.0 * 0.5 + this.m_wyGunHeat * 0.6, 0.0, 1.0);
     let p = 0;
     while p < ArraySize(this.m_wyPips) {
       this.m_wyPips[p].SetOpacity(sig * 10.0 > Cast<Float>(p) + 0.05 ? 1.0 : 0.15);
