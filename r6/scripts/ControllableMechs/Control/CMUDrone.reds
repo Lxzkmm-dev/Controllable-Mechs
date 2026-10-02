@@ -464,6 +464,7 @@ public class CMUDrone extends CMCUnit {
       if Equals(this.m_kind, "octant") {
         this.OctantTrack(s, t);
       }
+      this.Aggro(t, now);
       hud.Track(t);
     }
     this.Weapons(s, now, dt, hud);
@@ -1716,6 +1717,12 @@ public class CMUDrone extends CMCUnit {
       // this round finished it: its damage reached what health was left (a55: reading the
       // pool again the same frame still saw the old value, so no kill ever counted, Omar)
       let kill = before > 0.0 && dmg >= before - 0.01;
+      // what it struck turns on the drone (a59, Omar: enemies ignored the drones; the
+      // round's damage is direct, so the game's own hit-to-threat path never saw it)
+      let hitPuppet = target as ScriptedPuppet;
+      if IsDefined(hitPuppet) && IsDefined(drone) && !kill {
+        CMCCalm.DrawFire(drone, hitPuppet);
+      }
       // once a target: rounds already in the air when it fell each read the health it had
       // left and counted it again (a57 log: every kill logged twice)
       if kill {
@@ -1918,6 +1925,34 @@ public class CMUDrone extends CMCUnit {
       case 4: return 7.0;
     }
     return 0.0;
+  }
+
+  // Enemies notice the drone (a59, Omar: they ignored it). Once a second, each hostile the
+  // sweep has near it turns on it (CMCCalm.DrawFire: hostile to the drone, the drone on its
+  // threat list): one already in combat within AGGRO_COMBAT, any other within a radius that
+  // grows with how loud the drone is (the Wyvern's SIGNATURE: rotors, speed, its guns'
+  // heat), from NOTICE_MIN when quiet to NOTICE_MAX
+  private let m_aggroAt: Float;
+  private let AGGRO_COMBAT: Float = 80.0;
+  private let NOTICE_MIN: Float = 10.0;
+  private let NOTICE_MAX: Float = 60.0;
+
+  private func Aggro(t: ref<CMDroneTrack>, now: Float) -> Void {
+    if now < this.m_aggroAt || !IsDefined(this.m_drone) || !IsDefined(this.m_flight) {
+      return;
+    }
+    this.m_aggroAt = now + 1.0;
+    let fl = this.m_flight;
+    let sig = ClampF(0.1 + fl.Spool() * 0.4 + Vector4.Length(fl.vel) / 25.0 * 0.5 + this.m_heat * 0.6, 0.0, 1.0);
+    let notice = this.NOTICE_MIN + (this.NOTICE_MAX - this.NOTICE_MIN) * sig;
+    for c in t.contacts {
+      if c.kind == 2 && (c.dist <= notice || (c.combat && c.dist <= this.AGGRO_COMBAT)) {
+        let npc = c.ent as ScriptedPuppet;
+        if IsDefined(npc) {
+          CMCCalm.DrawFire(this.m_drone, npc);
+        }
+      }
+    }
   }
 
   // the Bombus's OSD (CMBombusHud): the blast ring round the reticle's point, laid on the

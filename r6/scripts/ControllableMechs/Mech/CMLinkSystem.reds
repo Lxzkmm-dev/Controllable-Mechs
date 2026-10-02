@@ -562,6 +562,13 @@ public class CMLinkSystem extends ScriptableSystem {
       return;
     }
     if !IsDefined(unit) || !ScriptedPuppet.IsAlive(unit) {
+      // a destroyed drone's feed shows SIGNAL LOST until the pilot key closes it (a59,
+      // Omar): while that session is open the link waits, and drops on the next check
+      let session = CMCSession.Get(this.GetGameInstance());
+      if IsDefined(session) && session.IsActive() {
+        this.Schedule();
+        return;
+      }
       this.Drop(player, "ROBOT LINK LOST");
       return;
     }
