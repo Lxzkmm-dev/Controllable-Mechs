@@ -28,3 +28,32 @@ Attacks.CM_DroneRound:
   damageType: DamageTypes.Physical
   statModifiers: []
   statusEffects: []
+
+# The Bombus's payloads (CMUDrone.Detonate). The game's frag and EMP grenade records take
+# their damage from a thrown grenade's stats, so with no grenade the damage added from
+# script came to nothing (Omar: only the toxic gas, whose damage is its poison, hurt). These
+# carry the damage the way the Octant's mortar does; the shock also sends the EMP grenade's
+# own attack for its status.
+Attacks.CM_BombusFrag:
+  $base: Attacks.BaseProjectileAoEAttack
+  effectTag: explosion_round_charged
+  range: 5.0
+  damageType: DamageTypes.Physical
+  statModifiers: []
+  statusEffects: []
+
+Attacks.CM_BombusHE:
+  $base: Attacks.BaseProjectileAoEAttack
+  effectTag: explosion_round_charged
+  range: 9.0
+  damageType: DamageTypes.Physical
+  statModifiers: []
+  statusEffects: []
+
+Attacks.CM_BombusShock:
+  $base: Attacks.BaseProjectileAoEAttack
+  effectTag: explosion_round_charged
+  range: 7.0
+  damageType: DamageTypes.Electric
+  statModifiers: []
+  statusEffects: []

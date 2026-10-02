@@ -1765,12 +1765,12 @@ public class CMUDrone extends CMCUnit {
     switch this.m_payload {
       case 1:
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\frag_grenade\\w_explosives_001__frag_grenade_01.effect"), CMUMinotaur.At(at, up), true);
-        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.FragGrenade", 5.0, 350.0, drone);
+        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusFrag", 5.0, 350.0, drone);
         break;
       case 2:
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\ozob_grenade\\w_ozob_grenade.effect"), CMUMinotaur.At(at, up), true);
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\w_explosion_medium.effect"), CMUMinotaur.At(at, up), true);
-        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.FragGrenade", 9.0, 900.0, drone);
+        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusHE", 9.0, 900.0, drone);
         break;
       case 3:
         let gas = new CMGasCb();
@@ -1784,7 +1784,8 @@ public class CMUDrone extends CMCUnit {
       default:
         let rec = CMUDrone.FirstAttack(["Attacks.EMPGrenade", "Attacks.EMPExplosion", "Attacks.ElectricGrenade"]);
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\emp_grenade\\w_explosives_001_emp_grenade_01.effect"), CMUMinotaur.At(at, up), true);
-        CMUDrone.AreaAttack(this.m_game, at, rec, 7.0, 150.0, drone);
+        CMUDrone.AreaAttack(this.m_game, at, rec, 7.0, 0.0, drone);                         // its EMP status
+        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusShock", 7.0, 200.0, drone);  // its damage
         CMCSession.Log("bombus: shock with " + TDBID.ToStringDEBUG(rec));
         break;
     }
