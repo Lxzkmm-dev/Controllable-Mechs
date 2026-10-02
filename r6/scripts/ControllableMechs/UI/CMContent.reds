@@ -142,12 +142,6 @@ public class CMContent extends TKContent {
       case "dronefl":
         cfg.SetDroneFrameLog(Equals(CMContent.Str(arg), "1"));
         break;
-      case "dronemount":
-        cfg.SetDroneSightMount(CMContent.Val(arg, 0));
-        break;
-      case "dronelead":
-        cfg.SetDroneHullTiming(CMContent.Val(arg, 2));
-        break;
       case "despawntest":
         link.DespawnTestMech();
         p.SetMessage("TEST MECH REMOVED");
@@ -391,8 +385,6 @@ public class CMContent extends TKContent {
     p.Dropdown("TERMINAL PALETTE", "The terminal's colours", cfg.Theme(), CMContent.ThemeLabels(), CMContent.ThemeValues(), "theme", "");
     p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
     if cfg.ShowDebug() {
-      p.Dropdown("DRONE SIGHT MOUNT", "Where the first-person eye sits: ON THE BODY turns with the drone (a18), LEVEL stays level on its heading (a43 to a17). Applies within a tenth of a second", IntToString(cfg.DroneSightMount()), "ON THE BODY|LEVEL", "0|1", "dronemount", "");
-      p.Dropdown("DRONE HULL TIMING", "When the drone's model is drawn against the camera. A FRAME LATE (default) matches the camera, which the game draws a frame later than the drone; AS PLACED was a16-a22; A FRAME AHEAD was a17", IntToString(cfg.DroneHullTiming()), "A FRAME AHEAD|AS PLACED|A FRAME LATE", "0|1|2", "dronelead", "");
       p.Check("DRONE FRAME LOG", "Logs every frame for four seconds the first time a flown drone passes 8 m/s (where the flight, the drone and the camera each are), to find the chase-view jitter", cfg.DroneFrameLog(), "dronefl", "");
     }
   }

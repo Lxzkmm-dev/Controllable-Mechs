@@ -58,10 +58,7 @@ public class CMUDrone extends CMCUnit {
   private let m_hidden: Bool;          // its model hidden (the sight view, CONFIG)
   private let m_sight: Bool;           // the sight view is on (from the session, each tick)
   private let m_rigYaw: Float;         // the view's heading, this tick
-  private let m_flBodyPrev: Vector4;
-  private let m_flCamPrev: Vector4;
-  private let m_flCamTick: Vector4;     // the frame log: the engine's camera when this frame began     // the frame log: the camera's place set the frame before
-  private let m_flPlacedRoot: Vector4;  // the frame log: where the entity was placed this frame  // the frame log: the body's place the frame before
+  private let m_flBodyPrev: Vector4;   // the frame log: the body's place the frame before
   private let m_flLeft: Int32;         // frame-log lines left (-1 = not started)
   private let m_selfHits: Int32;       // rays that passed through the drone's own body (log)
   private let m_flOn: Bool;
@@ -76,11 +73,8 @@ public class CMUDrone extends CMCUnit {
   private let m_bone: Vector4;         // the body bone, last measured (world, log)
   private let m_boneOff: Vector4;      // it less the flight's centre when last placed (log)
   private let m_placed: Vector4;       // the flight's centre at the last placement
-  private let m_sightLevel: Bool;      // DIAGNOSTICS: the sight eye level on the heading (a17), not on the body (a18)
-  private let m_hullTiming: Int32;     // DIAGNOSTICS: 0 a frame ahead, 1 as placed, 2 a frame late (default)
-  private let m_heldWt: WorldTransform; // the hull's transform from the frame before (a frame late)
+  private let m_heldWt: WorldTransform; // the hull's transform from the frame before (placed a frame late)
   private let m_heldOk: Bool;
-  private let m_leadDt: Float;         // how far ahead the hull is placed (this frame's length; 0 until flying)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
 
@@ -182,9 +176,25 @@ public class CMUDrone extends CMCUnit {
       }
       this.Cancel(drone);
       this.SetGait(drone, n"Walk");   // the drone's own default
+      // Flown, it is moved by its entity transform with its AI off, so the game's own idea
+      // of where it is (its movement) stays where the flight began. Handed back like that,
+      // its AI (or its death, for a destroyed drone) put it there again: the wreck appeared
+      // in front of V where it was spawned (Omar, Phase 4). It is teleported to where it
+      // really is first, then its AI is given back.
+      let here = drone.GetWorldPosition();
+      let face: EulerAngles;
+      face.Yaw = IsDefined(this.m_flight) ? this.m_flight.yaw : CMPilotRig.YawOf(drone.GetWorldForward());
+      GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, here, face);
       let ai = drone.GetAIControllerComponent();
       if IsDefined(ai) {
         ai.Toggle(true);
+        if ScriptedPuppet.IsAlive(drone) {
+          let tp = new AITeleportCommand();
+          tp.position = here;
+          tp.rotation = face.Yaw;
+          tp.doNavTest = false;
+          ai.SendCommand(tp);
+        }
       }
       this.Pacify(drone, false);
     }
@@ -231,17 +241,12 @@ public class CMUDrone extends CMCUnit {
     if this.m_sight {
       // The sensor: level on the drone's heading (a43: not pitched with the model, which put
       // the eye inside the Bombus's shell at its resting lean; a48: not on the view's
-      // heading, which put it inside a rotor pod while the body turned after the view), or
-      // turning with the body (a18; DIAGNOSTICS > DRONE SIGHT MOUNT). The session's ring adds
-      // the mount's reach on the view's heading and its height, so both are taken back off.
+      // heading, which put it inside a rotor pod while the body turned after the view). The
+      // session's ring adds the mount's reach on the view's heading, so that is taken back off.
       let fwd = this.SensorFwd();
       let view = CMPilotRig.Dir(this.m_rigYaw, 0.0);
-      if this.m_sightLevel {
-        let body = CMPilotRig.Dir(fl.yaw, 0.0);
-        return new Vector4(a.X + (body.X - view.X) * fwd, a.Y + (body.Y - view.Y) * fwd, a.Z, 1.0);
-      }
-      let m = a + CMFlight.QRot(fl.Shown(this.m_show), new Vector4(0.0, fwd, this.SensorUp(), 0.0));
-      return new Vector4(m.X - view.X * fwd, m.Y - view.Y * fwd, m.Z - this.SensorUp(), 1.0);
+      let body = CMPilotRig.Dir(fl.yaw, 0.0);
+      return new Vector4(a.X + (body.X - view.X) * fwd, a.Y + (body.Y - view.Y) * fwd, a.Z, 1.0);
     }
     return a;
   }
@@ -261,11 +266,10 @@ public class CMUDrone extends CMCUnit {
       if Vector4.Length(fl.vel) < 8.0 {
         this.m_lastRoot = this.Root();
         this.m_flBodyPrev = fl.pos;
-        this.m_flCamPrev = s.rig.pos;
         return;
       }
       this.m_flLeft = 240;
-      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll | body bone - where the flight wants it (fwd, side, up m) | cam - body bone (fwd, side, up m) | body moved this frame vs its velocity x dt (m; 0 vs >0 = a stale read) | engine's camera - camera set now, - set last frame (along the heading, m) | engine's drone - drone placed now (along the heading, m)");
+      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll | body bone - where the flight wants it (fwd, side, up m) | cam - body bone (fwd, side, up m) | body moved this frame vs its velocity x dt (m; 0 vs >0 = a stale read)");
     }
     if this.m_flLeft == 0 {
       return;
@@ -280,19 +284,6 @@ public class CMUDrone extends CMCUnit {
     let rel = s.rig.pos - a;
     let moved = Vector4.Length(fl.pos - this.m_flBodyPrev);
     this.m_flBodyPrev = fl.pos;
-    // where the engine has the active camera and the drone entity now, against where they
-    // were set this frame and the frame before: a camera drawn a frame late reads ~0 against
-    // last frame's and v x dt behind this frame's
-    let camT: Transform;
-    let camOk = GameInstance.GetCameraSystem(this.m_game).GetActiveCameraWorldTransform(camT);
-    let camE = Transform.GetPosition(camT);
-    let yr0 = Deg2Rad(fl.yaw);
-    let hf = new Vector4(-SinF(yr0), CosF(yr0), 0.0, 0.0);
-    let camNow = camOk ? FloatToStringPrec(Vector4.Dot(camE - s.rig.pos, hf), 3) + " up " + FloatToStringPrec(camE.Z - s.rig.pos.Z, 3) : "n/a";
-    let camLast = camOk ? FloatToStringPrec(Vector4.Dot(camE - this.m_flCamPrev, hf), 3) : "n/a";
-    let camTick = FloatToStringPrec(Vector4.Dot(this.m_flCamTick - this.m_flCamPrev, hf), 3);
-    this.m_flCamPrev = s.rig.pos;
-    let entNow = FloatToStringPrec(Vector4.Dot(drone.GetWorldPosition() - this.m_flPlacedRoot, hf), 3);
     let yr = Deg2Rad(this.m_flight.yaw);
     let fwd = new Vector4(-SinF(yr), CosF(yr), 0.0, 0.0);
     let right = new Vector4(CosF(yr), SinF(yr), 0.0, 0.0);
@@ -316,8 +307,7 @@ public class CMUDrone extends CMCUnit {
       + " | " + FloatToStringPrec(Vector4.Dot(rel, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(rel, right), 3) + " " + FloatToStringPrec(rel.Z, 3)
       + " | " + FloatToStringPrec(CMPilotRig.Wrap(s.rig.yaw - fl.yaw), 2)
       + " | " + FloatToStringPrec(shown.Pitch, 2) + " " + FloatToStringPrec(shown.Roll, 2) + " | " + bone + " | " + camBone
-      + " | " + FloatToStringPrec(moved, 3) + " vs " + FloatToStringPrec(Vector4.Length(fl.vel) * dt, 3)
-      + " | " + camNow + ", " + camLast + ", at tick start " + camTick + " | " + entNow);
+      + " | " + FloatToStringPrec(moved, 3) + " vs " + FloatToStringPrec(Vector4.Length(fl.vel) * dt, 3));
     if this.m_flLeft == 0 {
       CMCSession.Log("frame log: done");
     }
@@ -344,12 +334,6 @@ public class CMUDrone extends CMCUnit {
     }
     dt = MinF(dt, 0.1);
     this.m_frames += 1;
-    if this.m_flLeft > 0 {
-      let ct: Transform;
-      if GameInstance.GetCameraSystem(this.m_game).GetActiveCameraWorldTransform(ct) {
-        this.m_flCamTick = Transform.GetPosition(ct);
-      }
-    }
     let actual = drone.GetWorldPosition();
     this.m_seen = actual;
     this.m_seenAtTick = actual;
@@ -403,7 +387,6 @@ public class CMUDrone extends CMCUnit {
     if NotEquals(hide, this.m_hidden) {
       this.ShowModel(drone, !hide);
     }
-    this.m_leadDt = this.m_proxyLive && this.m_hullTiming == 0 ? dt : 0.0;
     this.Place(drone, now);
     this.m_sight = s.SightView();
     this.m_rigYaw = s.rig.yaw;
@@ -571,8 +554,6 @@ public class CMUDrone extends CMCUnit {
   private func LoadSensor() -> Void {
     let cfg = CMPilotSystem.Get(this.m_game);
     this.m_hideInSight = cfg.DroneHideInSight(this.m_kind);
-    this.m_sightLevel = cfg.DroneSightMount() == 1;
-    this.m_hullTiming = cfg.DroneHullTiming();
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
     this.m_sensFwd = Cast<Float>(cfg.DroneCamFwdCm(this.m_kind)) / 100.0;
     this.m_windK = Cast<Float>(cfg.WindPct()) / 100.0;
@@ -849,43 +830,21 @@ public class CMUDrone extends CMCUnit {
   private func Place(drone: ref<NPCPuppet>, now: Float) -> Void {
     // the entity's own transform set each frame (Codeware) on its physics body's place, with
     // the body's full orientation (its AI is off for the flight: nothing else moves it)
-    // Led by one frame of its motion: an NPC's mesh is drawn from the transform it was given
-    // the frame before, so placed where the body is now it was drawn a frame behind it (a16
-    // frame logs: the body bone 0.20-0.25 m behind the flight at 10-14 m/s, v x dt, on every
-    // drone), while the camera is where the body is now. With a sensor close to the hull (the
-    // Bombus 0.34 m, the Wyvern 0.59 m forward) the trailing hull, its guns and their flashes
-    // slid back round the eye: the first-person lag (Omar, Phase 4; not on the Griffin or
-    // the Octant, whose sensors sit 0.79 and 2.1 m forward). Led by the velocity and the spin
-    // for this frame's length, the hull is drawn where the body is when the frame shows.
     let fl = this.m_flight;
-    let k = this.m_leadDt;
     let q = fl.Shown(this.m_show);
-    let ang = Vector4.Length(fl.w) * k;
-    if this.m_show >= 89.0 && ang > 0.00001 {
-      let ax = fl.w * (1.0 / Vector4.Length(fl.w));
-      let s = SinF(ang * 0.5);
-      let dq: Quaternion;
-      dq.i = ax.X * s;
-      dq.j = ax.Y * s;
-      dq.k = ax.Z * s;
-      dq.r = CosF(ang * 0.5);
-      q = CMFlight.QMul(q, dq);   // body-frame spin: turned on the body's own axes
-    }
-    let r = fl.pos + fl.vel * k - CMFlight.QRot(q, this.m_c) - CMFlight.QRot(q, this.m_tt);
-    r.W = 1.0;
+    let r = this.Root();
     let wt: WorldTransform;
     let world: WorldPosition;
     WorldPosition.SetVector4(world, r);
     WorldTransform.SetWorldPosition(wt, world);
     WorldTransform.SetOrientation(wt, q);
     this.m_placed = fl.pos;
-    this.m_flPlacedRoot = r;
-    // A frame late (the default since a23): the engine draws the pilot camera two frames
+    // A frame late (a23, confirmed by Omar): the engine draws the pilot camera two frames
     // after it is set and the drone one frame after (a21/a22 frame logs: the engine's camera
     // 2 x v x dt behind where it was put, the drone 1 x v x dt), so the view trailed the
     // drone by a frame however the camera was moved (Omar: the camera lags behind). The
     // hull is placed where the body was the frame before, so both are drawn the same frame.
-    if this.m_hullTiming == 2 && this.m_proxyLive {
+    if this.m_proxyLive {
       if this.m_heldOk {
         drone.SetWorldTransform(this.m_heldWt);
       } else {
@@ -950,7 +909,8 @@ public class CMUDrone extends CMCUnit {
       heights = ", above the road: sight-view eye " + FloatToStringPrec(eye - gz, 2) + " m, body centre " + FloatToStringPrec(fl.pos.Z - gz, 2) + " m";
     }
     if this.m_lmgRounds > 0 {
-      heights += ", lmg " + IntToString(this.m_lmgRounds) + " rounds, " + IntToString(this.m_lmgHits) + " struck a target (last " + this.m_lmgLast + ")";
+      heights += ", lmg " + IntToString(this.m_lmgRounds) + " rounds, " + IntToString(this.m_lmgHits) + " struck a target (last " + this.m_lmgLast + "), " + IntToString(this.m_shotSelf) + " steps past its own body";
+      this.m_shotSelf = 0;
       this.m_lmgRounds = 0;
       this.m_lmgHits = 0;
     }
@@ -1085,6 +1045,7 @@ public class CMUDrone extends CMCUnit {
   private let m_lmgRounds: Int32;      // rounds fired and rounds that struck something (log)
   private let m_lmgHits: Int32;
   private let m_lmgLast: String;       // what the last one struck (log)
+  private let m_shotSelf: Int32;       // the rounds' ray steps past its own body (log)
   private let MORTAR_MIN: Float = 15.0;
   private let MORTAR_MAX: Float = 450.0;
   private let MORTAR_COOLDOWN: Float = 5.0;
@@ -1411,8 +1372,14 @@ public class CMUDrone extends CMCUnit {
         target = TraceResult.GetHitEntity(hit) as GameObject;
       }
       // the barrel's ray missed what the reticle is on (it starts lower, under the nose):
-      // the reticle's target, when the round ends next to it
-      if !IsDefined(target) && IsDefined(s.aimEntity) && Vector4.Distance(end, s.aim) < 2.5 {
+      // the reticle's target, when the round's line passes within 1.5 m of it (a58-a23
+      // asked for the round's end within 2.5 m of it, and a round that went on to the
+      // ground behind the target never counted)
+      let toAim = s.aim - muzzle;
+      let along = Vector4.Dot(toAim, dir);
+      let off = toAim - dir * along;
+      off.W = 0.0;
+      if !IsDefined(target) && IsDefined(s.aimEntity) && along > 0.0 && along <= Vector4.Distance(muzzle, end) + 2.0 && Vector4.Length(off) < 1.5 {
         target = s.aimEntity as GameObject;
         end = s.aim;
         end.W = 1.0;
@@ -1463,7 +1430,11 @@ public class CMUDrone extends CMCUnit {
   }
 
   // the nearest thing on the line from `a` to `b`, the world or anything that moves, never
-  // the drone itself (its shell is passed through); what it struck is the hit's entity
+  // the drone itself (its shell and its physics body are passed through); what it struck is
+  // the hit's entity. The Octant's barrels sit inside its physics body (1.45 m forward of a
+  // box 1.70 m deep): a ray from inside it hits it where it starts, and a58-a23 stepped on
+  // 5 cm at a time, four times, so no round ever got out of it (Omar: the rounds phase
+  // through everything). Half-metre steps, up to ten, clear any of the drones' bodies.
   private func ShotRay(a: Vector4, b: Vector4, out hit: TraceResult) -> Bool {
     let best = -1.0;
     let w: TraceResult;
@@ -1472,8 +1443,9 @@ public class CMUDrone extends CMCUnit {
       best = Vector4.Distance(a, Cast<Vector4>(w.position));
     }
     let from = a;
+    let dir = Vector4.Normalize(b - a);
     let i = 0;
-    while i < 4 {
+    while i < 10 {
       let m: TraceResult;
       if !CMGround.Movers(this.m_game, from, b, m) {
         break;
@@ -1487,7 +1459,9 @@ public class CMUDrone extends CMCUnit {
         }
         break;
       }
-      from = p + Vector4.Normalize(b - a) * 0.05;
+      this.m_shotSelf += 1;
+      from = MaxF(Vector4.Dot(p - a, dir), Vector4.Dot(from - a, dir)) > 0.0 ? a + dir * (MaxF(Vector4.Dot(p - a, dir), Vector4.Dot(from - a, dir)) + 0.5) : a + dir * 0.5;
+      from.W = 1.0;
       i += 1;
     }
     return best >= 0.0;
