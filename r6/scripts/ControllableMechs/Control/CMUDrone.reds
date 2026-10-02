@@ -1126,7 +1126,7 @@ public class CMUDrone extends CMCUnit {
         ArrayClear(st.wStat);
         ArrayClear(st.wSub);
         ArrayPush(st.wStat, gunStat);
-        ArrayPush(st.wSub, "LMG 7.62 x2   UNLTD   HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%");
+        ArrayPush(st.wSub, "LMG 7.62 x2   HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%");
         st.priText = "LMG x2   " + gunStat;
         st.secText = "";
         st.terText = "";
@@ -1676,11 +1676,17 @@ public class CMUDrone extends CMCUnit {
       // attack did nothing and exploded on every round)
       let pools = GameInstance.GetStatPoolsSystem(this.m_game);
       let tid = Cast<StatsObjectID>(target.GetEntityID());
-      let wasAlive = pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) > 0.0;
-      pools.RequestChangingStatPoolValue(tid, gamedataStatPoolType.Health, -this.RoundDamage(target), GetPlayer(this.m_game), false, false);
+      let before = pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false);
+      let dmg = this.RoundDamage(target);
+      pools.RequestChangingStatPoolValue(tid, gamedataStatPoolType.Health, -dmg, GetPlayer(this.m_game), false, false);
       // the hit marker (the damage pipeline's hook never sees a direct hit), a kill when
-      // this round finished it
-      s.RoundHit(wasAlive && pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) <= 0.0);
+      // this round finished it: its damage reached what health was left (a55: reading the
+      // pool again the same frame still saw the old value, so no kill ever counted, Omar)
+      let kill = before > 0.0 && dmg >= before - 0.01;
+      s.RoundHit(kill);
+      if kill {
+        CMCSession.Log("lmg: kill (" + NameToString(target.GetClassName()) + ")");
+      }
       this.m_lmgHits += 1;
       this.m_bdaHits += 1;
       this.m_lmgLast = NameToString(target.GetClassName());

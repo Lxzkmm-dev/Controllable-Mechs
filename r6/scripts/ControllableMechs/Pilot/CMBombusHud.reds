@@ -54,6 +54,7 @@ public class CMBombusHud extends CMDroneHud {
   private let m_fRingT: ref<inkText>;
   private let m_fRingFill: array<ref<inkRectangle>>;   // the blast zone, filled (a50)
   private let m_fArmS: ref<CMSlider>;
+  private let m_fRingOn: Bool;          // the blast ring shown (the declutter key, a55)
   private let m_fTti: ref<inkText>;
   private let m_fMotS: array<ref<CMSlider>>;
 
@@ -390,7 +391,7 @@ public class CMBombusHud extends CMDroneHud {
       this.FTgtShow(false);
     }
     // the blast ring on the ground round the reticle's point; red with V inside it
-    let ring = t.armed && t.ringOk && ArraySize(t.ring) == ArraySize(this.m_fRingSegs);
+    let ring = this.m_fRingOn && t.armed && t.ringOk && ArraySize(t.ring) == ArraySize(this.m_fRingSegs);
     let vIn = false;
     if ArraySize(t.contacts) > 0 && t.contacts[0].kind == 0 && t.aimOk {
       vIn = Vector4.Distance(t.contacts[0].pos, t.aim) <= t.blastR + 1.0;
@@ -504,6 +505,9 @@ public class CMBombusHud extends CMDroneHud {
       n += 1;
     }
     this.SetT(this.T_PAY, s.priText);
+    let pl = GetPlayer(GetGameInstance());
+    this.m_fRingOn = CMPilotSystem.Get(GetGameInstance()).Flag("blastRing", true);
+    this.SetT(this.T_HINT, "[LMB] DETONATE   [" + CMKeys.DeclutterName(pl) + "] BLAST RING " + (this.m_fRingOn ? "ON" : "OFF"));
     this.SetT(this.T_ARM, s.secText);
     this.SetT(this.T_MODE, s.terText);
     // the compass strip: the heading, and the points 90 degrees either side

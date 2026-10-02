@@ -27,6 +27,7 @@ public class CMDroneSense {
   private let m_lockT: Float;
   private let m_pingReady: Float;
   private let m_tagging: Bool;
+  private let m_logAt: Float;
 
   private let RANGE: Float = 120.0;
   private let SCAN_EVERY: Float = 0.5;
@@ -59,6 +60,11 @@ public class CMDroneSense {
     if now >= this.m_scanAt {
       this.m_scanAt = now + this.SCAN_EVERY;
       this.Search(me, pos, now);
+    }
+    // whatever the reticle's ray is on is a contact, search or not (a55)
+    let onRay = s.aimEntity as NPCPuppet;
+    if IsDefined(onRay) && !onRay.IsDead() && (!IsDefined(me) || !Equals(onRay.GetEntityID(), me.GetEntityID())) && Vector4.Distance(onRay.GetWorldPosition(), pos) <= this.RANGE {
+      this.Note(onRay, GetPlayer(GetGameInstance()), now + this.SCAN_EVERY);
     }
     // each contact this frame
     let lockNow: ref<CMDroneContact>;
@@ -191,15 +197,34 @@ public class CMDroneSense {
     q.ignoreInstigator = true;
     let parts: array<TS_TargetPartInfo>;
     GameInstance.GetTargetingSystem(game).GetTargetParts(me, q, parts);
+    let fromDrone = ArraySize(parts);
+    // a55: in game the search round the drone found nobody (Omar: the contacts list, radar
+    // and ping empty), so V's search runs too, out far enough to take in the drone's ground;
+    // both are kept to the drone's RANGE below
+    let fromV = 0;
+    if IsDefined(pl) {
+      let qv = q;
+      qv.maxDistance = MinF(400.0, this.RANGE + Vector4.Distance(pl.GetWorldPosition(), pos));
+      let vparts: array<TS_TargetPartInfo>;
+      GameInstance.GetTargetingSystem(game).GetTargetParts(pl, qv, vparts);
+      fromV = ArraySize(vparts);
+      for vp in vparts {
+        ArrayPush(parts, vp);
+      }
+    }
     for p in parts {
       let comp = TS_TargetPartInfo.GetComponent(p);
       let npc: ref<NPCPuppet>;
       if IsDefined(comp) {
         npc = comp.GetEntity() as NPCPuppet;
       }
-      if IsDefined(npc) && !npc.IsDead() && !Equals(npc.GetEntityID(), me.GetEntityID()) {
+      if IsDefined(npc) && !npc.IsDead() && !Equals(npc.GetEntityID(), me.GetEntityID()) && Vector4.Distance(npc.GetWorldPosition(), pos) <= this.RANGE {
         this.Note(npc, pl, now);
       }
+    }
+    if now >= this.m_logAt {
+      this.m_logAt = now + 5.0;
+      CMCSession.Log("sweep: " + IntToString(fromDrone) + " found round the drone, " + IntToString(fromV) + " round V; " + IntToString(ArraySize(t.contacts) - 1) + " contacts in range");
     }
     // the gone (not found this time) and the dead out; V stays
     let i = ArraySize(t.contacts) - 1;

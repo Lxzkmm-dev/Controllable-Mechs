@@ -1021,6 +1021,17 @@ public class CMCSession extends ScriptableSystem {
       }
       return;
     }
+    // the drone HUD's declutter key (X by default, Mod Settings): the Bombus's blast ring
+    // on or off, kept between links
+    if Equals(event.GetKey(), CMKeys.Declutter(GetPlayer(this.GetGameInstance()))) {
+      if press {
+        let cfg = CMPilotSystem.Get(this.GetGameInstance());
+        let on = !cfg.Flag("blastRing", true);
+        cfg.PutFlag("blastRing", on);
+        CMCSession.Log("hud: blast ring " + (on ? "on" : "off"));
+      }
+      return;
+    }
     switch event.GetKey() {
       case EInputKey.IK_W: this.RawKey(CMCKey.W(), down); break;
       case EInputKey.IK_A: this.RawKey(CMCKey.A(), down); break;

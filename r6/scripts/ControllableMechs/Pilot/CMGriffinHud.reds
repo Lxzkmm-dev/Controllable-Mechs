@@ -124,7 +124,7 @@ public class CMGriffinHud extends CMBombusHud {
     this.Osd(root, cx - 200.0, cy - 36.0, 44, 1);
     this.Osd(root, cx + 200.0, cy - 70.0, 26, 1);      // R GUN
     this.Osd(root, cx + 200.0, cy - 36.0, 44, 1);
-    this.Osd(root, cx - 200.0, cy + 54.0, 20, 1);      // HEAT
+    this.Osd(root, cx - 200.0, cy + 54.0, 20, 1);      // HEAT (the arc's label)
     this.Osd(root, cx + 200.0, cy + 54.0, 20, 1);
     this.Osd(root, cx - 760.0, 1040.0, 50, 2);         // speed
     this.Osd(root, cx - 1000.0, 1150.0, 24, 0);        // SPOOL
@@ -150,8 +150,8 @@ public class CMGriffinHud extends CMBombusHud {
     this.Osd(root, x0 + 200.0, 1952.0, 22, 0);         // the keys
     this.Tint(this.GR_KEYS, this.Acc());
     this.SetT(this.GR_KEYS, "[LMB] FIRE   [B] SELECT   [G] ROCKETS   [RMB] ZOOM   [T] SENSOR");
-    this.SetT(this.GR_LAMMO, "UNLTD");
-    this.SetT(this.GR_RAMMO, "UNLTD");
+    this.SetT(this.GR_LAMMO, "0%");
+    this.SetT(this.GR_RAMMO, "0%");
     // the gun cross: a ring, its arms, a centre pip
     CMInk.Circle(root, cx, cy, 60.0, this.Acc(), 1.0);
     CMKit.Ln(root, cx - 120.0, cy - 2.0, 50.0, 5.0, this.Acc(), 1.0);
@@ -324,8 +324,10 @@ public class CMGriffinHud extends CMBombusHud {
     }
     let gs = ArraySize(s.wStat) > 0 ? s.wStat[0] : "RDY";
     let gc = Equals(gs, "OVERHEAT") ? this.Hot() : (Equals(gs, "HOT") ? CMPilotHud.Caution() : this.Ink());
-    this.SetT(this.GR_LAMMO, Equals(gs, "OVERHEAT") ? "OVHT" : "UNLTD");
-    this.SetT(this.GR_RAMMO, Equals(gs, "OVERHEAT") ? "OVHT" : "UNLTD");
+    // each gun's heat in the big numbers (a55, Omar: not UNLTD)
+    let hp = IntToString(RoundF(heat * 100.0)) + "%";
+    this.SetT(this.GR_LAMMO, Equals(gs, "OVERHEAT") ? "OVHT" : hp);
+    this.SetT(this.GR_RAMMO, Equals(gs, "OVERHEAT") ? "OVHT" : hp);
     this.Tint(this.GR_LAMMO, gc);
     this.Tint(this.GR_RAMMO, gc);
     // the weapons block: the selected one marked
