@@ -77,7 +77,9 @@ public class CMUDrone extends CMCUnit {
   private let m_boneOff: Vector4;      // it less the flight's centre when last placed (log)
   private let m_placed: Vector4;       // the flight's centre at the last placement
   private let m_sightLevel: Bool;      // DIAGNOSTICS: the sight eye level on the heading (a17), not on the body (a18)
-  private let m_hullLead: Bool;        // DIAGNOSTICS: the hull drawn a frame ahead (a17; on by default)
+  private let m_hullTiming: Int32;     // DIAGNOSTICS: 0 a frame ahead, 1 as placed, 2 a frame late (default)
+  private let m_heldWt: WorldTransform; // the hull's transform from the frame before (a frame late)
+  private let m_heldOk: Bool;
   private let m_leadDt: Float;         // how far ahead the hull is placed (this frame's length; 0 until flying)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
@@ -401,7 +403,7 @@ public class CMUDrone extends CMCUnit {
     if NotEquals(hide, this.m_hidden) {
       this.ShowModel(drone, !hide);
     }
-    this.m_leadDt = this.m_proxyLive && this.m_hullLead ? dt : 0.0;
+    this.m_leadDt = this.m_proxyLive && this.m_hullTiming == 0 ? dt : 0.0;
     this.Place(drone, now);
     this.m_sight = s.SightView();
     this.m_rigYaw = s.rig.yaw;
@@ -570,7 +572,7 @@ public class CMUDrone extends CMCUnit {
     let cfg = CMPilotSystem.Get(this.m_game);
     this.m_hideInSight = cfg.DroneHideInSight(this.m_kind);
     this.m_sightLevel = cfg.DroneSightMount() == 1;
-    this.m_hullLead = cfg.DroneHullLead();
+    this.m_hullTiming = cfg.DroneHullTiming();
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
     this.m_sensFwd = Cast<Float>(cfg.DroneCamFwdCm(this.m_kind)) / 100.0;
     this.m_windK = Cast<Float>(cfg.WindPct()) / 100.0;
@@ -878,6 +880,22 @@ public class CMUDrone extends CMCUnit {
     WorldTransform.SetOrientation(wt, q);
     this.m_placed = fl.pos;
     this.m_flPlacedRoot = r;
+    // A frame late (the default since a23): the engine draws the pilot camera two frames
+    // after it is set and the drone one frame after (a21/a22 frame logs: the engine's camera
+    // 2 x v x dt behind where it was put, the drone 1 x v x dt), so the view trailed the
+    // drone by a frame however the camera was moved (Omar: the camera lags behind). The
+    // hull is placed where the body was the frame before, so both are drawn the same frame.
+    if this.m_hullTiming == 2 && this.m_proxyLive {
+      if this.m_heldOk {
+        drone.SetWorldTransform(this.m_heldWt);
+      } else {
+        drone.SetWorldTransform(wt);
+      }
+      this.m_heldWt = wt;
+      this.m_heldOk = true;
+      return;
+    }
+    this.m_heldOk = false;
     drone.SetWorldTransform(wt);
   }
 
