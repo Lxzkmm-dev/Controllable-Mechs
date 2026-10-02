@@ -1360,6 +1360,13 @@ public class CMPilotHudState {
   public let windText: String;    // the wind where the drone is (CMWind)
   public let droneParts: array<Float>;   // each schematic part's health, 0-1
   public let home: Float;         // where V (the operator) is, degrees off the view (+ right); 999 unknown
+  // the Octant's fire control (round 2): each station's status and its line under it
+  public let wStat: array<String>;
+  public let wSub: array<String>;
+  public let rkLeft: Int32;       // rockets in the pods, of rkMax
+  public let rkMax: Int32;
+  public let rkLoad: Float;       // the pods' reload, 0-1 (1 loaded)
+  public let mtLoad: Float;       // the mortar's
 }
 
 // one part on the damage schematic

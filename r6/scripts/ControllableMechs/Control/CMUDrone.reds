@@ -79,10 +79,16 @@ public class CMUDrone extends CMCUnit {
   private let m_aiOffAt: Float;        // when its AI goes off again after that (0: off)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
+  private let m_sense: ref<CMDroneSense>;  // what its sensor sees, for the display (round 2)
+  private let m_bdaRounds: Int32;          // rounds fired and struck this link (the BDA strip)
+  private let m_bdaHits: Int32;
 
 
   public func Begin(s: ref<CMCSession>) -> String {
     this.m_game = s.GetGameInstance();
+    this.m_sense = null;
+    this.m_bdaRounds = 0;
+    this.m_bdaHits = 0;
     let link = CMLinkSystem.Get(this.m_game);
     let drone = link.Unit();
     if !IsDefined(drone) {
@@ -425,6 +431,19 @@ public class CMUDrone extends CMCUnit {
     if IsDefined(hud) {
       let fl = this.m_flight;
       hud.SetFlight(fl.pitch, fl.roll, Vector4.Length(fl.vel), this.m_ground, fl.vel.Z);
+      // what its sensor sees (not the Bombus's cheap OSD)
+      if !Equals(this.m_kind, "bombus") {
+        if !IsDefined(this.m_sense) {
+          this.m_sense = CMDroneSense.Make(Equals(this.m_kind, "wyvern"));
+        }
+        this.m_sense.Tick(s, this, drone, fl.pos, now, dt);
+        let t = this.m_sense.track;
+        t.hold = this.m_hold;
+        t.holdAt = this.m_holdPos;
+        t.rounds = this.m_bdaRounds;
+        t.hits = this.m_bdaHits;
+        hud.Track(t);
+      }
     }
     this.Weapons(s, now, dt, hud);
     this.Downwash(now);
@@ -1071,6 +1090,19 @@ public class CMUDrone extends CMCUnit {
       st.priText = "MORTAR   x" + IntToString(this.MORTAR_SHELLS) + "  UNLTD   " + (!mortar ? "LOST" : (now >= this.m_mortarReady ? (this.m_impactOk ? "RDY" : "NO SOLN") : "RLD " + FloatToStringPrec(this.m_mortarReady - now, 1) + "S"));
       st.secText = "LMG x2         " + (!gun ? "LOST" : (this.m_overheat ? "OVERHEAT" : (this.m_offArc ? "OFF ARC" : "HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%")));
       st.terText = "ROCKETS  LSR   " + IntToString(this.m_rockets) + "/" + IntToString(pods * 2) + "     " + (pods == 0 ? "LOST" : (this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + "S"));
+      // the fire-control panel (round 2): a status and a line per station
+      ArrayClear(st.wStat);
+      ArrayClear(st.wSub);
+      ArrayPush(st.wStat, !mortar ? "LOST" : (now >= this.m_mortarReady ? (this.m_impactOk ? "RDY" : "NO SOLN") : "RLD " + FloatToStringPrec(this.m_mortarReady - now, 1) + " S"));
+      ArrayPush(st.wSub, "x" + IntToString(this.MORTAR_SHELLS) + " SHELLS   UNLTD" + (this.m_impactOk ? "   TOF " + FloatToStringPrec(this.m_tof, 1) + " S" : ""));
+      ArrayPush(st.wStat, !gun ? "LOST" : (this.m_overheat ? "OVERHEAT" : (this.m_offArc ? "OFF ARC" : (this.m_lmgArc > 0.0 ? "ARC " + IntToString(RoundF(this.m_lmgArc)) : "RDY"))));
+      ArrayPush(st.wSub, "7.62 TWIN   UNLTD   HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%");
+      ArrayPush(st.wStat, pods == 0 ? "LOST" : (this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + " S"));
+      ArrayPush(st.wSub, "LASER GUIDED   " + IntToString(this.m_rockets) + " / " + IntToString(pods * 2));
+      st.rkLeft = this.m_rockets;
+      st.rkMax = pods * 2;
+      st.rkLoad = this.m_rockets > 0 ? 1.0 : ClampF(1.0 - (this.m_podReady - now) / this.ROCKET_RELOAD, 0.0, 1.0);
+      st.mtLoad = ClampF(1.0 - (this.m_mortarReady - now) / this.MORTAR_COOLDOWN, 0.0, 1.0);
     } else {
       if Equals(this.m_kind, "bombus") {
         // the FPV OSD's lines (CMBombusHud): the payload, its arming, the flight mode
@@ -1240,8 +1272,14 @@ public class CMUDrone extends CMCUnit {
     return true;
   }
 
-  // G: a missile, whatever is selected
+  // G: a missile, whatever is selected; on the Wyvern, the ping (tags everything near)
   public func Secondary(s: ref<CMCSession>) -> Void {
+    if Equals(this.m_kind, "wyvern") && IsDefined(this.m_sense) {
+      if this.m_sense.Ping(this.m_drone, s.Now()) {
+        CMCSession.Log("wyvern: ping, " + IntToString(this.m_sense.track.tagged) + " tagged");
+      }
+      return;
+    }
     if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 {
       this.FireMissile(s, s.Now());
     }
@@ -1545,6 +1583,7 @@ public class CMUDrone extends CMCUnit {
       round.hit = target;
       ArrayPush(this.m_shots, round);
       this.m_lmgRounds += 1;
+      this.m_bdaRounds += 1;
       // the kick: a heavy gun (a35: twice a29's, and a jolt down the frame)
       s.rig.Recoil(0.26);
       this.m_heat += this.LMG_HEAT * (ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5 ? 1.5 : 1.0);
@@ -1606,6 +1645,7 @@ public class CMUDrone extends CMCUnit {
       // this round finished it
       s.RoundHit(wasAlive && pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) <= 0.0);
       this.m_lmgHits += 1;
+      this.m_bdaHits += 1;
       this.m_lmgLast = NameToString(target.GetClassName());
     }
     return true;
@@ -2268,6 +2308,8 @@ public class CMUDrone extends CMCUnit {
 
   // a world point on the HUD, 4K units from the centre, through the camera as it is drawn
   // (its heading and pitch, and the drone's tilt the camera carries); far off when behind
+  public func ScreenAt(s: ref<CMCSession>, p: Vector4) -> Vector2 = this.Screen(s, p)
+
   private func Screen(s: ref<CMCSession>, p: Vector4) -> Vector2 {
     let tilt = this.CamTilt();
     let k = s.SightView() ? 1.0 : 0.35;
