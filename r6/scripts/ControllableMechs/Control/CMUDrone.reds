@@ -75,6 +75,7 @@ public class CMUDrone extends CMCUnit {
   private let m_placed: Vector4;       // the flight's centre at the last placement
   private let m_heldWt: WorldTransform; // the hull's transform from the frame before (placed a frame late)
   private let m_heldOk: Bool;
+  private let m_syncAt: Float;         // when its movement is next set to where it is drawn
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
 
@@ -842,6 +843,15 @@ public class CMUDrone extends CMCUnit {
     WorldTransform.SetWorldPosition(wt, world);
     WorldTransform.SetOrientation(wt, q);
     this.m_placed = fl.pos;
+    // The game's own idea of where it is (its movement) kept with it every half second:
+    // moved by its transform with its AI off, it stayed where the flight began, and a drone
+    // destroyed in flight fell there, in front of V (Omar, Phase 4)
+    if this.m_proxyLive && this.m_heldOk && now >= this.m_syncAt {
+      this.m_syncAt = now + 0.5;
+      let face: EulerAngles;
+      face.Yaw = fl.yaw;
+      GameInstance.GetTeleportationFacility(this.m_game).Teleport(drone, WorldPosition.ToVector4(WorldTransform.GetWorldPosition(this.m_heldWt)), face);
+    }
     // A frame late (a23, confirmed by Omar): the engine draws the pilot camera two frames
     // after it is set and the drone one frame after (a21/a22 frame logs: the engine's camera
     // 2 x v x dt behind where it was put, the drone 1 x v x dt), so the view trailed the

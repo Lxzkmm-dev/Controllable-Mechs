@@ -649,6 +649,10 @@ public abstract class CMGround {
 
   // Anything that moves along a line (characters, props, vehicles), nearest first: the
   // "World Dynamic" preset, or the AI, Dynamic and Vehicle groups when that answers nothing.
+  // The group queries ask for dynamic objects too (staticOnly false): a20-a26 passed true,
+  // static objects only, so they never found a person, a prop or a car (every drone log:
+  // "dynamic 0, vehicle 0"; the Octant's LMG: 0 targets struck). The AI group takes in the
+  // NPCs' hitboxes (the "NPC Hitbox" preset is queried as AI).
   public static func Movers(game: GameInstance, from: Vector4, to: Vector4, out hit: TraceResult) -> Bool {
     let sq = GameInstance.GetSpatialQueriesSystem(game);
     if sq.SyncRaycastByCollisionPreset(from, to, n"World Dynamic", hit, true) {
@@ -658,7 +662,7 @@ public abstract class CMGround {
     let found = false;
     for g in [n"AI", n"Dynamic", n"Vehicle"] {
       let h: TraceResult;
-      if sq.SyncRaycastByCollisionGroup(from, to, g, h, true, false) {
+      if sq.SyncRaycastByCollisionGroup(from, to, g, h, false, false) {
         let d = Vector4.Distance(from, Cast<Vector4>(h.position));
         if d < best {
           best = d;
