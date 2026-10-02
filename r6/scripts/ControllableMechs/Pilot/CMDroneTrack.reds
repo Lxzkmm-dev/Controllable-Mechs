@@ -289,7 +289,8 @@ public abstract class CMKit {
   public static func Pill(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Nine(root, n"pill_h", inkMargin(8.0, 0.0, 8.0, 0.0), x, y, w, h, c, op)
   public static func VPill(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Nine(root, n"pill_v", inkMargin(0.0, 8.0, 0.0, 8.0), x, y, w, h, c, op)
   // a stroke for CMInk.Seg: a thin pill
-  public static func Stroke(root: ref<inkCanvas>, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Pill(root, 0.0, 0.0, 4.0, 3.0, c, op)
+  // (plain, not nine-sliced: short strokes went below the slice grid, a57)
+  public static func Stroke(root: ref<inkCanvas>, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Img(root, n"pill_h", 0.0, 0.0, 4.0, 3.0, c, op)
 
   // a rounded panel: dark glass and a thin line round it; `small` for boxes and rows
   public static func Panel(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, line: HDRColor, lineOp: Float) -> Void {
@@ -314,6 +315,10 @@ public abstract class CMKit {
   // a straight line, axis-aligned: a thin pill (soft, round-ended), lying or standing by its
   // shape
   public static func Ln(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> {
+    if MaxF(w, h) < 24.0 {
+      // short: a plain stretched pill (a nine-slice needs 16 px of length for its caps)
+      return CMKit.Img(root, w >= h ? n"pill_h" : n"pill_v", x, y, w, h, c, op);
+    }
     if w >= h {
       return CMKit.Pill(root, x, y, w, h, c, op);
     }

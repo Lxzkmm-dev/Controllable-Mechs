@@ -135,6 +135,9 @@ public class CMContent extends TKContent {
       case "dhide":
         cfg.SetDroneHideInSight(cfg.CfgProfile(), Equals(CMContent.Str(arg), "1"));
         break;
+      case "dstab":
+        cfg.SetDroneStabilize(cfg.CfgProfile(), CMContent.Val(arg, 0));
+        break;
       case "dcamreset":
         cfg.ResetDroneCam(cfg.CfgProfile());
         p.SetMessage("*" + StrUpper(cfg.CfgProfile()) + " SENSOR MOUNT RESET");
@@ -367,6 +370,7 @@ public class CMContent extends TKContent {
     p.Heading(StrUpper(kind) + " // OPTICS // SENSOR MOUNT");
     p.Slider("HEIGHT", "Sight view: above the drone's base (its centre by default)", "", "0|118|1|" + IntToString(CMContent.CmToIn(cfg.DroneCamUpCm(kind))) + "| in", "dcamup", "");
     p.Slider("FORWARD", "Sight view: ahead of the drone's centre (its nose by default)", "", "0|157|1|" + IntToString(CMContent.CmToIn(cfg.DroneCamFwdCm(kind))) + "| in", "dcamfwd", "");
+    p.Dropdown("STABILIZE", "Sight view: a gimballed sensor holds the view level for combat instead of swaying with the drone", IntToString(cfg.DroneStabilize(kind)), "OFF|WHILE ZOOMED|ALWAYS", "0|1|2", "dstab", "");
     p.Check("HIDE THE DRONE IN SIGHT VIEW", "Its own model isn't drawn while you look through its sensor, so the view isn't inside its shell (third person always shows it)", cfg.DroneHideInSight(kind), "dhide", "");
     p.Item("DEFAULTS", "At the nose, centre height: " + IntToString(CMContent.CmToIn(CMDroneHull.SensorUpCm(kind))) + " in up, " + IntToString(CMContent.CmToIn(CMDroneHull.SensorFwdCm(kind))) + " in forward", "", "RESET", "dcamreset", "", true);
     p.SetTip("Applies at once, even while linked.");

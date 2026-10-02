@@ -199,6 +199,11 @@ public class CMPilotSystem extends ScriptableSystem {
   public func DroneHideInSight(kind: String) -> Bool = this.Flag(kind + "HideInSight", Equals(kind, "bombus"))
   public func SetDroneHideInSight(kind: String, on: Bool) -> Void { this.PutFlag(kind + "HideInSight", on); }
 
+  // STABILIZE: the sight view held level instead of swaying with the drone (a57): 0 off,
+  // 1 while zoomed, 2 always
+  public func DroneStabilize(kind: String) -> Int32 = Clamp(this.Int(kind + "Stabilize", 0), 0, 2)
+  public func SetDroneStabilize(kind: String, v: Int32) -> Void { this.PutInt(kind + "Stabilize", Clamp(v, 0, 2)); }
+
   public func ResetDroneCam(kind: String) -> Void {
     this.Put(kind + "CamUpCm", "");
     this.Put(kind + "CamFwdCm", "");

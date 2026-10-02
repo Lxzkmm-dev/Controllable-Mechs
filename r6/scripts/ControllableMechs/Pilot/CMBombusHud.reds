@@ -248,7 +248,7 @@ public class CMBombusHud extends CMDroneHud {
       ArrayPush(this.m_fCells, CMKit.Fill(root, bx + 4.0, 210.0, 28.0, 50.0, this.Acc(), 1.0));
       c += 1;
     }
-    CMKit.Fill(root, x0 + 368.0, 222.0, 10.0, 26.0, this.Ink(), 0.9);   // the pack's terminal
+    CMKit.Img(root, n"pill_v", x0 + 368.0, 222.0, 10.0, 26.0, this.Ink(), 0.9);   // the pack's terminal
     let b = 0;
     while b < 5 {
       let h = 10.0 + Cast<Float>(b) * 8.0;

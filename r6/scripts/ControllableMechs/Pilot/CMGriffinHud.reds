@@ -392,7 +392,8 @@ public class CMGriffinHud extends CMBombusHud {
     this.m_grLockHpBg.SetSize(Vector2(hw, 10.0));
     this.m_grLockHpBg.SetTintColor(col);
     this.m_grLockHp.SetMargin(inkMargin(x, y + hh + 12.0, 0.0, 0.0));
-    this.m_grLockHp.SetSize(Vector2(MaxF(10.0, hw * ClampF(c.hp, 0.0, 1.0)), 10.0));
+    // (never narrower than its two round caps: a nine-slice under its grid, a57)
+    this.m_grLockHp.SetSize(Vector2(MaxF(20.0, hw * ClampF(c.hp, 0.0, 1.0)), 10.0));
     this.m_grLockHp.SetVisible(c.hp > 0.01);
     this.m_grLockHp.SetTintColor(col);
     this.m_grLockD.SetMargin(inkMargin(x + hw * 0.5, y + hh + 30.0, 0.0, 0.0));

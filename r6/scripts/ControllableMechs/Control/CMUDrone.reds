@@ -79,7 +79,9 @@ public class CMUDrone extends CMCUnit {
   private let m_aiOffAt: Float;        // when its AI goes off again after that (0: off)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
-  private let m_sense: ref<CMDroneSense>;  // what its sensor sees, for the display (round 2)
+  private let m_sense: ref<CMDroneSense>;
+  private let m_stab: Int32;               // STABILIZE: 0 off, 1 while zoomed, 2 always (CONFIG)
+  private let m_zoomed: Bool;  // what its sensor sees, for the display (round 2)
   private let m_bdaRounds: Int32;          // rounds fired and struck this link (the BDA strip)
   private let m_bdaHits: Int32;
 
@@ -363,7 +365,15 @@ public class CMUDrone extends CMCUnit {
   public func AimSkip() -> Float = 1.5
   // the flight's own tilt, through the camera: the sight view is the true attitude (Omar:
   // in first person it crashes into the floor correctly)
-  public func CamTilt() -> Vector4 = IsDefined(this.m_flight) ? new Vector4(this.m_flight.pitch, this.m_flight.roll, 0.0, 0.0) : new Vector4(0.0, 0.0, 0.0, 0.0)
+  public func CamTilt() -> Vector4 {
+    // STABILIZE (a57, Omar: a steady first-person view for combat): a gimballed sensor
+    // holds the view level instead of swaying with the drone: in the sight view while
+    // zoomed (1) or always (2); the chase view keeps its share of the tilt
+    if !IsDefined(this.m_flight) || (this.m_sight && (this.m_stab == 2 || (this.m_stab == 1 && this.m_zoomed))) {
+      return new Vector4(0.0, 0.0, 0.0, 0.0);
+    }
+    return new Vector4(this.m_flight.pitch, this.m_flight.roll, 0.0, 0.0);
+  }
   public func StepWeight() -> Float = 0.0   // no footfalls
   public func LightLook() -> Bool = true
   public func CamProfile() -> String = this.m_kind
@@ -430,6 +440,7 @@ public class CMUDrone extends CMCUnit {
     }
     this.Place(drone, now);
     this.m_sight = s.SightView();
+    this.m_zoomed = s.zoom;
     this.m_rigYaw = s.rig.yaw;
     let hud = s.Hud() as CMDroneHud;
     if IsDefined(hud) {
@@ -613,6 +624,7 @@ public class CMUDrone extends CMCUnit {
   private func LoadSensor() -> Void {
     let cfg = CMPilotSystem.Get(this.m_game);
     this.m_hideInSight = cfg.DroneHideInSight(this.m_kind);
+    this.m_stab = cfg.DroneStabilize(this.m_kind);
     this.m_lmgArc = Cast<Float>(cfg.OctantLmgArc());
     this.m_podsBreak = cfg.OctantPodsBreak();
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
@@ -1126,8 +1138,8 @@ public class CMUDrone extends CMCUnit {
         ArrayClear(st.wStat);
         ArrayClear(st.wSub);
         ArrayPush(st.wStat, gunStat);
-        ArrayPush(st.wSub, "LMG 7.62 x2   HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%");
-        st.priText = "LMG x2   " + gunStat;
+        ArrayPush(st.wSub, "SMG 5.56 x2   HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%");
+        st.priText = "SMG x2   " + gunStat;
         st.secText = "";
         st.terText = "";
         st.rkMax = this.RocketCap();
@@ -1225,6 +1237,15 @@ public class CMUDrone extends CMCUnit {
   private let LMG_CAP: Float = 400.0;
   private let LMG_HEAT: Float = 0.022;
   private let LMG_COOL: Float = 0.35;
+  // the Griffin's and Wyvern's guns are SMGs (a57, Omar: the LMG was too hefty on them):
+  // faster, lighter rounds, less kick, plain impacts, an SMG's flash and tracer
+  private let SMG_RATE: Float = 0.05;
+  private let SMG_DAMAGE: Float = 22.0;
+  private let SMG_SHARE: Float = 0.02;
+  private let SMG_CAP: Float = 140.0;
+  private let SMG_HEAT: Float = 0.012;
+  private func Smg() -> Bool = Equals(this.m_kind, "griffin") || Equals(this.m_kind, "wyvern")
+  private func GunRate() -> Float = this.Smg() ? this.SMG_RATE : this.LMG_RATE
 
   public static func WeaponName(i: Int32) -> String {
     switch i {
@@ -1562,21 +1583,29 @@ public class CMUDrone extends CMCUnit {
     }
     let fired = false;
     while now >= this.m_lmgNext {
-      this.m_lmgNext = MaxF(this.m_lmgNext + this.LMG_RATE, now - this.LMG_RATE);
+      this.m_lmgNext = MaxF(this.m_lmgNext + this.GunRate(), now - this.GunRate());
       this.m_lmgLeft = !this.m_lmgLeft;
       let muzzle = this.LmgMuzzle(this.m_lmgLeft);
       let aim = s.aim;
       let dist = Vector4.Distance(muzzle, aim);
       let worn = ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5;
-      let spread = dist * (worn ? 0.014 : 0.006);
+      let spread = dist * (worn ? 0.014 : (this.Smg() ? 0.009 : 0.006));
       aim += new Vector4(RandRangeF(-spread, spread), RandRangeF(-spread, spread), RandRangeF(-spread, spread), 0.0);
       let dir = Vector4.Normalize(aim - muzzle);
       let fx = GameInstance.GetFxSystem(this.m_game);
       // the flash: the HMG's big third-person flash every round, and its first-person one on
       // top through the sensor (a35: heft, Omar)
-      fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
-      if s.SightView() {
-        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle.effect"), CMUMinotaur.At(muzzle, dir), true);
+      if this.Smg() {
+        // the Griffin's and Wyvern's guns: an SMG's flash (a57, Omar: lighter than the Octant's)
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\smgs\\darra_pulsar\\w_smg_pulsar_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
+        if s.SightView() {
+          fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\smgs\\militech_saratoga\\w_smg_saratoga_muzzle.effect"), CMUMinotaur.At(muzzle, dir), true);
+        }
+      } else {
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
+        if s.SightView() {
+          fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle.effect"), CMUMinotaur.At(muzzle, dir), true);
+        }
       }
       // the round: what's on its line takes it
       let hit: TraceResult;
@@ -1622,8 +1651,8 @@ public class CMUDrone extends CMCUnit {
       this.m_bdaRounds += 1;
       // the kick: a heavy gun (a35: twice a29's, and a jolt down the frame); the lighter
       // drones' guns kick a little less
-      s.rig.Recoil(Equals(this.m_kind, "octant") ? 0.26 : 0.2);
-      this.m_heat += this.LMG_HEAT * (ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5 ? 1.5 : 1.0);
+      s.rig.Recoil(this.Smg() ? 0.06 : 0.26);
+      this.m_heat += (this.Smg() ? this.SMG_HEAT : this.LMG_HEAT) * (ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5 ? 1.5 : 1.0);
       fired = true;
       if this.m_heat >= 1.0 {
         this.m_heat = 1.0;
@@ -1647,7 +1676,9 @@ public class CMUDrone extends CMCUnit {
     tail.W = 1.0;
     let fx = GameInstance.GetFxSystem(this.m_game);
     if !IsDefined(r.fx) {
-      r.fx = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg.effect"), CMUMinotaur.At(tail, r.vel), true);
+      r.fx = this.Smg()
+        ? fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\_default\\w_tracer_default_npc.effect"), CMUMinotaur.At(tail, r.vel), true)
+        : fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg.effect"), CMUMinotaur.At(tail, r.vel), true);
     }
     if IsDefined(r.fx) {
       r.fx.UpdateTransform(CMUMinotaur.At(tail, r.vel));
@@ -1663,7 +1694,7 @@ public class CMUDrone extends CMCUnit {
     if r.struck {
       // the MK.31's explosive-bullet impact every other strike (a look only), else a plain one
       this.m_lmgImpact = !this.m_lmgImpact;
-      if this.m_lmgImpact {
+      if this.m_lmgImpact && !this.Smg() {
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_explosive_bullet.effect"), CMUMinotaur.At(end, -dir), true);
       } else {
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\impacts\\default\\imp_default_norm.effect"), CMUMinotaur.At(end, -dir), true);
@@ -1698,6 +1729,9 @@ public class CMUDrone extends CMCUnit {
   // was nothing to the game's tougher enemies)
   private func RoundDamage(obj: ref<GameObject>) -> Float {
     let max = GameInstance.GetStatPoolsSystem(this.m_game).GetStatPoolMaxPointValue(Cast<StatsObjectID>(obj.GetEntityID()), gamedataStatPoolType.Health);
+    if this.Smg() {
+      return ClampF(max * this.SMG_SHARE, this.SMG_DAMAGE, this.SMG_CAP);
+    }
     return ClampF(max * this.LMG_SHARE, this.LMG_DAMAGE, this.LMG_CAP);
   }
 

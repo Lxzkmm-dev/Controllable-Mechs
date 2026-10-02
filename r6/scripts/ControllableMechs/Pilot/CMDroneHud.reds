@@ -290,8 +290,8 @@ public class CMDroneHud extends CMPilotHud {
     if !IsDefined(this.m_droot) {
       return;
     }
-    let h = heading;
-    while h < 0.0 {
+    let h = CMPilotRig.Wrap(heading);
+    if h < 0.0 {
       h += 360.0;
     }
     this.m_ocHeading = h;
@@ -961,8 +961,7 @@ public class CMDroneHud extends CMPilotHud {
     if this.m_ocThreatT > 0.0 {
       this.m_ocThreatT -= dt;
       let rel = this.m_ocThreatB - this.m_ocHeading;
-      while rel > 180.0 { rel -= 360.0; }
-      while rel < -180.0 { rel += 360.0; }
+      rel = CMPilotRig.Wrap(rel);
       let x = this.m_W * 0.5 + rel * this.HDG_PX;
       this.m_ocThreatTick.SetVisible(this.m_ocThreatT > 0.0 && AbsF(rel * this.HDG_PX) <= 600.0);
       this.m_ocThreatTick.SetMargin(inkMargin(x - 4.0, 136.0, 0.0, 0.0));

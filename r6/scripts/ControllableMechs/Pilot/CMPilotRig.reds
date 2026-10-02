@@ -288,10 +288,14 @@ public class CMPilotRig {
     return Rad2Deg(AtanF(-v.X, v.Y));
   }
 
+  // an angle into -180..180. Never loops: a huge or infinite angle (a bad value from the
+  // physics or a projection) made the old subtract-360 loops run forever and the game
+  // hang (a57: a freeze on zoom, under investigation); such an angle comes back as 0
   public static func Wrap(a: Float) -> Float {
-    let r = a;
-    while r > 180.0 { r -= 360.0; }
-    while r < -180.0 { r += 360.0; }
+    if !(AbsF(a) < 1000000.0) {
+      return 0.0;
+    }
+    let r = a - 360.0 * Cast<Float>(FloorF((a + 180.0) / 360.0));
     return r;
   }
 }
