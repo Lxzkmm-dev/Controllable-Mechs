@@ -205,6 +205,21 @@ public class CMUDrone extends CMCUnit {
         cb.drone = drone;
         cb.fell = here;
         GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, 2.0, false);
+        // its death snaps it back to where the flight began (a28 log: the wreck 64.6 m from
+        // where it went down, two seconds on): it is put back where it went down, every
+        // tenth of a second for a second and a half
+        let wt: WorldTransform;
+        let wp: WorldPosition;
+        WorldPosition.SetVector4(wp, here);
+        WorldTransform.SetWorldPosition(wt, wp);
+        WorldTransform.SetOrientation(wt, drone.GetWorldOrientation());
+        let fix = new CMWreckFixCb();
+        fix.drone = drone;
+        fix.game = this.m_game;
+        fix.at = wt;
+        fix.face = face;
+        fix.left = 15;
+        GameInstance.GetDelaySystem(this.m_game).DelayCallback(fix, 0.05, false);
       }
       this.Pacify(drone, false);
     }
@@ -1058,6 +1073,7 @@ public class CMUDrone extends CMCUnit {
   private let m_lmgHits: Int32;
   private let m_lmgLast: String;       // what the last one struck (log)
   private let m_shotSelf: Int32;       // the rounds' ray steps past its own body (log)
+  private let m_lmgImpact: Bool;       // the heavy impact effect every other strike
   private let MORTAR_MIN: Float = 15.0;
   private let MORTAR_MAX: Float = 450.0;
   private let MORTAR_COOLDOWN: Float = 5.0;
@@ -1431,7 +1447,9 @@ public class CMUDrone extends CMCUnit {
       }
       // the tracer: a trail stretched from the barrel to where the round ends (a52-a55 gave
       // it no end, so it was drawn zero long: no tracers)
-      let tracer = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg_npc.effect"), CMUMinotaur.At(muzzle, dir), true);
+      // the player's HMG trail (heavier and quicker to read than the NPC one, Omar: larger
+      // and faster rounds), the Minotaur's treatment
+      let tracer = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg.effect"), CMUMinotaur.At(muzzle, dir), true);
       if IsDefined(tracer) {
         let wp: WorldPosition;
         WorldPosition.SetVector4(wp, end);
@@ -1439,14 +1457,27 @@ public class CMUDrone extends CMCUnit {
       }
       this.m_lmgRounds += 1;
       if struck {
-        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\impacts\\default\\imp_default_norm.effect"), CMUMinotaur.At(end, -dir), true);
+        // the MK.31's explosive-bullet impact every other strike (a look only), else a plain one
+        this.m_lmgImpact = !this.m_lmgImpact;
+        if this.m_lmgImpact {
+          fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_explosive_bullet.effect"), CMUMinotaur.At(end, -dir), true);
+        } else {
+          fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\impacts\\default\\imp_default_norm.effect"), CMUMinotaur.At(end, -dir), true);
+        }
       }
+      s.rig.Recoil(0.12);
       let drone = this.m_drone;
       if IsDefined(target) && (!IsDefined(drone) || target.GetEntityID() != drone.GetEntityID()) {
         // The round's damage straight onto what it struck, V the instigator. a55-a27 sent it
         // as a small area attack: its record's 0.6 m reach left nothing for a target a metre
         // from the area's centre, and its explosion effect went off on every round (Omar).
-        GameInstance.GetStatPoolsSystem(this.m_game).RequestChangingStatPoolValue(Cast<StatsObjectID>(target.GetEntityID()), gamedataStatPoolType.Health, -this.RoundDamage(target), GetPlayer(this.m_game), false, false);
+        let pools = GameInstance.GetStatPoolsSystem(this.m_game);
+        let tid = Cast<StatsObjectID>(target.GetEntityID());
+        let wasAlive = pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) > 0.0;
+        pools.RequestChangingStatPoolValue(tid, gamedataStatPoolType.Health, -this.RoundDamage(target), GetPlayer(this.m_game), false, false);
+        // the hit marker (the damage pipeline's hook, which shows it for the mech, never
+        // sees a direct hit), a kill when this round finished it
+        s.RoundHit(wasAlive && pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) <= 0.0);
         this.m_lmgHits += 1;
         this.m_lmgLast = NameToString(target.GetClassName());
       }
@@ -2199,5 +2230,35 @@ public class CMWreckLogCb extends DelayCallback {
     }
     let p = d.GetWorldPosition();
     CMCSession.Log("drone: the wreck two seconds on is at " + CMCHits.V(p) + ", " + FloatToStringPrec(Vector4.Distance(p, this.fell), 1) + " m from where it went down");
+  }
+}
+
+// a destroyed drone's wreck put back where it went down while its death settles (each
+// time it has strayed more than 2 m)
+public class CMWreckFixCb extends DelayCallback {
+  public let drone: wref<NPCPuppet>;
+  public let game: GameInstance;
+  public let at: WorldTransform;
+  public let face: EulerAngles;
+  public let left: Int32;
+  public let moved: Int32;
+
+  public func Call() -> Void {
+    let d = this.drone;
+    if !IsDefined(d) {
+      return;
+    }
+    let want = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(this.at));
+    if Vector4.Distance(d.GetWorldPosition(), want) > 2.0 {
+      d.SetWorldTransform(this.at);
+      GameInstance.GetTeleportationFacility(this.game).Teleport(d, want, this.face);
+      this.moved += 1;
+    }
+    this.left -= 1;
+    if this.left > 0 {
+      GameInstance.GetDelaySystem(this.game).DelayCallback(this, 0.1, false);
+    } else {
+      CMCSession.Log("drone: the wreck was put back where it went down " + IntToString(this.moved) + " times");
+    }
   }
 }
