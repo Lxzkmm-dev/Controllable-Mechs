@@ -79,6 +79,14 @@ public class CMDroneTrack {
   public let rounds: Int32;               // rounds fired and struck this link (BDA)
   public let hits: Int32;
   public let now: Float;
+  // the Bombus: its payload's blast round the reticle's point (on the ground, projected),
+  // whether it is armed, the time to impact on its course, each motor's output
+  public let blastR: Float;               // m (0: no payload)
+  public let armed: Bool;
+  public let ring: array<Vector2>;        // the blast ring's points on the display
+  public let ringOk: Bool;
+  public let tti: Float;                  // s to reach the reticle's point (-1: not closing)
+  public let motors: array<Float>;        // 0-1, front left, front right, back left, back right
 }
 
 public abstract class CMInk {

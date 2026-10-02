@@ -45,6 +45,16 @@ public class CMBombusHud extends CMDroneHud {
   private let m_fBlink: Float;
   private let m_fHitT: Float;
   private let m_fBoot: Float;
+  // the strike pieces (round 2): the target's brackets and range, the blast ring, the arming
+  // strip and the impact countdown, the motor bars
+  private let m_fTgtBars: array<ref<inkRectangle>>;
+  private let m_fTgtT: ref<inkText>;
+  private let m_fTgtD: ref<inkText>;
+  private let m_fRingSegs: array<ref<inkRectangle>>;
+  private let m_fRingT: ref<inkText>;
+  private let m_fStrip: array<ref<inkRectangle>>;
+  private let m_fTti: ref<inkText>;
+  private let m_fMotors: array<ref<inkRectangle>>;
 
   // the OSD lines (m_fTexts indices)
   private let T_NAME: Int32 = 0;
@@ -149,6 +159,10 @@ public class CMBombusHud extends CMDroneHud {
     ArrayClear(this.m_fSprite);
     ArrayClear(this.m_fCells);
     ArrayClear(this.m_fBars);
+    ArrayClear(this.m_fTgtBars);
+    ArrayClear(this.m_fRingSegs);
+    ArrayClear(this.m_fStrip);
+    ArrayClear(this.m_fMotors);
   }
 
   // the cheap analog feed: scanlines over everything, the edges darkened, a band of
@@ -315,6 +329,158 @@ public class CMBombusHud extends CMDroneHud {
     this.SetT(this.T_VTX, "CH R7  5917  600MW");
     this.Tint(this.T_ARM, this.Acc());
     this.Tint(this.T_WARN, CMPilotHud.Red());
+    this.BuildStrike(root, ax, ay, tx);
+  }
+
+  // the strike pieces: the target's brackets and range, the blast ring, the arming strip and
+  // the impact countdown, the motor bars beside the throttle
+  private func BuildStrike(root: ref<inkCanvas>, ax: Float, ay: Float, tx: Float) -> Void {
+    let cx = this.m_fW * 0.5;
+    let n = 0;
+    while n < 8 {
+      ArrayPush(this.m_fTgtBars, CMPilotHud.Bar(root, 0.0, 0.0, 4.0, 4.0, this.Ink(), 1.0));
+      n += 1;
+    }
+    this.m_fTgtT = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 30, n"Semi-Bold", this.Ink());
+    this.m_fTgtT.SetAnchorPoint(Vector2(0.5, 1.0));
+    this.m_fTgtD = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 30, n"Semi-Bold", this.Ink());
+    this.m_fTgtD.SetAnchorPoint(Vector2(0.5, 0.0));
+    n = 0;
+    while n < 32 {
+      ArrayPush(this.m_fRingSegs, CMPilotHud.Bar(root, 0.0, 0.0, 1.0, 4.0, CMPilotHud.Caution(), 0.9));
+      n += 1;
+    }
+    this.m_fRingT = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 28, n"Semi-Bold", CMPilotHud.Caution());
+    this.m_fRingT.SetAnchorPoint(Vector2(0.5, 1.0));
+    // the arming strip: fourteen cells across the bottom, the countdown over them
+    let s = 0;
+    while s < 14 {
+      ArrayPush(this.m_fStrip, CMPilotHud.Bar(root, cx - 350.0 + Cast<Float>(s) * 50.0, 1772.0, 44.0, 20.0, this.Acc(), 1.0));
+      s += 1;
+    }
+    this.Brackets(root, cx - 366.0, 1760.0, 728.0, 44.0);
+    this.m_fTti = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 1706.0, "", 40, n"Semi-Bold", this.Ink());
+    this.m_fTti.SetAnchorPoint(Vector2(0.5, 0.0));
+    // the motor bars, right of the throttle
+    let m = 0;
+    while m < 4 {
+      let mx = tx + 80.0 + Cast<Float>(m) * 44.0;
+      CMPilotHud.Bar(root, mx, ay, 30.0, 220.0, this.Blk(), 0.45);
+      ArrayPush(this.m_fMotors, CMPilotHud.Bar(root, mx + 5.0, ay + 6.0, 20.0, 208.0, this.Acc(), 0.9));
+      let l = CMPilotHud.Label(root, inkEAnchor.TopLeft, mx + 15.0, ay - 36.0, "M" + IntToString(m + 1), 22, n"Semi-Bold", this.Ink());
+      l.SetAnchorPoint(Vector2(0.5, 0.0));
+      m += 1;
+    }
+    this.Brackets(root, tx + 70.0, ay - 44.0, 186.0, 270.0);
+    this.FTgtShow(false);
+  }
+
+  private func FTgtShow(on: Bool) -> Void {
+    for b in this.m_fTgtBars {
+      b.SetVisible(on);
+    }
+    this.m_fTgtT.SetVisible(on);
+    this.m_fTgtD.SetVisible(on);
+  }
+
+  // every frame: what the reticle is on, the blast ring, the strip, the motors
+  public func Track(t: ref<CMDroneTrack>) -> Void {
+    if !IsDefined(this.m_fRoot) || ArraySize(this.m_fTgtBars) < 8 {
+      return;
+    }
+    let cx = this.m_fW * 0.5;
+    let cy = 1080.0;
+    // the target: brackets round it, its kind over them, its range under
+    let c = t.lock;
+    if IsDefined(c) && c.OnScreen() {
+      this.FTgtShow(true);
+      let col = c.kind == 2 ? CMPilotHud.Red() : CMInk.KindColor(c.kind, this.Acc());
+      let scale = 1080.0 / TanF(Deg2Rad(MaxF(1.0, t.fov) * 0.5));
+      let hh = ClampF(1.9 / MaxF(1.0, c.dist) * scale, 70.0, 600.0);
+      let hw = MaxF(60.0, hh * 0.55);
+      let x = cx + c.scr.X - hw * 0.5;
+      let y = cy + c.scr.Y - hh * 0.5;
+      let L = MinF(40.0, hw * 0.4);
+      this.FBar(0, x, y, L, 5.0, col);
+      this.FBar(1, x, y, 5.0, L, col);
+      this.FBar(2, x + hw - L, y, L, 5.0, col);
+      this.FBar(3, x + hw - 5.0, y, 5.0, L, col);
+      this.FBar(4, x, y + hh - 5.0, L, 5.0, col);
+      this.FBar(5, x, y + hh - L, 5.0, L, col);
+      this.FBar(6, x + hw - L, y + hh - 5.0, L, 5.0, col);
+      this.FBar(7, x + hw - 5.0, y + hh - L, 5.0, L, col);
+      this.m_fTgtT.SetMargin(inkMargin(x + hw * 0.5, y - 8.0, 0.0, 0.0));
+      this.m_fTgtT.SetText("TGT // " + c.Label());
+      this.m_fTgtT.SetTintColor(col);
+      this.m_fTgtD.SetMargin(inkMargin(x + hw * 0.5, y + hh + 8.0, 0.0, 0.0));
+      this.m_fTgtD.SetText(IntToString(RoundF(c.dist)) + " M");
+      this.m_fTgtD.SetTintColor(col);
+    } else {
+      this.FTgtShow(false);
+    }
+    // the blast ring on the ground round the reticle's point; red with V inside it
+    let ring = t.armed && t.ringOk && ArraySize(t.ring) == ArraySize(this.m_fRingSegs);
+    let vIn = false;
+    if ArraySize(t.contacts) > 0 && t.contacts[0].kind == 0 && t.aimOk {
+      vIn = Vector4.Distance(t.contacts[0].pos, t.aim) <= t.blastR + 1.0;
+    }
+    let rc = vIn ? CMPilotHud.Red() : CMPilotHud.Caution();
+    let top = 99999.0;
+    let topX = cx;
+    let i = 0;
+    while i < ArraySize(this.m_fRingSegs) {
+      let b = this.m_fRingSegs[i];
+      b.SetVisible(ring);
+      if ring {
+        let p = t.ring[i];
+        let q = t.ring[(i + 1) % ArraySize(t.ring)];
+        CMInk.Seg(b, cx + p.X, cy + p.Y, cx + q.X, cy + q.Y, 4.0);
+        b.SetTintColor(rc);
+        if p.Y < top {
+          top = p.Y;
+          topX = p.X;
+        }
+      }
+      i += 1;
+    }
+    this.m_fRingT.SetVisible(ring);
+    if ring {
+      this.m_fRingT.SetMargin(inkMargin(cx + topX, cy + top - 8.0, 0.0, 0.0));
+      this.m_fRingT.SetText(vIn ? "DANGER CLOSE // V IN BLAST" : "BLAST " + IntToString(RoundF(t.blastR)) + " M");
+      this.m_fRingT.SetTintColor(rc);
+    }
+    // the arming strip and the countdown: dim while safe, lit while armed, flashing red in
+    // the last 2 s before impact
+    let ph = t.now * 4.0 - Cast<Float>(FloorF(t.now * 4.0));
+    let close = t.armed && t.tti >= 0.0 && t.tti < 2.0;
+    for cell in this.m_fStrip {
+      cell.SetOpacity(t.armed ? (close && ph > 0.5 ? 0.3 : 1.0) : 0.15);
+      cell.SetTintColor(close || vIn ? CMPilotHud.Red() : (t.armed ? CMPilotHud.Caution() : this.Ink()));
+    }
+    if !t.armed {
+      this.m_fTti.SetText(t.blastR > 0.0 ? "" : "NO PAYLOAD");
+    } else {
+      this.m_fTti.SetText(t.tti >= 0.0 ? "IMPACT T-" + FloatToStringPrec(t.tti, 1) + " S" : "IMPACT --.- S");
+    }
+    this.m_fTti.SetTintColor(close ? CMPilotHud.Red() : this.Ink());
+    // the motors
+    let m = 0;
+    while m < ArraySize(this.m_fMotors) {
+      let v = m < ArraySize(t.motors) ? ClampF(t.motors[m], 0.0, 1.0) : 0.0;
+      let bar = this.m_fMotors[m];
+      let base = this.m_fX0 + 220.0 + 290.0 + 80.0 + Cast<Float>(m) * 44.0 + 5.0;
+      bar.SetMargin(inkMargin(base, 1746.0 + 208.0 * (1.0 - v), 0.0, 0.0));
+      bar.SetSize(Vector2(20.0, 208.0 * v));
+      bar.SetTintColor(v > 0.95 ? CMPilotHud.Red() : this.Acc());
+      m += 1;
+    }
+  }
+
+  private func FBar(i: Int32, x: Float, y: Float, w: Float, h: Float, c: HDRColor) -> Void {
+    let b = this.m_fTgtBars[i];
+    b.SetMargin(inkMargin(x, y, 0.0, 0.0));
+    b.SetSize(Vector2(w, h));
+    b.SetTintColor(c);
   }
 
   // the airframe, scanned from the Bombus's own meshes, bottom right

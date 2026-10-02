@@ -431,19 +431,20 @@ public class CMUDrone extends CMCUnit {
     if IsDefined(hud) {
       let fl = this.m_flight;
       hud.SetFlight(fl.pitch, fl.roll, Vector4.Length(fl.vel), this.m_ground, fl.vel.Z);
-      // what its sensor sees (not the Bombus's cheap OSD)
-      if !Equals(this.m_kind, "bombus") {
-        if !IsDefined(this.m_sense) {
-          this.m_sense = CMDroneSense.Make(Equals(this.m_kind, "wyvern"));
-        }
-        this.m_sense.Tick(s, this, drone, fl.pos, now, dt);
-        let t = this.m_sense.track;
-        t.hold = this.m_hold;
-        t.holdAt = this.m_holdPos;
-        t.rounds = this.m_bdaRounds;
-        t.hits = this.m_bdaHits;
-        hud.Track(t);
+      // what its sensor sees
+      if !IsDefined(this.m_sense) {
+        this.m_sense = CMDroneSense.Make(Equals(this.m_kind, "wyvern"));
       }
+      this.m_sense.Tick(s, this, drone, fl.pos, now, dt);
+      let t = this.m_sense.track;
+      t.hold = this.m_hold;
+      t.holdAt = this.m_holdPos;
+      t.rounds = this.m_bdaRounds;
+      t.hits = this.m_bdaHits;
+      if Equals(this.m_kind, "bombus") {
+        this.BombusTrack(s, t);
+      }
+      hud.Track(t);
     }
     this.Weapons(s, now, dt, hud);
     this.Downwash(now);
@@ -1791,6 +1792,57 @@ public class CMUDrone extends CMCUnit {
   //   SHOCK           an EMP burst, 7 m (drones, mechs and cyberware short out)
   private let m_payload: Int32;        // 0 none, 1 explosive, 2 high explosive, 3 toxic gas, 4 shock
   private let m_detonated: Bool;
+
+  // each payload's reach (Detonate's radii; the gas cloud's)
+  public static func PayloadRadius(i: Int32) -> Float {
+    switch i {
+      case 1: return 5.0;
+      case 2: return 9.0;
+      case 3: return 6.0;
+      case 4: return 7.0;
+    }
+    return 0.0;
+  }
+
+  // the Bombus's OSD (CMBombusHud): the blast ring round the reticle's point, laid on the
+  // ground and projected through the camera; the time to reach that point on its course;
+  // each motor's output
+  private func BombusTrack(s: ref<CMCSession>, t: ref<CMDroneTrack>) -> Void {
+    let fl = this.m_flight;
+    t.armed = this.m_payload > 0 && !this.m_detonated;
+    t.blastR = CMUDrone.PayloadRadius(this.m_payload);
+    ArrayClear(t.motors);
+    for m in fl.spool {
+      ArrayPush(t.motors, m);
+    }
+    ArrayClear(t.ring);
+    t.ringOk = false;
+    t.tti = -1.0;
+    if !t.aimOk || t.blastR <= 0.0 {
+      return;
+    }
+    let to = t.aim - fl.pos;
+    let dist = Vector4.Length(to);
+    if dist > 0.5 {
+      let closing = Vector4.Dot(fl.vel, to * (1.0 / dist));
+      if closing > 1.5 && dist < 250.0 {
+        t.tti = dist / closing;
+      }
+    }
+    let n = 0;
+    let shown = 0;
+    while n < 32 {
+      let a = Deg2Rad(Cast<Float>(n) * 11.25);
+      let p = new Vector4(t.aim.X + CosF(a) * t.blastR, t.aim.Y + SinF(a) * t.blastR, t.aim.Z + 0.1, 1.0);
+      let o = this.Screen(s, p);
+      if AbsF(o.X) < 4000.0 && AbsF(o.Y) < 3000.0 {
+        shown += 1;
+      }
+      ArrayPush(t.ring, o);
+      n += 1;
+    }
+    t.ringOk = shown == 32;
+  }
 
   public static func PayloadName(i: Int32) -> String {
     switch i {
