@@ -22,6 +22,8 @@
 
 #include <atomic>
 #include <cstring>
+#include <cstdio>
+#include <string>
 
 #include <PxPhysics.h>
 #include <PxRigidDynamic.h>
@@ -74,6 +76,13 @@ std::atomic<uint32_t> g_steps{0};
 
 Wish g_wishes[MAX_BODIES] = {};
 SRWLOCK g_lock = SRWLOCK_INIT;
+
+// the watchdog's heartbeats (GetTickCount64 ms; 0 = never)
+std::atomic<ULONGLONG> g_lastStep{0};
+std::atomic<ULONGLONG> g_lastScript{0};
+std::atomic<ULONGLONG> g_driveStart{0};
+SRWLOCK g_markLock = SRWLOCK_INIT;
+char g_mark[192] = "none";
 
 uintptr_t Resolve(uint32_t aHash)
 {
@@ -245,6 +254,8 @@ void Drive(PxScene* aScene)
 {
     g_steps.fetch_add(1, std::memory_order_relaxed);
     const auto now = GetTickCount64();
+    g_lastStep.store(now, std::memory_order_relaxed);
+    g_driveStart.store(now, std::memory_order_relaxed);
     AcquireSRWLockExclusive(&g_lock);
     for (auto& w : g_wishes)
     {
@@ -260,6 +271,79 @@ void Drive(PxScene* aScene)
         }
     }
     ReleaseSRWLockExclusive(&g_lock);
+    g_driveStart.store(0, std::memory_order_relaxed);
+}
+
+// ---- the hang watchdog (v3.3) ------------------------------------------------------
+void WatchLog(const char* aText)
+{
+    char dir[MAX_PATH] = {};
+    if (!GetEnvironmentVariableA("LOCALAPPDATA", dir, MAX_PATH))
+    {
+        return;
+    }
+    std::string folder = std::string(dir) + "\\MNCPhysics";
+    CreateDirectoryA(folder.c_str(), nullptr);
+    FILE* f = nullptr;
+    if (fopen_s(&f, (folder + "\\watchdog.log").c_str(), "a") == 0 && f)
+    {
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        fprintf(f, "[%04u-%02u-%02u %02u:%02u:%02u.%03u] %s\n", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute,
+                st.wSecond, st.wMilliseconds, aText);
+        fflush(f);
+        fclose(f);
+    }
+}
+
+DWORD WINAPI WatchThread(LPVOID)
+{
+    bool scriptStalled = false;
+    bool driveStalled = false;
+    ULONGLONG stallStart = 0;
+    WatchLog("watchdog on");
+    for (;;)
+    {
+        Sleep(500);
+        const ULONGLONG now = GetTickCount64();
+        const ULONGLONG script = g_lastScript.load(std::memory_order_relaxed);
+        const ULONGLONG step = g_lastStep.load(std::memory_order_relaxed);
+        const ULONGLONG drive = g_driveStart.load(std::memory_order_relaxed);
+        char mark[192];
+        AcquireSRWLockShared(&g_markLock);
+        memcpy(mark, g_mark, sizeof(mark));
+        ReleaseSRWLockShared(&g_markLock);
+        mark[sizeof(mark) - 1] = 0;
+        char line[512];
+        // scripts were flying a drone (heard from in the last 10 min) and went quiet for 2 s
+        if (script && now - script > 2000 && now - script < 600000 && !scriptStalled)
+        {
+            scriptStalled = true;
+            stallStart = script;
+            sprintf_s(line, "STALL: no MNC script call for %llu ms; last stage: %s; last physics step %llu ms ago (%u steps so far); %s",
+                      now - script, mark, step ? now - step : 0ULL, g_steps.load(), drive ? "INSIDE our physics step" : "not in our physics step");
+            WatchLog(line);
+        }
+        else if (scriptStalled && now - script < 1000)
+        {
+            scriptStalled = false;
+            sprintf_s(line, "resumed: scripts back after %llu ms", script - stallStart);
+            WatchLog(line);
+        }
+        // our own per-step work running for 2 s: a hang inside it
+        if (drive && now - drive > 2000 && !driveStalled)
+        {
+            driveStalled = true;
+            sprintf_s(line, "STALL: inside our physics step for %llu ms; last stage: %s", now - drive, mark);
+            WatchLog(line);
+        }
+        else if (driveStalled && !drive)
+        {
+            driveStalled = false;
+            WatchLog("resumed: our physics step finished");
+        }
+    }
+    return 0;
 }
 
 void DriveLocked(PxScene* aScene)
@@ -427,6 +511,7 @@ bool SetGravity(uint32_t aProxy, uint32_t aIndex, bool aOn)
 
 bool SetForce(uint32_t aProxy, uint32_t aIndex, const float aForce[3], const float aTorque[3])
 {
+    g_lastScript.store(GetTickCount64(), std::memory_order_relaxed);
     EnsureHooked();
     AcquireSRWLockExclusive(&g_lock);
     auto w = Find(aProxy, aIndex, true);
@@ -492,5 +577,27 @@ uint32_t Steps()
 uint32_t Faults()
 {
     return g_faults.load(std::memory_order_relaxed);
+}
+
+void Mark(const char* aText)
+{
+    g_lastScript.store(GetTickCount64(), std::memory_order_relaxed);
+    AcquireSRWLockExclusive(&g_markLock);
+    strncpy_s(g_mark, sizeof(g_mark), aText ? aText : "", _TRUNCATE);
+    ReleaseSRWLockExclusive(&g_markLock);
+}
+
+void StartWatchdog()
+{
+    static std::atomic<bool> started{false};
+    bool expected = false;
+    if (started.compare_exchange_strong(expected, true))
+    {
+        HANDLE th = CreateThread(nullptr, 0, &WatchThread, nullptr, 0, nullptr);
+        if (th)
+        {
+            CloseHandle(th);
+        }
+    }
 }
 } // namespace MNC::PhysXBody

@@ -598,6 +598,7 @@ public class CMCSession extends ScriptableSystem {
         return;
       }
     }
+    CMWatch.Mark("session: camera");
     this.rig.Update(dt, this.m_unit.Ground(), this.CamUp(), this.CamFwd(), this.zoom);
     if this.ChaseNow() {
       // over one shoulder, so the hull never covers the reticle (CONFIG > CHASE CAMERA)
@@ -611,6 +612,7 @@ public class CMCSession extends ScriptableSystem {
       this.m_hud.Boot(dt);
       this.m_hud.Tags(dt);
     }
+    CMWatch.Mark("session: aim");
     this.UpdateAim();
     if !first {
       this.m_unit.Tick(this, dt, now);
@@ -619,9 +621,11 @@ public class CMCSession extends ScriptableSystem {
     this.m_slow += dt;
     if this.m_slow >= 0.1 {
       this.m_slow = 0.0;
+      CMWatch.Mark("session: slow tick (hud refresh)");
       if !this.SlowTick(now) {
         return;
       }
+      CMWatch.Mark("session: frame done");
     }
     this.ScheduleFrame();
   }

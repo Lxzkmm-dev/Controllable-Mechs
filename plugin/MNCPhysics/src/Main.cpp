@@ -37,7 +37,7 @@ namespace
 RED4ext::v1::PluginHandle g_handle = nullptr;
 const RED4ext::v1::Sdk* g_sdk = nullptr;
 
-constexpr int32_t VERSION = 5; // v3.2: a component's body (physical skinned meshes)
+constexpr int32_t VERSION = 6; // v3.3: the hang watchdog (v3.2: a component's body)
 
 void Log(const std::string& aText)
 {
@@ -546,6 +546,15 @@ void ComponentBody(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame,
     }
 }
 
+// v3.3: a breadcrumb from the scripts (the stage of the drone's frame), for the watchdog
+void Mark(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, void*, int64_t)
+{
+    RED4ext::CString text;
+    RED4ext::GetParameter(aFrame, &text);
+    aFrame->code++; // ParamEnd
+    MNC::PhysXBody::Mark(text.c_str());
+}
+
 template<typename T>
 void Global(const char* aName, RED4ext::ScriptingFunction_t<T> aFunc, const char* aReturn,
             std::initializer_list<std::pair<const char*, const char*>> aParams)
@@ -605,6 +614,8 @@ void PostRegisterTypes()
     Global("MNCPhysics_StepVelocity", &StepVelocity, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
     Global("MNCPhysics_StepSpin", &StepSpin, "Vector4", {{"handle:entPhysicalBodyInterface", "body"}});
     Global("MNCPhysics_StepInfo", &StepInfo, "String", {{"handle:entPhysicalBodyInterface", "body"}});
+    Global<void*>("MNCPhysics_Mark", &Mark, nullptr, {{"String", "stage"}});
+    MNC::PhysXBody::StartWatchdog();
     Log("MNC Physics v" + std::to_string(VERSION) +
         " registered: velocity and spin, per-step gravity / force / torque");
 }

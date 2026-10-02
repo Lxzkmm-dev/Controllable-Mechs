@@ -433,8 +433,10 @@ public class CMUDrone extends CMCUnit {
     }
     if this.m_proxyLive {
       // PhysX flies and collides its body; the flight model gives the forces
+      CMWatch.Mark("drone " + this.m_kind + ": flight");
       this.PhysFly(s, drone, f, side, climb, heading, dt, now);
     }
+    CMWatch.Mark("drone " + this.m_kind + ": place");
     // its own model hidden while looking through its sensor (CONFIG; the Bombus by default)
     let hide = this.m_hideInSight && s.SightView();
     if NotEquals(hide, this.m_hidden) {
@@ -452,6 +454,7 @@ public class CMUDrone extends CMCUnit {
       if !IsDefined(this.m_sense) {
         this.m_sense = CMDroneSense.Make(Equals(this.m_kind, "wyvern"));
       }
+      CMWatch.Mark("drone " + this.m_kind + ": sensor sweep");
       this.m_sense.Tick(s, this, drone, fl.pos, now, dt);
       let t = this.m_sense.track;
       t.hold = this.m_hold;
@@ -464,10 +467,14 @@ public class CMUDrone extends CMCUnit {
       if Equals(this.m_kind, "octant") {
         this.OctantTrack(s, t);
       }
+      CMWatch.Mark("drone " + this.m_kind + ": aggro");
       this.Aggro(t, now);
+      CMWatch.Mark("drone " + this.m_kind + ": hud track");
       hud.Track(t);
     }
+    CMWatch.Mark("drone " + this.m_kind + ": weapons");
     this.Weapons(s, now, dt, hud);
+    CMWatch.Mark("drone " + this.m_kind + ": effects");
     this.Downwash(now);
     this.PartFx();
     this.Lean(drone, dt);

@@ -32,4 +32,11 @@ void Release(uint32_t aProxy, uint32_t aIndex);
 bool GetReadback(uint32_t aProxy, uint32_t aIndex, Readback& aOut);
 uint32_t Steps();
 uint32_t Faults(); // per-body faults caught by the step guard (that body is then dropped)
+
+// v3.3 (plugin version 6): the hang watchdog (a60). Scripts leave a breadcrumb (the stage
+// of the drone's frame they are in); a thread checks every 0.5 s that scripts and physics
+// steps keep coming, and when either stops for 2 s writes what it knows to
+// %LOCALAPPDATA%\MNCPhysics\watchdog.log, flushed at once (a hang never flushes a log).
+void Mark(const char* aText);
+void StartWatchdog();
 } // namespace MNC::PhysXBody

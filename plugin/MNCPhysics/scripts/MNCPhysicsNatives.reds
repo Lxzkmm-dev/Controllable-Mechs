@@ -23,3 +23,5 @@ public static native func MNCPhysics_StepInfo(body: ref<PhysicalBodyInterface>) 
 // v3.2 (plugin version 5): a component's physics body where scripts get none back (the
 // physical skinned meshes' CreatePhysicalBodyInterface has no return type); null if none
 public static native func MNCPhysics_ComponentBody(component: ref<IComponent>, index: Int32) -> ref<PhysicalBodyInterface>
+// v3.3 (plugin version 6): a breadcrumb for the hang watchdog (the stage of the drone's frame)
+public static native func MNCPhysics_Mark(stage: String) -> Void

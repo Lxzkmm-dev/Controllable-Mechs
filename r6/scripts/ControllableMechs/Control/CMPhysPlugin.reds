@@ -28,3 +28,18 @@ public abstract class CMPhysPlugin {
   public static func SetVelocity(body: ref<PhysicalBodyInterface>, v: Vector4) -> Bool = false
   public static func SetSpin(body: ref<PhysicalBodyInterface>, w: Vector4) -> Bool = false
 }
+
+// plugin version 6 (v3.3): the hang watchdog's breadcrumb, the stage of the drone's frame
+// (a60: two freezes flying the Griffin left no trace; the plugin's watchdog thread writes
+// the last stage to %LOCALAPPDATA%\MNCPhysics\watchdog.log when the game stops)
+@if(ModuleExists("MNCPhysics.V33"))
+public abstract class CMWatch {
+  public static func Mark(stage: String) -> Void {
+    MNCPhysics_Mark(stage);
+  }
+}
+
+@if(!ModuleExists("MNCPhysics.V33"))
+public abstract class CMWatch {
+  public static func Mark(stage: String) -> Void {}
+}
