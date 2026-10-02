@@ -422,6 +422,7 @@ public class CMCSession extends ScriptableSystem {
       return;
     }
     let game = this.GetGameInstance();
+    CMWatch.Mark("idle: link closed (" + reason + ")");   // the plugin's watchdog: no stall, a clean end
     this.m_gen += 1;   // stops the frame loop, the watchdog and any pending timeout
     this.m_state = 0;
     if this.m_thermal != 0 {

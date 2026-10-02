@@ -300,6 +300,7 @@ DWORD WINAPI WatchThread(LPVOID)
 {
     bool scriptStalled = false;
     bool driveStalled = false;
+    bool physStalled = false;
     ULONGLONG stallStart = 0;
     WatchLog("watchdog on");
     for (;;)
@@ -315,8 +316,25 @@ DWORD WINAPI WatchThread(LPVOID)
         ReleaseSRWLockShared(&g_markLock);
         mark[sizeof(mark) - 1] = 0;
         char line[512];
+        // a clean link close marks itself idle: the scripts going quiet then is no stall (a60's
+        // first logs reported every disconnect)
+        const bool idle = strncmp(mark, "idle", 4) == 0;
+        // the game stopped stepping physics while a drone was flown (scripts heard from in
+        // the last 10 s): the engine itself stalled
+        if (!idle && step && script && now - step > 2000 && now - script < 10000 && !physStalled)
+        {
+            physStalled = true;
+            sprintf_s(line, "STALL: no physics step for %llu ms (the engine stalled); last stage: %s; last MNC script call %llu ms ago",
+                      now - step, mark, now - script);
+            WatchLog(line);
+        }
+        else if (physStalled && step && now - step < 1000)
+        {
+            physStalled = false;
+            WatchLog("resumed: physics steps back");
+        }
         // scripts were flying a drone (heard from in the last 10 min) and went quiet for 2 s
-        if (script && now - script > 2000 && now - script < 600000 && !scriptStalled)
+        if (!idle && script && now - script > 2000 && now - script < 600000 && !scriptStalled)
         {
             scriptStalled = true;
             stallStart = script;
