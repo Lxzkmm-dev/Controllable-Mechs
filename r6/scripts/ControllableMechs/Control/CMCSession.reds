@@ -65,6 +65,9 @@ public class CMCSession extends ScriptableSystem {
   private let m_camID: EntityID;
   private let m_cam: ref<CameraComponent>;
   private let m_camEntity: wref<Entity>;
+  private let m_camBase: Vector4;       // where the camera entity is (the component moves inside it)
+  private let m_camBased: Bool;
+  private let m_camLocal0: Vector4;     // the component's own offset in the entity
   private let m_attachPending: Bool;
   private let m_clip: Float;
   private let m_lastFov: Float;
@@ -376,6 +379,11 @@ public class CMCSession extends ScriptableSystem {
     }
     this.m_camEntity = entity;
     this.m_cam = cam;
+    // spawned at the rig's place: that is the base the component moves from
+    this.m_camLocal0 = cam.GetLocalPosition();
+    this.m_camLocal0.W = 0.0;
+    this.m_camBase = entity.GetWorldPosition();
+    this.m_camBased = true;
     this.ApplyCamera();
     cam.Activate(0.35, true);
     this.m_hud = this.m_unit.NewHud();
@@ -448,6 +456,7 @@ public class CMCSession extends ScriptableSystem {
     }
     this.m_cam = null;
     this.m_camEntity = null;
+    this.m_camBased = false;
     if EntityID.IsDefined(this.m_camID) {
       if hard {
         GameInstance.GetStaticEntitySystem().DespawnEntity(this.m_camID);
@@ -762,12 +771,26 @@ public class CMCSession extends ScriptableSystem {
     if !IsDefined(this.m_camEntity) || !IsDefined(this.m_cam) {
       return;
     }
-    let world: WorldPosition;
-    WorldPosition.SetVector4(world, this.rig.pos);
-    let wt: WorldTransform;
-    WorldTransform.SetWorldPosition(wt, world);
-    WorldTransform.SetOrientation(wt, CMCSession.Identity());
-    this.m_camEntity.SetWorldTransform(wt);   // the entity stays unrotated,
+    // The camera entity stays where it was spawned and the camera component moves inside
+    // it. Moved by its entity's transform each frame, the engine drew the camera two frames
+    // after it was set, while a drone (an NPC) is drawn one frame after: a21's frame log had
+    // the engine's camera 0.47-0.71 m behind where it was put at 19 m/s, so the first-person
+    // view trailed the drone by a frame (Omar, Phase 4). The entity is only moved again
+    // if the camera gets 2 km from it (the uplink reaches 500 m).
+    let off = this.rig.pos - this.m_camBase;
+    if !this.m_camBased || Vector4.Length(off) > 2000.0 {
+      let world: WorldPosition;
+      WorldPosition.SetVector4(world, this.rig.pos);
+      let wt: WorldTransform;
+      WorldTransform.SetWorldPosition(wt, world);
+      WorldTransform.SetOrientation(wt, CMCSession.Identity());
+      this.m_camEntity.SetWorldTransform(wt);   // the entity stays unrotated,
+      this.m_camBase = this.rig.pos;
+      this.m_camBased = true;
+      off = new Vector4(0.0, 0.0, 0.0, 0.0);
+    }
+    off.W = 0.0;
+    this.m_cam.SetLocalPosition(this.m_camLocal0 + off);
     let e: EulerAngles;                       // the component carries the view
     e.Yaw = this.rig.yaw + this.rig.kickYaw;       // recoil shakes the picture,
     e.Pitch = this.rig.pitch + this.rig.kickPitch;   // not the aim
