@@ -65,12 +65,12 @@ public class CMDroneHud extends CMPilotHud {
   private let m_ocMts: ref<inkText>;
   private let m_ocSensor: String;
   private let m_ocZoomed: Bool;
-  private let m_ocLinkBar: array<ref<inkRectangle>>;
+  private let m_ocLink: ref<CMSlider>;
   private let m_ocLinkPct: ref<inkText>;
   private let m_ocLinkRng: ref<inkText>;
   private let m_ocLaser: ref<inkText>;
   private let m_ocTrack: ref<inkText>;
-  private let m_ocRecDot: ref<inkRectangle>;
+  private let m_ocRecDot: ref<inkImage>;
   private let m_ocTime: ref<inkText>;
   private let m_ocClock: Float;
   // the target block
@@ -82,25 +82,25 @@ public class CMDroneHud extends CMPilotHud {
   // the centre
   private let m_ocLcue: ref<inkCanvas>;
   private let m_ocLasing: ref<inkText>;
-  private let m_ocDepNeedle: ref<inkRectangle>;
+  private let m_ocDepNeedle: ref<inkImage>;
   private let m_ocDepT: ref<inkText>;
-  private let m_ocSplash: array<ref<inkRectangle>>;
-  private let m_ocLeader: array<ref<inkRectangle>>;
+  private let m_ocSplash: array<ref<inkImage>>;
+  private let m_ocLeader: array<ref<inkImage>>;
   private let m_ocSplashT: ref<inkText>;
   private let m_ocSplashT2: ref<inkText>;
   // the map
   private let m_ocMap: ref<inkCanvas>;
-  private let m_ocDots: array<ref<inkRectangle>>;
+  private let m_ocDots: array<ref<inkImage>>;
   private let m_ocSelf: ref<inkCanvas>;
   private let m_ocFoot: array<ref<inkRectangle>>;
-  private let m_ocFootEdge: array<ref<inkRectangle>>;
-  private let m_ocOrbit: array<ref<inkRectangle>>;
+  private let m_ocFootEdge: array<ref<inkImage>>;
+  private let m_ocOrbit: array<ref<inkImage>>;
   private let m_ocTgtMark: ref<inkCanvas>;
   private let m_ocTgtLbl: ref<inkText>;
-  private let m_ocV: ref<inkRectangle>;
+  private let m_ocV: ref<inkImage>;
   private let m_ocVLbl: ref<inkText>;
   // the stores page
-  private let m_ocRows: array<ref<inkRectangle>>;
+  private let m_ocRows: array<ref<inkImage>>;
   private let m_ocRowSta: array<ref<inkText>>;
   private let m_ocRowNames: array<ref<inkText>>;
   private let m_ocRowSubs: array<ref<inkText>>;
@@ -203,7 +203,6 @@ public class CMDroneHud extends CMPilotHud {
     ArrayClear(this.m_ocRowNames);
     ArrayClear(this.m_ocRowSubs);
     ArrayClear(this.m_ocRowStats);
-    ArrayClear(this.m_ocLinkBar);
     ArrayClear(this.m_ocSplash);
     ArrayClear(this.m_ocLeader);
     ArrayClear(this.m_ocFoot);
@@ -246,8 +245,7 @@ public class CMDroneHud extends CMPilotHud {
   }
   // a panel: dark glass inside a thin border (the mockup's)
   private func OcPanel(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float) -> Void {
-    CMPilotHud.Bar(root, x, y, w, h, CMInk.Glass(), CMInk.GlassOp());
-    this.Frame(root, x, y, w, h, 0.75);
+    CMKit.Panel(root, x, y, w, h, this.G(), 0.75);
   }
 
   // ---- the heading tape: a tick every 5 deg (long every 10), a label every 10 -----------
@@ -264,14 +262,17 @@ public class CMDroneHud extends CMPilotHud {
       ArrayPush(this.m_hdgLabels, this.Txt(root, cx, 176.0, "00", 26, true));
       i += 1;
     }
-    this.Frame(root, cx - 85.0, 52.0, 170.0, 64.0, 1.0);
+    CMKit.Box(root, cx - 85.0, 52.0, 170.0, 64.0, this.G(), 1.0);
     this.m_hdgBox = this.Txt(root, cx, 60.0, "000", 44, true);
     this.m_hdgBox.SetTintColor(this.Hi());
     this.Line(root, cx - 1.0, 116.0, 2.0, 30.0, 1.0);
     // the gunship banner (shown while holding)
-    this.m_holdBox = this.Frame(root, cx - 420.0, 226.0, 840.0, 52.0, 1.0);
-    this.m_holdBox.SetTintColor(CMPilotHud.Caution());
-    CMPilotHud.Bar(this.m_holdBox, 2.0, 2.0, 836.0, 48.0, CMInk.Glass(), CMInk.GlassOp());
+    let hb = new inkCanvas();
+    hb.SetMargin(inkMargin(cx - 420.0, 226.0, 0.0, 0.0));
+    hb.SetSize(Vector2(840.0, 52.0));
+    hb.Reparent(root);
+    CMKit.Box(hb, 0.0, 0.0, 840.0, 52.0, CMPilotHud.Caution(), 1.0);
+    this.m_holdBox = hb;
     this.m_holdT = this.Txt(root, cx, 234.0, "", 28, true);
     this.m_holdT.SetTintColor(CMPilotHud.Caution());
     this.m_holdBox.SetVisible(false);
@@ -344,10 +345,8 @@ public class CMDroneHud extends CMPilotHud {
     }
     this.Txt(root, xl + 20.0, 548.0, "M/S", 26, true);
     this.Txt(root, xr - 20.0, 548.0, "ALT M", 26, true);
-    CMPilotHud.Bar(root, xl - 210.0, 1050.0, 190.0, 62.0, CMInk.Glass(), CMInk.GlassOp());
-    CMPilotHud.Bar(root, xr + 20.0, 1050.0, 190.0, 62.0, CMInk.Glass(), CMInk.GlassOp());
-    this.Frame(root, xl - 210.0, 1050.0, 190.0, 62.0, 1.0);
-    this.Frame(root, xr + 20.0, 1050.0, 190.0, 62.0, 1.0);
+    CMKit.Box(root, xl - 210.0, 1050.0, 190.0, 62.0, this.G(), 1.0);
+    CMKit.Box(root, xr + 20.0, 1050.0, 190.0, 62.0, this.G(), 1.0);
     this.m_speedText = this.Txt(root, xl - 115.0, 1054.0, "0.0", 44, true);
     this.m_altText = this.Txt(root, xr + 115.0, 1054.0, "000", 44, true);
     this.m_speedText.SetTintColor(this.Hi());
@@ -392,7 +391,7 @@ public class CMDroneHud extends CMPilotHud {
     this.Line(c, ox - b, oy + b - L, 3.0, L, 1.0);
     this.Line(c, ox + b - L, oy + b - 3.0, L, 3.0, 1.0);
     this.Line(c, ox + b - 3.0, oy + b - L, 3.0, L, 1.0);
-    this.Line(c, ox - 3.0, oy - 3.0, 6.0, 6.0, 1.0);
+    CMKit.Disc(c, ox, oy, 4.0, this.G(), 1.0);
     // the laser range, the L cue and LASING
     this.m_lrf = this.Txt(root, cx - 20.0, cy + 330.0, "LRF ---- M", 36, false);
     this.m_lrf.SetAnchorPoint(Vector2(1.0, 0.0));
@@ -400,7 +399,7 @@ public class CMDroneHud extends CMPilotHud {
     l.SetMargin(inkMargin(cx + 10.0, cy + 330.0, 0.0, 0.0));
     l.SetSize(Vector2(40.0, 40.0));
     l.Reparent(root);
-    CMPilotHud.Bar(l, 0.0, 0.0, 40.0, 40.0, CMPilotHud.Caution(), 1.0);
+    CMKit.Fill(l, 0.0, 0.0, 40.0, 40.0, CMPilotHud.Caution(), 1.0);
     let lt = CMPilotHud.Label(l, inkEAnchor.TopLeft, 20.0, 2.0, "L", 30, n"Semi-Bold", CMPilotHud.Black());
     lt.SetAnchorPoint(Vector2(0.5, 0.0));
     this.m_ocLcue = l;
@@ -423,7 +422,7 @@ public class CMDroneHud extends CMPilotHud {
       CMInk.Line(root, ax + SinF(a) * r, ay - CosF(a) * r, ax + SinF(a) * (r - 18.0), ay - CosF(a) * (r - 18.0), 2.0, this.G(), 0.8);
       tk += 1;
     }
-    this.m_ocDepNeedle = CMPilotHud.Bar(root, 0.0, 0.0, 1.0, 6.0, CMPilotHud.Caution(), 1.0);
+    this.m_ocDepNeedle = CMKit.Stroke(root, CMPilotHud.Caution(), 1.0);
     this.m_ocDepT = this.TxtC(root, ax - r - 30.0, ay - 50.0, "DEP 00", 30, this.Hi());
     // the mortar's predicted impact (kept for its callers; the spread below shows it)
     let im = new inkCanvas();
@@ -435,14 +434,14 @@ public class CMDroneHud extends CMPilotHud {
     let a2 = CMPilotHud.Caution();
     let n = 0;
     while n < 32 {
-      let s = CMPilotHud.Bar(root, 0.0, 0.0, 1.0, 3.0, a2, 1.0);
+      let s = CMKit.Stroke(root, a2, 1.0);
       s.SetVisible(false);
       ArrayPush(this.m_ocSplash, s);
       n += 1;
     }
     n = 0;
     while n < 2 {
-      let s = CMPilotHud.Bar(root, 0.0, 0.0, 1.0, 2.0, a2, 0.9);
+      let s = CMKit.Stroke(root, a2, 0.9);
       s.SetVisible(false);
       ArrayPush(this.m_ocLeader, s);
       n += 1;
@@ -470,12 +469,7 @@ public class CMDroneHud extends CMPilotHud {
     this.m_ocMts = this.TxtC(root, x + 130.0, r1, "", 28, this.G());
     this.TxtC(root, x + 22.0, r2, "LINK", 28, this.Lbl());
     this.TxtC(root, x + 130.0, r2, "C-BAND", 28, this.G());
-    let b = 0;
-    while b < 10 {
-      ArrayPush(this.m_ocLinkBar, CMPilotHud.Bar(root, x + 300.0 + Cast<Float>(b) * 20.0, r2 + 8.0, 16.0, 22.0, this.G(), 1.0));
-      b += 1;
-    }
-    this.Frame(root, x + 296.0, r2 + 4.0, 204.0, 30.0, 0.8);
+    this.m_ocLink = CMSlider.Make(root, x + 300.0, r2 + 10.0, 200.0, 16.0, false, this.G());
     this.m_ocLinkPct = this.TxtC(root, x + 520.0, r2, "", 28, this.Hi());
     this.m_ocLinkRng = this.TxtC(root, x + 640.0, r2, "", 28, this.Hi());
     this.TxtC(root, x + 22.0, r3, "LASER", 28, this.Lbl());
@@ -483,7 +477,7 @@ public class CMDroneHud extends CMPilotHud {
     this.TxtC(root, x + 300.0, r3, "AUTOTRACK", 28, this.Lbl());
     this.m_ocTrack = this.TxtC(root, x + 470.0, r3, "", 28, this.G());
     this.TxtC(root, x + 22.0, r4, "REC", 28, this.Hi());
-    this.m_ocRecDot = CMPilotHud.Bar(root, x + 90.0, r4 + 8.0, 18.0, 18.0, CMPilotHud.Red(), 1.0);
+    this.m_ocRecDot = CMKit.Disc(root, x + 99.0, r4 + 17.0, 9.0, CMPilotHud.Red(), 1.0);
     this.m_ocTime = this.TxtC(root, x + 130.0, r4, "", 28, this.Hi());
   }
 
@@ -527,8 +521,8 @@ public class CMDroneHud extends CMPilotHud {
     m.Reparent(root);
     this.m_ocMap = m;
     let c = this.OC_MAP_R;
-    CMInk.Ring(m, c, c, this.OC_MAP_R, 72, 2.0, this.G(), 0.7);
-    CMInk.Ring(m, c, c, this.OC_MAP_R * 0.5, 48, 2.0, this.G(), 0.4);
+    CMInk.Circle(m, c, c, this.OC_MAP_R, this.G(), 0.7);
+    CMInk.Circle(m, c, c, this.OC_MAP_R * 0.5, this.G(), 0.4);
     this.Line(m, c - 1.0, 0.0, 2.0, c * 2.0, 0.15);
     this.Line(m, 0.0, c - 1.0, c * 2.0, 2.0, 0.15);
     // the sensor's footprint, filled
@@ -536,7 +530,7 @@ public class CMDroneHud extends CMPilotHud {
     this.m_ocFoot = CMInk.FillBars(m, 110, this.G(), 0.32);
     let fe = 0;
     while fe < 3 {
-      let b = CMPilotHud.Bar(m, 0.0, 0.0, 1.0, 3.0, this.G(), 0.95);
+      let b = CMKit.Stroke(m, this.G(), 0.95);
       b.SetVisible(false);
       ArrayPush(this.m_ocFootEdge, b);
       fe += 1;
@@ -544,7 +538,7 @@ public class CMDroneHud extends CMPilotHud {
     // the orbit round the target at the standoff: dashed amber
     let n = 0;
     while n < 32 {
-      let s = CMPilotHud.Bar(m, 0.0, 0.0, 1.0, 3.0, CMPilotHud.Caution(), 1.0);
+      let s = CMKit.Stroke(m, CMPilotHud.Caution(), 1.0);
       s.SetVisible(false);
       ArrayPush(this.m_ocOrbit, s);
       n += 1;
@@ -552,22 +546,21 @@ public class CMDroneHud extends CMPilotHud {
     // the contacts
     let i = 0;
     while i < 32 {
-      let d = CMPilotHud.Bar(m, 0.0, 0.0, 14.0, 14.0, this.G(), 1.0);
+      let d = CMKit.Disc(m, 0.0, 0.0, 7.0, this.G(), 1.0);
       d.SetVisible(false);
       d.SetRenderTransformPivot(Vector2(0.5, 0.5));
       ArrayPush(this.m_ocDots, d);
       i += 1;
     }
     // V: a light-blue dot and its letter
-    this.m_ocV = CMPilotHud.Bar(m, 0.0, 0.0, 16.0, 16.0, new HDRColor(0.45, 0.85, 1.15, 1.0), 1.0);
+    this.m_ocV = CMKit.Disc(m, 0.0, 0.0, 8.0, new HDRColor(0.45, 0.85, 1.15, 1.0), 1.0);
     this.m_ocVLbl = this.TxtC(m, 0.0, 0.0, "V", 24, new HDRColor(0.45, 0.85, 1.15, 1.0));
     // the target: a red diamond, TGT beside it
     let tg = new inkCanvas();
     tg.SetSize(Vector2(24.0, 24.0));
     tg.SetRenderTransformPivot(Vector2(0.5, 0.5));
-    tg.SetRotation(45.0);
     tg.Reparent(m);
-    CMPilotHud.Bar(tg, 4.0, 4.0, 16.0, 16.0, CMPilotHud.Red(), 1.0);
+    CMKit.Img(tg, n"diamond", 0.0, 0.0, 24.0, 24.0, CMPilotHud.Red(), 1.0);
     this.m_ocTgtMark = tg;
     this.m_ocTgtLbl = this.TxtC(m, 0.0, 0.0, "TGT", 24, CMPilotHud.Red());
     // the drone: a white triangle (a chevron) in the middle, pointing where it looks
@@ -587,7 +580,7 @@ public class CMDroneHud extends CMPilotHud {
     let i = 0;
     while i < 3 {
       let ry = y + 56.0 + Cast<Float>(i) * 92.0;
-      let row = CMPilotHud.Bar(root, x + 8.0, ry, w - 16.0, 80.0, this.G(), 0.85);
+      let row = CMKit.Fill(root, x + 8.0, ry, w - 16.0, 80.0, this.G(), 0.85);
       ArrayPush(this.m_ocRows, row);
       ArrayPush(this.m_ocRowSta, this.TxtC(root, x + 22.0, ry + 22.0, "STA" + IntToString(i + 1), 26, this.Lbl()));
       ArrayPush(this.m_ocRowNames, this.TxtC(root, x + 110.0, ry + 14.0, names[i], 38, this.Hi()));
@@ -654,11 +647,7 @@ public class CMDroneHud extends CMPilotHud {
     }
     this.m_name.SetText(s.title + "  //  GUNSHIP");
     let sig = ClampF(s.signal, 0.0, 1.0);
-    let b = 0;
-    while b < ArraySize(this.m_ocLinkBar) {
-      this.m_ocLinkBar[b].SetOpacity(sig * 10.0 > Cast<Float>(b) + 0.05 ? 1.0 : 0.15);
-      b += 1;
-    }
+    this.m_ocLink.Set(sig, sig < 0.35 ? CMPilotHud.Red() : this.G());
     this.m_ocLinkPct.SetText(IntToString(RoundF(sig * 100.0)) + "%");
     this.m_ocLinkRng.SetText(FloatToStringPrec(s.distance / 1000.0, 2) + "KM");
     // the game's day and time, and the flight's clock
@@ -897,7 +886,6 @@ public class CMDroneHud extends CMPilotHud {
         if show {
           d.SetMargin(inkMargin(c + dx - 7.0, c + dy - 7.0, 0.0, 0.0));
           d.SetTintColor(CMDroneHud.MapColor(ct.kind));
-          d.SetRotation(45.0);
         }
       }
       i += 1;

@@ -172,35 +172,44 @@ public abstract class CMInk {
   }
 
   // a ring of short bars, each tangent to the circle; the first at the top, clockwise
-  public static func Ring(root: ref<inkCanvas>, cx: Float, cy: Float, r: Float, segs: Int32, thick: Float, c: HDRColor, op: Float) -> array<ref<inkRectangle>> {
-    let out: array<ref<inkRectangle>>;
-    let len = 6.2832 * r / Cast<Float>(segs) + 1.0;
+  // a ring of short strokes (round-capped kit pills, a52: smooth), each tangent to the
+  // circle; the first at the top, clockwise. For arcs that fill or hide by segment; a whole
+  // static circle is Circle's (one image)
+  public static func Ring(root: ref<inkCanvas>, cx: Float, cy: Float, r: Float, segs: Int32, thick: Float, c: HDRColor, op: Float) -> array<ref<inkWidget>> {
+    let out: array<ref<inkWidget>>;
+    let len = 6.2832 * r / Cast<Float>(segs);
     let i = 0;
     while i < segs {
-      let a = Cast<Float>(i) / Cast<Float>(segs) * 360.0;
-      let rad = Deg2Rad(a);
-      let b = CMPilotHud.Bar(root, cx + SinF(rad) * r - len * 0.5, cy - CosF(rad) * r - thick * 0.5, len, thick, c, op);
-      b.SetRenderTransformPivot(Vector2(0.5, 0.5));
-      b.SetRotation(a);
+      let a0 = Deg2Rad(Cast<Float>(i) / Cast<Float>(segs) * 360.0);
+      let a1 = Deg2Rad(Cast<Float>(i + 1) / Cast<Float>(segs) * 360.0);
+      let b = CMKit.Stroke(root, c, op);
+      CMInk.Seg(b, cx + SinF(a0) * r, cy - CosF(a0) * r, cx + SinF(a1) * r, cy - CosF(a1) * r, thick);
       ArrayPush(out, b);
       i += 1;
     }
     return out;
   }
 
-  // a bar laid from one point to another
-  public static func Seg(b: ref<inkRectangle>, x1: Float, y1: Float, x2: Float, y2: Float, thick: Float) -> Void {
+  // a whole circle: one smooth ring image
+  public static func Circle(root: ref<inkCanvas>, cx: Float, cy: Float, r: Float, c: HDRColor, op: Float) -> ref<inkImage> {
+    let part = r <= 40.0 ? n"ring_s" : (r <= 170.0 ? n"ring_m" : n"ring_l");
+    return CMKit.Img(root, part, cx - r, cy - r, r * 2.0, r * 2.0, c, op);
+  }
+
+  // a stroke laid from one point to another (a kit pill: round caps, smooth when turned; a
+  // plain bar works too)
+  public static func Seg(b: ref<inkWidget>, x1: Float, y1: Float, x2: Float, y2: Float, thick: Float) -> Void {
     let dx = x2 - x1;
     let dy = y2 - y1;
-    let len = SqrtF(dx * dx + dy * dy);
+    let len = SqrtF(dx * dx + dy * dy) + thick;
     b.SetRenderTransformPivot(Vector2(0.5, 0.5));
     b.SetMargin(inkMargin((x1 + x2) * 0.5 - len * 0.5, (y1 + y2) * 0.5 - thick * 0.5, 0.0, 0.0));
     b.SetSize(Vector2(len, thick));
     b.SetRotation(Rad2Deg(AtanF(dy, dx)));
   }
 
-  public static func Line(root: ref<inkCanvas>, x1: Float, y1: Float, x2: Float, y2: Float, thick: Float, c: HDRColor, op: Float) -> ref<inkRectangle> {
-    let b = CMPilotHud.Bar(root, 0.0, 0.0, 1.0, thick, c, op);
+  public static func Line(root: ref<inkCanvas>, x1: Float, y1: Float, x2: Float, y2: Float, thick: Float, c: HDRColor, op: Float) -> ref<inkWidget> {
+    let b = CMKit.Stroke(root, c, op);
     CMInk.Seg(b, x1, y1, x2, y2, thick);
     return b;
   }
@@ -211,18 +220,7 @@ public abstract class CMInk {
     d.SetSize(Vector2(s, s));
     d.SetRenderTransformPivot(Vector2(0.5, 0.5));
     d.Reparent(root);
-    let e = s * 0.7071;
-    let o = (s - e) * 0.5;
-    let box = new inkCanvas();
-    box.SetMargin(inkMargin(o, o, 0.0, 0.0));
-    box.SetSize(Vector2(e, e));
-    box.SetRenderTransformPivot(Vector2(0.5, 0.5));
-    box.SetRotation(45.0);
-    box.Reparent(d);
-    CMPilotHud.Bar(box, 0.0, 0.0, e, 4.0, c, 1.0);
-    CMPilotHud.Bar(box, 0.0, e - 4.0, e, 4.0, c, 1.0);
-    CMPilotHud.Bar(box, 0.0, 0.0, 4.0, e, c, 1.0);
-    CMPilotHud.Bar(box, e - 4.0, 0.0, 4.0, e, c, 1.0);
+    CMKit.Img(d, n"diamond_line", 0.0, 0.0, s, s, c, 1.0);
     return d;
   }
 
@@ -232,11 +230,9 @@ public abstract class CMInk {
     v.SetSize(Vector2(s, s));
     v.SetRenderTransformPivot(Vector2(0.5, 0.5));
     v.Reparent(root);
-    CMInk.Line(v, 0.0, s * 0.75, s * 0.5, s * 0.25, thick, c, 1.0);
-    CMInk.Line(v, s * 0.5, s * 0.25, s, s * 0.75, thick, c, 1.0);
+    CMKit.Img(v, n"chevron", 0.0, s * 0.2, s, s * 0.625, c, 1.0);
     return v;
   }
-
   // the contacts' colours, one set per display
   public static func KindColor(k: Int32, acc: HDRColor) -> HDRColor {
     switch k {
@@ -258,5 +254,101 @@ public abstract class CMInk {
   public static func Hdg(h: Float) -> Int32 {
     let d = RoundF(h) % 360;
     return d < 0 ? d + 360 : d;
+  }
+}
+
+// =============================================================================
+// The shape kit (a52, Omar: the HUDs looked built from squares): smooth anti-aliased shapes
+// from mnc\hud\ui_kit.inkatlas (tools/hud/uikit.py), drawn tinted. Pills and rounded panels
+// nine-slice: any length keeps its round caps and corners.
+// =============================================================================
+public abstract class CMKit {
+  public static func Atlas() -> ResRef = r"mnc\\hud\\ui_kit.inkatlas"
+
+  public static func Img(root: ref<inkCanvas>, part: CName, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> {
+    let img = new inkImage();
+    img.SetAtlasResource(CMKit.Atlas());
+    img.SetTexturePart(part);
+    img.SetMargin(inkMargin(x, y, 0.0, 0.0));
+    img.SetSize(Vector2(w, h));
+    img.SetTintColor(c);
+    img.SetOpacity(op);
+    img.SetInteractive(false);
+    img.Reparent(root);
+    return img;
+  }
+
+  public static func Nine(root: ref<inkCanvas>, part: CName, grid: inkMargin, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> {
+    let img = CMKit.Img(root, part, x, y, w, h, c, op);
+    img.SetNineSliceScale(true);
+    img.SetNineSliceGrid(grid);
+    return img;
+  }
+
+  // a horizontal pill (round caps), and a vertical one
+  public static func Pill(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Nine(root, n"pill_h", inkMargin(8.0, 0.0, 8.0, 0.0), x, y, w, h, c, op)
+  public static func VPill(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Nine(root, n"pill_v", inkMargin(0.0, 8.0, 0.0, 8.0), x, y, w, h, c, op)
+  // a stroke for CMInk.Seg: a thin pill
+  public static func Stroke(root: ref<inkCanvas>, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Pill(root, 0.0, 0.0, 4.0, 3.0, c, op)
+
+  // a rounded panel: dark glass and a thin line round it; `small` for boxes and rows
+  public static func Panel(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, line: HDRColor, lineOp: Float) -> Void {
+    CMKit.Nine(root, n"rrect_fill", inkMargin(14.0, 14.0, 14.0, 14.0), x, y, w, h, CMInk.Glass(), CMInk.GlassOp());
+    CMKit.Nine(root, n"rrect_line", inkMargin(14.0, 14.0, 14.0, 14.0), x, y, w, h, line, lineOp);
+  }
+  public static func Box(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, line: HDRColor, lineOp: Float) -> ref<inkImage> {
+    CMKit.Nine(root, n"rrect_fill_s", inkMargin(7.0, 7.0, 7.0, 7.0), x, y, w, h, CMInk.Glass(), CMInk.GlassOp());
+    return CMKit.Nine(root, n"rrect_line_s", inkMargin(7.0, 7.0, 7.0, 7.0), x, y, w, h, line, lineOp);
+  }
+  public static func Fill(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Nine(root, n"rrect_fill_s", inkMargin(7.0, 7.0, 7.0, 7.0), x, y, w, h, c, op)
+
+  // a disc centred on (cx, cy)
+  public static func Disc(root: ref<inkCanvas>, cx: Float, cy: Float, r: Float, c: HDRColor, op: Float) -> ref<inkImage> = CMKit.Img(root, n"disc", cx - r, cy - r, r * 2.0, r * 2.0, c, op)
+
+  // move a disc
+  public static func Place(img: ref<inkWidget>, cx: Float, cy: Float, r: Float) -> Void {
+    img.SetMargin(inkMargin(cx - r, cy - r, 0.0, 0.0));
+    img.SetSize(Vector2(r * 2.0, r * 2.0));
+  }
+}
+
+// A smooth meter: a dim pill track and a bright pill fill (round caps both), horizontal
+// filling from the left, or vertical filling from the bottom (a52: meters were rows of
+// squares, Omar)
+public class CMSlider {
+  public let track: ref<inkImage>;
+  public let fill: ref<inkImage>;
+  private let x: Float;
+  private let y: Float;
+  private let w: Float;
+  private let h: Float;
+  private let vertical: Bool;
+
+  public static func Make(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, vertical: Bool, c: HDRColor) -> ref<CMSlider> {
+    let s = new CMSlider();
+    s.x = x;
+    s.y = y;
+    s.w = w;
+    s.h = h;
+    s.vertical = vertical;
+    s.track = vertical ? CMKit.VPill(root, x, y, w, h, c, 0.18) : CMKit.Pill(root, x, y, w, h, c, 0.18);
+    s.fill = vertical ? CMKit.VPill(root, x, y, w, h, c, 1.0) : CMKit.Pill(root, x, y, w, h, c, 1.0);
+    return s;
+  }
+
+  public func Set(f: Float, c: HDRColor) -> Void {
+    let v = ClampF(f, 0.0, 1.0);
+    this.fill.SetVisible(v > 0.005);
+    this.fill.SetTintColor(c);
+    this.track.SetTintColor(c);
+    if this.vertical {
+      let len = MaxF(this.w, this.h * v);
+      this.fill.SetMargin(inkMargin(this.x, this.y + this.h - len, 0.0, 0.0));
+      this.fill.SetSize(Vector2(this.w, len));
+    } else {
+      let len = MaxF(this.h, this.w * v);
+      this.fill.SetMargin(inkMargin(this.x, this.y, 0.0, 0.0));
+      this.fill.SetSize(Vector2(len, this.h));
+    }
   }
 }

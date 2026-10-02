@@ -30,17 +30,17 @@ public class CMGriffinHud extends CMBombusHud {
   private let m_grClock: Float;
   private let m_grBoot: Float;
   private let m_grLockBars: array<ref<inkRectangle>>;
-  private let m_grLockHp: ref<inkRectangle>;
-  private let m_grLockHpBg: ref<inkRectangle>;
+  private let m_grLockHp: ref<inkImage>;
+  private let m_grLockHpBg: ref<inkImage>;
   private let m_grLockT: ref<inkText>;
   private let m_grLockD: ref<inkText>;
   private let m_grLead: ref<inkCanvas>;
   private let m_grHostBars: array<ref<inkRectangle>>;   // every hostile in view: 8 corner bars each (a51)
   private let m_grHostD: array<ref<inkText>>;
-  private let m_grLeadLine: ref<inkRectangle>;
-  private let m_grHeatArc: array<ref<inkRectangle>>;   // both guns' lit arcs, 15 segments each
-  private let m_grSpoolBar: array<ref<inkRectangle>>;
-  private let m_grNeedle: ref<inkRectangle>;
+  private let m_grLeadLine: ref<inkImage>;
+  private let m_grHeatArc: array<ref<inkWidget>>;   // both guns' lit arcs, 15 segments each
+  private let m_grSpool: ref<CMSlider>;
+  private let m_grNeedle: ref<inkImage>;
   private let m_grThreat: array<ref<inkCanvas>>;
   private let m_grThreatT: array<Float>;
   private let m_grThreatA: array<Float>;
@@ -163,11 +163,11 @@ public class CMGriffinHud extends CMBombusHud {
     this.SetT(this.GR_LAMMO, "UNLTD");
     this.SetT(this.GR_RAMMO, "UNLTD");
     // the gun cross: a ring, its arms, a centre pip
-    CMInk.Ring(root, cx, cy, 60.0, 36, 3.0, this.Acc(), 1.0);
+    CMInk.Circle(root, cx, cy, 60.0, this.Acc(), 1.0);
     CMPilotHud.Bar(root, cx - 120.0, cy - 2.0, 50.0, 4.0, this.Acc(), 1.0);
     CMPilotHud.Bar(root, cx + 70.0, cy - 2.0, 50.0, 4.0, this.Acc(), 1.0);
     CMPilotHud.Bar(root, cx - 2.0, cy - 120.0, 4.0, 50.0, this.Acc(), 1.0);
-    CMPilotHud.Bar(root, cx - 5.0, cy - 5.0, 10.0, 10.0, this.Acc(), 1.0);
+    CMKit.Disc(root, cx, cy, 6.0, this.Acc(), 1.0);
     // each gun's heat: an arc over its HEAT, 140 degrees, lit from its left end (the two
     // guns share the heat, as the Octant's do)
     let side = 0;
@@ -191,11 +191,7 @@ public class CMGriffinHud extends CMBombusHud {
     // speed and height boxes; the spool bar
     this.Brackets(root, cx - 1000.0, 1020.0, 260.0, 120.0);
     this.Brackets(root, cx + 740.0, 1020.0, 260.0, 120.0);
-    let b = 0;
-    while b < 12 {
-      ArrayPush(this.m_grSpoolBar, CMPilotHud.Bar(root, cx - 1000.0 + Cast<Float>(b) * 20.0, 1110.0, 14.0, 28.0, this.Acc(), 1.0));
-      b += 1;
-    }
+    this.m_grSpool = CMSlider.Make(root, cx - 1000.0, 1112.0, 240.0, 18.0, false, this.Acc());
     // the lock: eight corner bars, its health, its words; the lead pip and its line
     let n = 0;
     while n < 8 {
@@ -218,17 +214,17 @@ public class CMGriffinHud extends CMBombusHud {
       ArrayPush(this.m_grHostD, d);
       hb += 1;
     }
-    this.m_grLockHpBg = CMPilotHud.Bar(root, 0.0, 0.0, 10.0, 10.0, this.Hot(), 0.25);
-    this.m_grLockHp = CMPilotHud.Bar(root, 0.0, 0.0, 10.0, 10.0, this.Hot(), 0.95);
+    this.m_grLockHpBg = CMKit.Pill(root, 0.0, 0.0, 10.0, 10.0, this.Hot(), 0.25);
+    this.m_grLockHp = CMKit.Pill(root, 0.0, 0.0, 10.0, 10.0, this.Hot(), 0.95);
     this.m_grLockT = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 28, n"Semi-Bold", this.Hot());
     this.m_grLockT.SetAnchorPoint(Vector2(0.5, 1.0));
     this.m_grLockD = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 26, n"Medium", this.Hot());
     this.m_grLockD.SetAnchorPoint(Vector2(0.5, 0.0));
-    this.m_grLeadLine = CMPilotHud.Bar(root, 0.0, 0.0, 1.0, 2.0, CMPilotHud.Caution(), 0.6);
+    this.m_grLeadLine = CMKit.Stroke(root, CMPilotHud.Caution(), 0.6);
     let lead = new inkCanvas();
     lead.SetSize(Vector2(40.0, 40.0));
     lead.Reparent(root);
-    CMInk.Ring(lead, 20.0, 20.0, 18.0, 16, 4.0, CMPilotHud.Caution(), 1.0);
+    CMInk.Circle(lead, 20.0, 20.0, 18.0, CMPilotHud.Caution(), 1.0);
     this.m_grLead = lead;
     this.GrLockShow(false);
     // TAKING FIRE: four chevrons round the view
@@ -254,7 +250,7 @@ public class CMGriffinHud extends CMBombusHud {
       gr[q].SetVisible(a >= 270.0);
       q += 1;
     }
-    this.m_grNeedle = CMPilotHud.Bar(root, gx, gy, this.GR_GAUGE_R, 6.0, this.Ink(), 1.0);
+    this.m_grNeedle = CMKit.Stroke(root, this.Ink(), 1.0);
     this.Brackets(root, x0 + 180.0, 1840.0, 1000.0, 150.0);
   }
 
@@ -312,11 +308,7 @@ public class CMGriffinHud extends CMBombusHud {
     this.SetT(this.GR_HDG, "HDG " + CMPilotHud.Pad3(h) + "  " + CMPilotHud.Cardinal(h));
     this.SetT(this.GR_RNG, s.range > 0.0 && s.range < 2000.0 ? "RNG " + IntToString(RoundF(s.range)) + " M" : "RNG ---- M");
     let spool = ClampF(s.spool, 0.0, 1.0);
-    let b = 0;
-    while b < ArraySize(this.m_grSpoolBar) {
-      this.m_grSpoolBar[b].SetOpacity(spool * 12.0 > Cast<Float>(b) + 0.1 ? 1.0 : 0.2);
-      b += 1;
-    }
+    this.m_grSpool.Set(spool, this.Acc());
     let warn = s.warning;
     if s.signal < 0.35 {
       warn = "LINK WEAK";
@@ -416,7 +408,8 @@ public class CMGriffinHud extends CMBombusHud {
     this.m_grLockHpBg.SetSize(Vector2(hw, 10.0));
     this.m_grLockHpBg.SetTintColor(col);
     this.m_grLockHp.SetMargin(inkMargin(x, y + hh + 12.0, 0.0, 0.0));
-    this.m_grLockHp.SetSize(Vector2(hw * ClampF(c.hp, 0.0, 1.0), 10.0));
+    this.m_grLockHp.SetSize(Vector2(MaxF(10.0, hw * ClampF(c.hp, 0.0, 1.0)), 10.0));
+    this.m_grLockHp.SetVisible(c.hp > 0.01);
     this.m_grLockHp.SetTintColor(col);
     this.m_grLockD.SetMargin(inkMargin(x + hw * 0.5, y + hh + 30.0, 0.0, 0.0));
     this.m_grLockD.SetText(IntToString(RoundF(c.dist)) + " M");

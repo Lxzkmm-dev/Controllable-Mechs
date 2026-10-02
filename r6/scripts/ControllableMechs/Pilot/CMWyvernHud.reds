@@ -32,20 +32,20 @@ public class CMWyvernHud extends CMBombusHud {
   private let m_wyClock: Float;
   private let m_wyBoot: Float;
   private let m_wyBlink: Float;
-  private let m_wyRec: ref<inkRectangle>;
+  private let m_wyRec: ref<inkImage>;
   private let m_wyZoomMark: ref<inkText>;
-  private let m_wyRing: array<ref<inkRectangle>>;
+  private let m_wyRing: array<ref<inkWidget>>;
   private let m_wyDia: array<ref<inkCanvas>>;
   private let m_wyDiaTag: array<ref<inkText>>;
   private let m_wyDiaLine: array<ref<inkText>>;
-  private let m_wyDots: array<ref<inkRectangle>>;
+  private let m_wyDots: array<ref<inkImage>>;
   private let m_wyV: ref<inkCanvas>;
-  private let m_wySweep: ref<inkRectangle>;
-  private let m_wyPips: array<ref<inkRectangle>>;
+  private let m_wySweep: ref<inkImage>;
+  private let m_wySig: ref<CMSlider>;
   private let m_wySpool: Float;
   private let m_wySpeed: Float;
   private let m_wyFocus: String;       // the sensor's mode and focus, from the last refresh
-  private let m_wyHeat: array<ref<inkRectangle>>;   // the guns' heat pips
+  private let m_wyHeat: ref<CMSlider>;   // the guns' heat
   private let m_wyGunHeat: Float;
 
   // the text lines (indices of the text list, in BuildOsd's order)
@@ -160,13 +160,8 @@ public class CMWyvernHud extends CMBombusHud {
     this.Osd(root, lx, 1080.0, 30, 0);                 // the guns (a45)
     this.Osd(root, lx, 1176.0, 22, 0);                 // their keys
     // the guns' heat
-    CMPilotHud.Bar(root, lx - 20.0, 1060.0, 600.0, 160.0, CMInk.Glass(), CMInk.GlassOp());
-    this.Brackets(root, lx - 20.0, 1060.0, 600.0, 160.0);
-    let hp = 0;
-    while hp < 10 {
-      ArrayPush(this.m_wyHeat, CMPilotHud.Bar(root, lx + Cast<Float>(hp) * 40.0, 1130.0, 32.0, 22.0, this.Amb(), 1.0));
-      hp += 1;
-    }
+    CMKit.Panel(root, lx - 20.0, 1060.0, 600.0, 160.0, this.Acc(), 0.6);
+    this.m_wyHeat = CMSlider.Make(root, lx, 1134.0, 400.0, 18.0, false, this.Amb());
     for i in [this.WY_ROLE, this.WY_FOV, this.WY_GRID, this.WY_ZOOM, this.WY_SCAN, this.WY_PING, this.WY_RADAR, this.WY_SIG, this.WY_DET, this.WY_VS, this.WY_ROTORS] {
       this.Tint(i, this.Acc());
     }
@@ -179,7 +174,7 @@ public class CMWyvernHud extends CMBombusHud {
     this.SetT(this.WY_DET, "DETECTED BY");
     this.SetT(this.WY_RADAR, IntToString(RoundF(this.WY_RADAR_M)) + " M   HDG UP");
     // the recording dot
-    this.m_wyRec = CMPilotHud.Bar(root, x1 - 640.0, 160.0, 28.0, 28.0, CMPilotHud.Red(), 1.0);
+    this.m_wyRec = CMKit.Disc(root, x1 - 626.0, 174.0, 14.0, CMPilotHud.Red(), 1.0);
     // the zoom ladder, right edge
     let zx = x1 - 230.0;
     let z = 0;
@@ -194,41 +189,37 @@ public class CMWyvernHud extends CMBombusHud {
     CMPilotHud.Bar(root, cx - 14.0, cy - 2.0, 28.0, 4.0, this.Ink(), 1.0);
     CMPilotHud.Bar(root, cx - 2.0, cy - 14.0, 4.0, 28.0, this.Ink(), 1.0);
     // the scan ring: a dim circle, and the bright one that fills clockwise from the top
-    CMInk.Ring(root, cx, cy, this.WY_RING_R, this.WY_RING_N, 3.0, this.Acc(), 0.25);
+    CMInk.Circle(root, cx, cy, this.WY_RING_R, this.Acc(), 0.25);
     this.m_wyRing = CMInk.Ring(root, cx, cy, this.WY_RING_R, this.WY_RING_N, 8.0, this.Acc(), 1.0);
     for b in this.m_wyRing {
       b.SetVisible(false);
     }
     // the contacts log's panel
-    CMPilotHud.Bar(root, lx - 20.0, ly - 30.0, 600.0, 470.0, CMInk.Glass(), CMInk.GlassOp());
+    CMKit.Panel(root, lx - 20.0, ly - 30.0, 600.0, 470.0, this.Acc(), 0.6);
     this.Brackets(root, lx - 20.0, ly - 30.0, 600.0, 470.0);
     // the radar: three rings, the cross, the sweep, the contacts, V
     let rx = this.RadarX();
     let ry = this.RadarY();
     let rr = this.WY_RADAR_R;
     // a dark disc under it (a50, the mockup's; a square read as a grey block)
-    CMInk.FillPoly(CMInk.FillBars(root, 60, CMInk.Glass(), CMInk.GlassOp()), CMInk.CirclePts(rx, ry, rr, 48));
-    CMInk.Ring(root, rx, ry, rr, 72, 2.0, this.Acc(), 0.6);
-    CMInk.Ring(root, rx, ry, rr * 0.66, 48, 2.0, this.Acc(), 0.45);
-    CMInk.Ring(root, rx, ry, rr * 0.33, 32, 2.0, this.Acc(), 0.45);
+    CMKit.Disc(root, rx, ry, rr, CMInk.Glass(), CMInk.GlassOp());
+    CMInk.Circle(root, rx, ry, rr, this.Acc(), 0.6);
+    CMInk.Circle(root, rx, ry, rr * 0.66, this.Acc(), 0.45);
+    CMInk.Circle(root, rx, ry, rr * 0.33, this.Acc(), 0.45);
     CMPilotHud.Bar(root, rx - rr, ry - 1.0, rr * 2.0, 2.0, this.Acc(), 0.3);
     CMPilotHud.Bar(root, rx - 1.0, ry - rr, 2.0, rr * 2.0, this.Acc(), 0.3);
-    this.m_wySweep = CMPilotHud.Bar(root, rx, ry, rr, 4.0, this.Acc(), 0.85);
+    this.m_wySweep = CMKit.Stroke(root, this.Acc(), 0.85);
     let d = 0;
     while d < 32 {
-      let dot = CMPilotHud.Bar(root, rx, ry, 16.0, 16.0, this.Acc(), 1.0);
+      let dot = CMKit.Disc(root, rx, ry, 8.0, this.Acc(), 1.0);
       dot.SetVisible(false);
       ArrayPush(this.m_wyDots, dot);
       d += 1;
     }
     this.m_wyV = CMInk.Chevron(root, 30.0, 5.0, CMInk.KindColor(0, this.Acc()));
-    CMPilotHud.Bar(root, rx - 5.0, ry - 5.0, 10.0, 10.0, this.Ink(), 1.0);   // the Wyvern
-    // the signature's pips
-    let p = 0;
-    while p < 10 {
-      ArrayPush(this.m_wyPips, CMPilotHud.Bar(root, cx - 360.0 + Cast<Float>(p) * 34.0, 1872.0, 26.0, 26.0, this.Amb(), 1.0));
-      p += 1;
-    }
+    CMKit.Disc(root, rx, ry, 6.0, this.Ink(), 1.0);   // the Wyvern
+    // the signature's meter
+    this.m_wySig = CMSlider.Make(root, cx - 360.0, 1876.0, 330.0, 18.0, false, this.Amb());
     // the tagged contacts' diamonds on the feed
     let t = 0;
     while t < 12 {
@@ -308,12 +299,7 @@ public class CMWyvernHud extends CMBombusHud {
     this.SetT(this.WY_GUN, (ArraySize(s.wSub) > 0 ? s.wSub[0] : "LMG 7.62 x2") + "   " + gs);
     this.Tint(this.WY_GUN, Equals(gs, "OVERHEAT") ? CMPilotHud.Red() : (Equals(gs, "HOT") ? this.Amb() : this.Ink()));
     this.m_wyGunHeat = ClampF(s.secHeat, 0.0, 1.0);
-    let p = 0;
-    while p < ArraySize(this.m_wyHeat) {
-      this.m_wyHeat[p].SetOpacity(this.m_wyGunHeat * 10.0 > Cast<Float>(p) + 0.05 ? 1.0 : 0.15);
-      this.m_wyHeat[p].SetTintColor(this.m_wyGunHeat >= 0.99 ? CMPilotHud.Red() : this.Amb());
-      p += 1;
-    }
+    this.m_wyHeat.Set(this.m_wyGunHeat, this.m_wyGunHeat >= 0.99 ? CMPilotHud.Red() : this.Amb());
   }
 
   public func SetFlight(pitch: Float, roll: Float, speed: Float, alt: Float, vs: Float) -> Void {
@@ -457,11 +443,7 @@ public class CMWyvernHud extends CMBombusHud {
     // how loud it is, and who has noticed
     // (its guns are loud: their heat counts too)
     let sig = ClampF(0.1 + this.m_wySpool * 0.4 + this.m_wySpeed / 25.0 * 0.5 + this.m_wyGunHeat * 0.6, 0.0, 1.0);
-    let p = 0;
-    while p < ArraySize(this.m_wyPips) {
-      this.m_wyPips[p].SetOpacity(sig * 10.0 > Cast<Float>(p) + 0.05 ? 1.0 : 0.15);
-      p += 1;
-    }
+    this.m_wySig.Set(sig, sig >= 0.7 ? CMPilotHud.Red() : this.Amb());
     this.SetT(this.WY_SIGV, sig < 0.35 ? "LOW" : (sig < 0.7 ? "MED" : "HIGH"));
     this.SetT(this.WY_DETV, t.detected > 0 ? IntToString(t.detected) + " HOSTILE" : "NONE");
     this.Tint(this.WY_DETV, t.detected > 0 ? CMPilotHud.Red() : CMInk.KindColor(0, this.Acc()));
