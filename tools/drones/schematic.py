@@ -47,8 +47,8 @@ def octant_part(mesh, c, sub="", bones=()):
     # gun is its own mesh. In the body mesh (0.7.1-a34, Omar: wireframe scans of the game's
     # asset only): the five tubes down each side follow the l/r_element bones (the rocket
     # pods); the sensor is the nose lens (submesh_03) and the nose round it; the mortar is
-    # the block on top of the hull (the Octant has no mortar of its own: a region of the
-    # body's own lines). Everything else is the body.
+    # the right half of the rear block (Omar's pick; the Octant has no mortar of its own: a
+    # region of the body's own lines). Everything else is the body.
     if mesh.startswith("av_zetatech_octant__ext01_gun"):
         return "gun"
     for side in ("fl", "fr", "bl", "br"):
@@ -60,7 +60,7 @@ def octant_part(mesh, c, sub="", bones=()):
         return "rocket_r"
     if sub.startswith("submesh_03") or (c[1] > 1.2 and abs(c[0]) < 0.3 and c[2] > -0.15):
         return "sensor"
-    if c[2] > 0.62 and abs(c[0]) < 0.75 and -0.9 < c[1] < 0.55:
+    if -1.15 < c[1] < -0.6 and 0.02 < c[0] < 0.47 and c[2] > 0.0:
         return "mortar"
     return "body"
 

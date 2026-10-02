@@ -381,18 +381,18 @@ public class CMDroneHud extends CMPilotHud {
       box.SetMargin(inkMargin(x0, y0, 0.0, 0.0));
       box.SetSize(Vector2(537.0 * k, this.SCHEM_H));
       box.Reparent(root);
-      this.Part(box, k, n"octant_body", 43.0, 15.0, 451.0, 540.0);
+      // the ten layers of the scan (a34: the body's side tubes, the rear block and the nose cut
+      // out as the rocket pods, the mortar and the sensor), in CMUDrone's part order
+      this.Part(box, k, n"octant_body", 100.0, 16.0, 335.0, 539.0);
       this.Part(box, k, n"octant_thruster_fl", 5.0, 137.0, 132.0, 138.0);
       this.Part(box, k, n"octant_thruster_fr", 401.0, 137.0, 132.0, 138.0);
       this.Part(box, k, n"octant_thruster_bl", 11.0, 310.0, 126.0, 136.0);
       this.Part(box, k, n"octant_thruster_br", 400.0, 310.0, 127.0, 136.0);
       this.Part(box, k, n"octant_gun", 242.0, 5.0, 53.0, 56.0);
-      // the parts the atlas has no layer for (a32: the rocket pods, the mortar, the sensor),
-      // as plates on the body where they sit, in the schematic's order (CMUDrone parts 6-9)
-      this.Plate(box, k, 150.0, 215.0, 44.0, 110.0);   // rocket pod, left
-      this.Plate(box, k, 343.0, 215.0, 44.0, 110.0);   // rocket pod, right
-      this.Plate(box, k, 238.0, 290.0, 62.0, 62.0);    // mortar, on top
-      this.Plate(box, k, 246.0, 70.0, 46.0, 30.0);     // sensor, the nose
+      this.Part(box, k, n"octant_rocket_l", 43.0, 225.0, 81.0, 109.0);
+      this.Part(box, k, n"octant_rocket_r", 413.0, 225.0, 81.0, 109.0);
+      this.Part(box, k, n"octant_mortar", 206.0, 348.0, 156.0, 143.0);
+      this.Part(box, k, n"octant_sensor", 191.0, 15.0, 156.0, 102.0);
     }
     this.m_hullT = this.Txt(root, x0, 1960.0, "HULL 100%", 30, false);
     this.Frame(root, x0 + 200.0, 1966.0, 300.0, 24.0, 0.9);
@@ -410,17 +410,6 @@ public class CMDroneHud extends CMPilotHud {
     img.Reparent(box);
     ArrayPush(this.m_schemParts, img);
     ArrayPush(this.m_schemNames, name);
-  }
-
-  private func Plate(box: ref<inkCanvas>, k: Float, x: Float, y: Float, w: Float, h: Float) -> Void {
-    let r = new inkRectangle();
-    r.SetMargin(inkMargin(x * k, y * k, 0.0, 0.0));
-    r.SetSize(Vector2(w * k, h * k));
-    r.SetTintColor(this.G());
-    r.SetInteractive(false);
-    r.Reparent(box);
-    ArrayPush(this.m_schemParts, r);
-    ArrayPush(this.m_schemNames, n"plate");
   }
 
   // ---- each frame / tick -----------------------------------------------------------

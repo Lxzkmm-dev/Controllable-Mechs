@@ -2140,11 +2140,10 @@ public class CMUDrone extends CMCUnit {
   private let m_partFx: array<ref<FxInstance>>;   // each part's smoke or fire (looping)
   private let m_partFx2: array<ref<FxInstance>>;  // each part's sparks (looping)
   private let m_partLevel: array<Int32>;          // 0 whole, 1 smoking, 2 burning / gone
-  private let m_partSlot: array<wref<SlotComponent>>;
-  private let m_partSlotName: array<CName>;
   private let m_podsBreak: Bool;                  // a destroyed pod breaks off (else it burns on)
   private let m_podHidden: array<wref<IComponent>>;
   private let m_podMasks: array<Uint64>;
+  private let m_podLights: array<wref<IComponent>>;
 
   public static func OctantParts() -> Int32 = 10
 
@@ -2180,27 +2179,12 @@ public class CMUDrone extends CMCUnit {
     return 0.12;
   }
 
-  // the slot on the model each part is found by, and how far from it a hit still counts
-  private static func OctantSlot(i: Int32) -> CName {
-    switch i {
-      case 1: return n"Engine4";
-      case 2: return n"Engine2";
-      case 3: return n"Engine3";
-      case 4: return n"Engine1";
-      case 5: return n"gun_front";
-      case 6: return n"Wing1";
-      case 7: return n"Wing2";
-      case 9: return n"Perception";
-    }
-    return n"";
-  }
-  private static func OctantReach(i: Int32) -> Float = i <= 4 ? 1.0 : (i == 5 ? 0.9 : 0.7)
+  // how far from a part's centre a hit still counts as on it
+  private static func OctantReach(i: Int32) -> Float = i <= 4 ? 0.7 : 0.55
 
   private func ResetParts() -> Void {
     ArrayClear(this.m_partHp);
     this.StopPartFx();
-    ArrayClear(this.m_partSlot);
-    ArrayClear(this.m_partSlotName);
     ArrayClear(this.m_podHidden);
     ArrayClear(this.m_podMasks);
     if !Equals(this.m_kind, "octant") {
@@ -2214,75 +2198,35 @@ public class CMUDrone extends CMCUnit {
       ArrayPush(this.m_partLevel, 0);
       ArrayPush(this.m_partFx, null);
       ArrayPush(this.m_partFx2, null);
-      ArrayPush(this.m_partSlotName, CMUDrone.OctantSlot(i));
-      ArrayPush(this.m_partSlot, this.FindSlot(CMUDrone.OctantSlot(i)));
       i += 1;
     }
     this.ApplyParts(false);
   }
 
-  // the slot component that has `name` (looked up once, then read every frame)
-  private func FindSlot(name: CName) -> wref<SlotComponent> {
-    let drone = this.m_drone;
-    if !IsDefined(drone) || Equals(name, n"") {
-      return null;
+  // Each part's centre on the model (entity frame, rest pose), from the scan of the game's
+  // own Octant meshes (tools/drones/schematic.py's parts): the slots and hand-placed points
+  // of a30-a32 put the gun's effects 0.44 m under the nose, and others under the drone (Omar)
+  public static func OctantLocal(i: Int32) -> Vector4 {
+    switch i {
+      case 1: return new Vector4(-1.22, 0.46, 0.56, 0.0);   // thruster pods
+      case 2: return new Vector4(1.22, 0.46, 0.56, 0.0);
+      case 3: return new Vector4(-1.20, -0.59, 0.52, 0.0);
+      case 4: return new Vector4(1.20, -0.59, 0.52, 0.0);
+      case 5: return new Vector4(0.0, 1.38, 0.14, 0.0);     // the gun
+      case 6: return new Vector4(-1.11, 0.01, 0.56, 0.0);   // the side tubes (rocket pods)
+      case 7: return new Vector4(1.11, 0.01, 0.56, 0.0);
+      case 8: return new Vector4(0.25, -0.86, 0.55, 0.0);   // the mortar: the rear block, right
+      case 9: return new Vector4(0.0, 1.48, 0.05, 0.0);     // the sensor: the nose lens
     }
-    for c in drone.GetComponents() {
-      let sc = c as SlotComponent;
-      let wt: WorldTransform;
-      if IsDefined(sc) && sc.GetSlotTransform(name, wt) {
-        return sc;
-      }
-    }
-    return null;
+    return new Vector4(0.0, -0.02, 0.5, 0.0);               // the hull, on top
   }
 
   // where a part is on the drawn model now (world)
   private func PartPos(i: Int32) -> Vector4 {
     let fl = this.m_flight;
-    if i == 0 || i >= 5 {
-      // the hull, the LMG, the rocket pods, the mortar and the sensor on the hull, from its
-      // centre of mass (the model's gun, wing and perception slots put a31's effects in
-      // the air under it, Omar)
-      let local = new Vector4(0.0, 0.0, 0.3, 0.0);
-      switch i {
-        case 5: local = new Vector4(0.0, 1.5, -0.45, 0.0); break;
-        case 6: local = new Vector4(-1.15, 0.1, 0.15, 0.0); break;
-        case 7: local = new Vector4(1.15, 0.1, 0.15, 0.0); break;
-        case 8: local = new Vector4(0.0, -0.1, 0.75, 0.0); break;
-        case 9: local = new Vector4(0.0, 1.65, 0.0, 0.0); break;
-        default: break;
-      }
-      let p = fl.pos + CMFlight.QRot(fl.q, local);
-      p.W = 1.0;
-      return p;
-    }
-    if i < ArraySize(this.m_partSlot) {
-      let sc = this.m_partSlot[i];
-      let wt: WorldTransform;
-      if IsDefined(sc) && sc.GetSlotTransform(this.m_partSlotName[i], wt) {
-        let p = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
-        if Vector4.Distance(p, fl.pos) < 6.0 {
-          p.W = 1.0;
-          return p;
-        }
-      }
-    }
-    // no slot: the rig's places (pods at x +-0.88, y +-0.58; the gun under the nose)
-    let local = new Vector4(0.0, 1.45, -0.45, 0.0);
-    switch i {
-      case 1: local = new Vector4(-0.88, 0.59, 0.0, 0.0); break;
-      case 2: local = new Vector4(0.88, 0.59, 0.0, 0.0); break;
-      case 3: local = new Vector4(-0.88, -0.57, 0.0, 0.0); break;
-      case 4: local = new Vector4(0.88, -0.57, 0.0, 0.0); break;
-      case 6: local = new Vector4(-0.9, 0.0, 0.2, 0.0); break;
-      case 7: local = new Vector4(0.9, 0.0, 0.2, 0.0); break;
-      case 9: local = new Vector4(0.0, 1.6, 0.0, 0.0); break;
-      default: break;
-    }
-    let q = fl.pos + CMFlight.QRot(fl.q, local - this.m_c);
-    q.W = 1.0;
-    return q;
+    let p = fl.pos + CMFlight.QRot(fl.q, CMUDrone.OctantLocal(i) - this.m_c);
+    p.W = 1.0;
+    return p;
   }
 
   // the part a hit at `p` (world) landed on
@@ -2469,6 +2413,11 @@ public class CMUDrone extends CMCUnit {
     let code = p == 1 ? "fl" : (p == 2 ? "fr" : (p == 3 ? "bl" : "br"));
     for c in drone.GetComponents() {
       let n = NameToString(c.GetName());
+      if StrContains(n, "drone_diode_emissive_" + code) {
+        // its thruster glow (a light on the pod; a32 left it shining on the ground, Omar)
+        c.Toggle(false);
+        ArrayPush(this.m_podLights, c);
+      }
       if StrContains(n, "thruster_" + code) || StrContains(n, "sticker_" + code) || StrContains(n, "stickers_" + code) {
         let m = c as MeshComponent;
         if IsDefined(m) && m.chunkMask != 0ul {
@@ -2496,6 +2445,12 @@ public class CMUDrone extends CMCUnit {
     }
     ArrayClear(this.m_podHidden);
     ArrayClear(this.m_podMasks);
+    for c in this.m_podLights {
+      if IsDefined(c) {
+        c.Toggle(true);
+      }
+    }
+    ArrayClear(this.m_podLights);
   }
 
   public func OpticsOnline() -> Bool = ArraySize(this.m_partHp) < CMUDrone.OctantParts() || this.m_partHp[9] > 0.0
