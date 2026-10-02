@@ -140,6 +140,8 @@ public class CMUDrone extends CMCUnit {
     this.m_logAt = s.Now() + 1.0;
     this.m_frames = 0;
     this.m_gait = n"";
+    this.m_rockets = this.ROCKET_POD;
+    this.m_podReady = 0.0;
     this.Pacify(drone, true);
     // the game keeps running it as an AI NPC, whose hover and altitude logic would hold the
     // model up: its AI controller is off for the flight (PhysX and the entity transform move
@@ -554,6 +556,7 @@ public class CMUDrone extends CMCUnit {
   private func LoadSensor() -> Void {
     let cfg = CMPilotSystem.Get(this.m_game);
     this.m_hideInSight = cfg.DroneHideInSight(this.m_kind);
+    this.m_lmgArc = Cast<Float>(cfg.OctantLmgArc());
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
     this.m_sensFwd = Cast<Float>(cfg.DroneCamFwdCm(this.m_kind)) / 100.0;
     this.m_windK = Cast<Float>(cfg.WindPct()) / 100.0;
@@ -979,8 +982,8 @@ public class CMUDrone extends CMCUnit {
       let now = s.Now();
       let gun = this.m_partHp[5] > 0.0;
       st.priText = "MORTAR   x" + IntToString(this.MORTAR_SHELLS) + "  UNLTD   " + (!gun ? "LOST" : (now >= this.m_mortarReady ? (this.m_impactOk ? "RDY" : "NO SOLN") : "RLD " + FloatToStringPrec(this.m_mortarReady - now, 1) + "S"));
-      st.secText = "LMG x2         " + (!gun ? "LOST" : (this.m_overheat ? "OVERHEAT" : "HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%"));
-      st.terText = "MISSILE  LSR   UNLTD   " + (!gun ? "LOST" : (now >= this.m_missileReady ? "RDY" : "RLD " + FloatToStringPrec(this.m_missileReady - now, 1) + "S"));
+      st.secText = "LMG x2         " + (!gun ? "LOST" : (this.m_overheat ? "OVERHEAT" : (this.m_offArc ? "OFF ARC" : "HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%")));
+      st.terText = "ROCKETS  LSR   " + IntToString(this.m_rockets) + "/" + IntToString(this.ROCKET_POD) + "     " + (!gun ? "LOST" : (this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + "S"));
     } else {
       st.weapon = 0;
       st.priText = "PRI  ----";
@@ -1027,7 +1030,8 @@ public class CMUDrone extends CMCUnit {
   //     else does. Heat: LMG_HEAT a round, LMG_COOL a second; at full heat they lock until
   //     they're under a third. (a52's rounds were small explosions: weak, and they burst.)
   //   Missile: laser guided (it flies at what the reticle is on while it flies), boosting
-  //     to MISSILE_SPEED; it bursts on what it strikes. MISSILE_COOLDOWN apart.
+  //     to MISSILE_SPEED; it bursts on what it strikes. A Hydra-style pod: ROCKET_POD back
+  //     to back, then ROCKET_RELOAD while it reloads (FireMissile).
   // Shells and missiles in the air move each frame (Fly); they're dropped when the link
   // closes.
   private let m_wpn: Int32;            // the selected weapon: 0 mortar, 1 LMG x2, 2 missile
@@ -1054,7 +1058,14 @@ public class CMUDrone extends CMCUnit {
   private let MORTAR_RADIUS: Float = 5.0;
   private let MORTAR_DAMAGE: Float = 450.0;  // each shell
   private let MISSILE_SPEED: Float = 90.0;
-  private let MISSILE_COOLDOWN: Float = 3.0;
+  private let ROCKET_POD: Int32 = 4;         // rockets in a pod (Omar: like a Hydra pod)
+  private let ROCKET_GAP: Float = 0.22;      // s between rockets, back to back
+  private let ROCKET_RELOAD: Float = 6.0;    // s for an empty pod to reload
+  private let m_rockets: Int32;              // rockets left in the pod
+  private let m_podReady: Float;             // when the reloading pod is full again
+  private let m_rocketSide: Bool;            // the pod side the next rocket leaves from
+  private let m_lmgArc: Float;               // DIAGNOSTICS: the LMGs fire only this far off the nose (deg; 0 = anywhere)
+  private let m_offArc: Bool;                // the reticle is outside that arc (HUD)
   private let MISSILE_RADIUS: Float = 4.5;
   private let MISSILE_DAMAGE: Float = 900.0;
   private let MISSILE_LIFE: Float = 7.0;
@@ -1068,7 +1079,7 @@ public class CMUDrone extends CMCUnit {
   public static func WeaponName(i: Int32) -> String {
     switch i {
       case 1: return "LMG x2";
-      case 2: return "MISSILE";
+      case 2: return "ROCKETS";
     }
     return "MORTAR";
   }
@@ -1084,6 +1095,12 @@ public class CMUDrone extends CMCUnit {
     this.m_heat = MaxF(0.0, this.m_heat - this.LMG_COOL * dt);
     if this.m_overheat && this.m_heat < 0.33 {
       this.m_overheat = false;
+      GameObject.PlaySoundEvent(drone, n"w_gun_hmg_militech_overheat_close");
+    }
+    // the rocket pod reloads once it is empty
+    if this.m_rockets <= 0 && this.m_podReady > 0.0 && now >= this.m_podReady {
+      this.m_rockets = this.ROCKET_POD;
+      this.m_podReady = 0.0;
       GameObject.PlaySoundEvent(drone, n"w_gun_hmg_militech_overheat_close");
     }
     // the mortar's mark: the ground the reticle is on, when it is in range
@@ -1218,14 +1235,22 @@ public class CMUDrone extends CMCUnit {
     this.Blast(p, t"Attacks.CM_Mortar", this.MORTAR_RADIUS, this.MORTAR_DAMAGE);
   }
 
+  // Rockets from a Hydra-style pod (Omar, Phase 4): ROCKET_POD back to back, ROCKET_GAP
+  // apart (held or pressed), from the left and right wing pods in turn; an empty pod
+  // reloads in ROCKET_RELOAD. Each still flies at what the reticle is on.
   private func FireMissile(s: ref<CMCSession>, now: Float) -> Void {
-    if now < this.m_missileReady {
+    if now < this.m_missileReady || this.m_rockets <= 0 {
       return;
     }
-    this.m_missileReady = now + this.MISSILE_COOLDOWN;
+    this.m_missileReady = now + this.ROCKET_GAP;
+    this.m_rockets -= 1;
+    if this.m_rockets == 0 {
+      this.m_podReady = now + this.ROCKET_RELOAD;
+    }
+    this.m_rocketSide = !this.m_rocketSide;
     let m = new CMDroneShot();
     m.kind = 2;
-    m.pos = this.Muzzle(0.0);
+    m.pos = this.SlotPos(this.m_rocketSide ? n"Wing1" : n"Wing2", this.Muzzle(this.m_rocketSide ? -0.6 : 0.6));
     let dir = Vector4.Normalize(s.aim - m.pos);
     m.vel = dir * 30.0 + this.m_flight.vel;
     m.life = this.MISSILE_LIFE;
@@ -1235,7 +1260,7 @@ public class CMUDrone extends CMCUnit {
     ArrayPush(this.m_shots, m);
     GameObject.PlaySoundEvent(this.m_drone, n"nme_boss_smasher_wpn_missile_fire_single");
     s.rig.Recoil(0.4);
-    CMCSession.Log("missile: launched at " + CMCHits.V(s.aim));
+    CMCSession.Log("rocket: launched at " + CMCHits.V(s.aim) + ", " + IntToString(this.m_rockets) + " left in the pod");
   }
 
   private func MissileBurst(p: Vector4, dir: Vector4) -> Void {
@@ -1340,11 +1365,22 @@ public class CMUDrone extends CMCUnit {
     if this.m_overheat {
       return false;
     }
+    // DIAGNOSTICS > OCTANT LMG ARC (a test): the guns only bear this far off the nose
+    this.m_offArc = false;
+    if this.m_lmgArc > 0.0 {
+      let nose = CMFlight.QRot(this.m_flight.q, new Vector4(0.0, 1.0, 0.0, 0.0));
+      let to = Vector4.Normalize(s.aim - this.m_flight.pos);
+      if Rad2Deg(AcosF(ClampF(Vector4.Dot(nose, to), -1.0, 1.0))) > this.m_lmgArc {
+        this.m_offArc = true;
+        this.m_lmgNext = MaxF(this.m_lmgNext, now);
+        return false;
+      }
+    }
     let fired = false;
     while now >= this.m_lmgNext {
       this.m_lmgNext = MaxF(this.m_lmgNext + this.LMG_RATE, now - this.LMG_RATE);
       this.m_lmgLeft = !this.m_lmgLeft;
-      let muzzle = this.Muzzle(this.m_lmgLeft ? -0.12 : 0.12);
+      let muzzle = this.SlotPos(this.m_lmgLeft ? n"front_weapon_l_barrel" : n"front_weapon_r_barrel", this.Muzzle(this.m_lmgLeft ? -0.12 : 0.12));
       let aim = s.aim;
       let dist = Vector4.Distance(muzzle, aim);
       let spread = dist * 0.006;
@@ -1465,6 +1501,27 @@ public class CMUDrone extends CMCUnit {
       i += 1;
     }
     return best >= 0.0;
+  }
+
+  // A slot on the drawn model (the Octant's barrels and wing pods, from its entity file):
+  // where its effects and rounds leave from. a52-a24 worked the barrels out from the hull's
+  // centre and put the flashes under the Octant (Omar). `fallback` when no slot has it.
+  private func SlotPos(name: CName, fallback: Vector4) -> Vector4 {
+    let drone = this.m_drone;
+    if IsDefined(drone) {
+      for c in drone.GetComponents() {
+        let sc = c as SlotComponent;
+        let wt: WorldTransform;
+        if IsDefined(sc) && sc.GetSlotTransform(name, wt) {
+          let p = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
+          if Vector4.Distance(p, this.m_flight.pos) < 6.0 {
+            p.W = 1.0;
+            return p;
+          }
+        }
+      }
+    }
+    return fallback;
   }
 
   // the gun under the nose (the Octant's front gun mesh, rig frame), `side` metres across

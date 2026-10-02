@@ -363,7 +363,7 @@ public class CMDroneHud extends CMPilotHud {
     this.m_ter = this.Txt(root, 176.0, 1848.0, "", 38, false);
     // the secondary's heat, along the bottom of its box
     this.m_heat = CMPilotHud.Bar(root, 152.0, 1818.0, 0.0, 6.0, CMPilotHud.Caution(), 1.0);
-    this.Txt(root, 176.0, 1930.0, "[LMB] FIRE   [B] SELECT   [G] MISSILE   [H] GUNSHIP   [RMB] ZOOM   [T] SENSOR", 26, false).SetOpacity(0.55);
+    this.Txt(root, 176.0, 1930.0, "[LMB] FIRE   [B] SELECT   [G] ROCKETS   [H] GUNSHIP   [RMB] ZOOM   [T] SENSOR", 26, false).SetOpacity(0.55);
     // the hold mode's banner, under the heading
     this.m_holdT = this.Txt(root, this.m_W * 0.5, 244.0, "", 34, true);
     this.m_holdT.SetTintColor(CMPilotHud.Caution());
