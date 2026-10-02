@@ -121,12 +121,25 @@ POSES = {"wyvern": wyvern_pose}
 # (Omar, 0.7.1-a44): top-down its six long thrusters foreshorten to stubs beside the body;
 # from the front its unfolded wings show their length. Front: screen x = -X (its left on
 # the right, as faced), screen up = Z, nearer = forward (+Y).
-VIEWS = {"wyvern": "front"}
+# From straight ahead its three wings each side sit one behind another, so only two showed
+# (Omar). Three-quarter (a46): from ahead and to its right, turned TQ_YAW about the up axis,
+# and from TQ_ELEV above, looking down on it: all six wings show, their length too.
+VIEWS = {"wyvern": "three_quarter"}
+TQ_YAW = float(os.environ.get("TQ_YAW", "22"))
+TQ_ELEV = float(os.environ.get("TQ_ELEV", "50"))
 
 
 def view(p, kind):
-    if VIEWS.get(kind) == "front":
+    v = VIEWS.get(kind)
+    if v == "front":
         return (-p[0], p[2], p[1])
+    if v == "three_quarter":
+        a, e = math.radians(TQ_YAW), math.radians(TQ_ELEV)
+        x = p[0] * math.cos(a) - p[1] * math.sin(a)
+        y = p[0] * math.sin(a) + p[1] * math.cos(a)   # toward the eye
+        up = p[2] * math.cos(e) - y * math.sin(e)
+        near = y * math.cos(e) + p[2] * math.sin(e)
+        return (-x, up, near)
     return p
 
 
