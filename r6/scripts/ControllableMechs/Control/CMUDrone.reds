@@ -81,7 +81,8 @@ public class CMUDrone extends CMCUnit {
   private let m_stickS: Float;
   private let m_sense: ref<CMDroneSense>;
   private let m_stab: Int32;               // STABILIZE: 0 off, 1 while zoomed, 2 always (CONFIG)
-  private let m_zoomed: Bool;  // what its sensor sees, for the display (round 2)
+  private let m_zoomed: Bool;
+  private let m_killed: array<EntityID>;   // the targets already counted as kills this link  // what its sensor sees, for the display (round 2)
   private let m_bdaRounds: Int32;          // rounds fired and struck this link (the BDA strip)
   private let m_bdaHits: Int32;
 
@@ -89,6 +90,7 @@ public class CMUDrone extends CMCUnit {
   public func Begin(s: ref<CMCSession>) -> String {
     this.m_game = s.GetGameInstance();
     this.m_sense = null;
+    ArrayClear(this.m_killed);
     this.m_bdaRounds = 0;
     this.m_bdaHits = 0;
     let link = CMLinkSystem.Get(this.m_game);
@@ -1714,6 +1716,21 @@ public class CMUDrone extends CMCUnit {
       // this round finished it: its damage reached what health was left (a55: reading the
       // pool again the same frame still saw the old value, so no kill ever counted, Omar)
       let kill = before > 0.0 && dmg >= before - 0.01;
+      // once a target: rounds already in the air when it fell each read the health it had
+      // left and counted it again (a57 log: every kill logged twice)
+      if kill {
+        for k in this.m_killed {
+          if Equals(k, target.GetEntityID()) {
+            kill = false;
+          }
+        }
+        if kill {
+          ArrayPush(this.m_killed, target.GetEntityID());
+          if ArraySize(this.m_killed) > 48 {
+            ArrayErase(this.m_killed, 0);
+          }
+        }
+      }
       s.RoundHit(kill);
       if kill {
         CMCSession.Log("lmg: kill (" + NameToString(target.GetClassName()) + ")");
