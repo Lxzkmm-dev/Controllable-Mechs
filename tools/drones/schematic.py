@@ -36,7 +36,7 @@ def read_glb_skinned(path):
                 out.append(((pts[c[0]], pts[c[1]], pts[c[2]]), m.get("name", ""), bones))
     return out
 
-AW, AH = 1024, 1024
+AW, AH = 1024, 2048   # (a49: the three-quarter views outgrew 1024 x 1024)
 H = 560          # the composite's height in pixels
 LW = 2.0
 FILL = 0.14
@@ -124,7 +124,7 @@ POSES = {"wyvern": wyvern_pose}
 # From straight ahead its three wings each side sit one behind another, so only two showed
 # (Omar). Three-quarter (a46): from ahead and to its right, turned TQ_YAW about the up axis,
 # and from TQ_ELEV above, looking down on it: all six wings show, their length too.
-VIEWS = {"wyvern": "three_quarter"}
+VIEWS = {"wyvern": "three_quarter", "bombus": "three_quarter"}   # the Bombus too (a49, Omar: less blocky)
 TQ_YAW = float(os.environ.get("TQ_YAW", "22"))
 TQ_ELEV = float(os.environ.get("TQ_ELEV", "50"))
 

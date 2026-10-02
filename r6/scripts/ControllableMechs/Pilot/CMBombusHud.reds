@@ -485,20 +485,21 @@ public class CMBombusHud extends CMDroneHud {
 
   // the airframe, scanned from the Bombus's own meshes, bottom right
   protected func BuildSprite(root: ref<inkCanvas>) -> Void {
+    // (a49, Omar: three-quarter, as the Wyvern's: rounder, less blocky than top-down)
     let x1 = this.m_fX0 + MinF(3840.0, this.m_fW);
     let k = 260.0 / 360.0;
-    let bx = x1 - 200.0 - 360.0 * k;
+    let bx = x1 - 200.0 - 408.0 * k;
     let by = 1700.0;
-    this.Brackets(root, bx - 20.0, by - 20.0, 360.0 * k + 40.0, 300.0 + 40.0);
+    this.Brackets(root, bx - 20.0, by - 20.0, 408.0 * k + 40.0, 300.0);
     let box = new inkCanvas();
     box.SetMargin(inkMargin(bx, by, 0.0, 0.0));
-    box.SetSize(Vector2(360.0 * k, 260.0));
+    box.SetSize(Vector2(408.0 * k, 260.0));
     box.Reparent(root);
-    this.Layer(box, k, n"bombus_body", 92.0, 77.0, 177.0, 186.0);
-    this.Layer(box, k, n"bombus_arm_l", 5.0, 121.0, 93.0, 115.0);
-    this.Layer(box, k, n"bombus_arm_r", 262.0, 121.0, 94.0, 115.0);
-    this.Layer(box, k, n"bombus_arm_back", 120.0, 257.0, 121.0, 98.0);
-    this.Layer(box, k, n"bombus_payload", 123.0, 5.0, 110.0, 80.0);
+    this.Layer(box, k, n"bombus_arm_back", 81.0, 5.0, 137.0, 99.0);
+    this.Layer(box, k, n"bombus_arm_l", 297.0, 69.0, 107.0, 119.0);
+    this.Layer(box, k, n"bombus_arm_r", 5.0, 156.0, 139.0, 112.0);
+    this.Layer(box, k, n"bombus_body", 82.0, 40.0, 253.0, 253.0);
+    this.Layer(box, k, n"bombus_payload", 191.0, 205.0, 130.0, 150.0);
   }
 
   protected func Layer(box: ref<inkCanvas>, k: Float, name: CName, x: Float, y: Float, w: Float, h: Float) -> Void {
