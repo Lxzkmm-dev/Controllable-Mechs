@@ -100,7 +100,7 @@ public class CMGriffinHud extends CMBombusHud {
     let cy = 1080.0;
     // the banner: an angled plate, chevrons either side
     let tb = 120.0;
-    CMPilotHud.Bar(root, cx - 720.0, tb + 3.0, 1440.0, 74.0, this.Blk(), 0.5);
+    CMPilotHud.Bar(root, cx - 720.0, tb + 3.0, 1440.0, 74.0, CMInk.Glass(), CMInk.GlassOp());
     CMPilotHud.Bar(root, cx - 760.0, tb, 1520.0, 4.0, this.Acc(), 1.0);
     CMPilotHud.Bar(root, cx - 700.0, tb + 76.0, 1400.0, 4.0, this.Acc(), 1.0);
     CMInk.Line(root, cx - 760.0, tb + 2.0, cx - 700.0, tb + 78.0, 4.0, this.Acc(), 1.0);

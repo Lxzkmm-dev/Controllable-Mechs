@@ -87,9 +87,90 @@ public class CMDroneTrack {
   public let ringOk: Bool;
   public let tti: Float;                  // s to reach the reticle's point (-1: not closing)
   public let motors: array<Float>;        // 0-1, front left, front right, back left, back right
+  // the Octant (a50, Omar's mockup): the mortar's splash ring on the ground (ring / ringOk /
+  // blastR, its time of flight), and the sensor's footprint on the ground (the view's four
+  // corners where they meet it, world)
+  public let tof: Float;
+  public let foot: array<Vector4>;
+  public let footOk: Bool;
 }
 
 public abstract class CMInk {
+  // dark glass under a panel: ink draws a thin black fill lighter than it is (a49 in game:
+  // the panels read as grey fog, Omar), so the panels use a dense green-black
+  public static func Glass() -> HDRColor = new HDRColor(0.004, 0.018, 0.012, 1.0)
+  public static func GlassOp() -> Float = 0.82
+
+  // a filled polygon from thin horizontal strips (ink has no polygon fill): `n` strips,
+  // each spanning the polygon's width at its height (convex polygons)
+  public static func FillBars(root: ref<inkCanvas>, n: Int32, c: HDRColor, op: Float) -> array<ref<inkRectangle>> {
+    let out: array<ref<inkRectangle>>;
+    let i = 0;
+    while i < n {
+      let b = CMPilotHud.Bar(root, 0.0, 0.0, 1.0, 1.0, c, op);
+      b.SetVisible(false);
+      ArrayPush(out, b);
+      i += 1;
+    }
+    return out;
+  }
+
+  public static func FillPoly(bars: array<ref<inkRectangle>>, pts: array<Vector2>) -> Void {
+    let n = ArraySize(bars);
+    let m = ArraySize(pts);
+    if n == 0 || m < 3 {
+      for b in bars {
+        b.SetVisible(false);
+      }
+      return;
+    }
+    let y0 = pts[0].Y;
+    let y1 = pts[0].Y;
+    for p in pts {
+      y0 = MinF(y0, p.Y);
+      y1 = MaxF(y1, p.Y);
+    }
+    let h = (y1 - y0) / Cast<Float>(n);
+    let i = 0;
+    while i < n {
+      let y = y0 + (Cast<Float>(i) + 0.5) * h;
+      let lo = 99999.0;
+      let hi = -99999.0;
+      let j = 0;
+      while j < m {
+        let a = pts[j];
+        let b = pts[(j + 1) % m];
+        if (a.Y <= y && b.Y > y) || (b.Y <= y && a.Y > y) {
+          let x = a.X + (y - a.Y) / (b.Y - a.Y) * (b.X - a.X);
+          lo = MinF(lo, x);
+          hi = MaxF(hi, x);
+        }
+        j += 1;
+      }
+      let bar = bars[i];
+      if hi > lo {
+        bar.SetVisible(true);
+        bar.SetMargin(inkMargin(lo, y0 + Cast<Float>(i) * h, 0.0, 0.0));
+        bar.SetSize(Vector2(hi - lo, h + 0.6));
+      } else {
+        bar.SetVisible(false);
+      }
+      i += 1;
+    }
+  }
+
+  // a circle's points (for a filled disc)
+  public static func CirclePts(cx: Float, cy: Float, r: Float, n: Int32) -> array<Vector2> {
+    let out: array<Vector2>;
+    let i = 0;
+    while i < n {
+      let a = Deg2Rad(Cast<Float>(i) / Cast<Float>(n) * 360.0);
+      ArrayPush(out, Vector2(cx + SinF(a) * r, cy - CosF(a) * r));
+      i += 1;
+    }
+    return out;
+  }
+
   // a ring of short bars, each tangent to the circle; the first at the top, clockwise
   public static func Ring(root: ref<inkCanvas>, cx: Float, cy: Float, r: Float, segs: Int32, thick: Float, c: HDRColor, op: Float) -> array<ref<inkRectangle>> {
     let out: array<ref<inkRectangle>>;

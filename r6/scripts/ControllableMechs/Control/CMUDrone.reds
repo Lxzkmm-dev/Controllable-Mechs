@@ -448,6 +448,9 @@ public class CMUDrone extends CMCUnit {
       if Equals(this.m_kind, "bombus") {
         this.BombusTrack(s, t);
       }
+      if Equals(this.m_kind, "octant") {
+        this.OctantTrack(s, t);
+      }
       hud.Track(t);
     }
     this.Weapons(s, now, dt, hud);
@@ -1085,7 +1088,8 @@ public class CMUDrone extends CMCUnit {
     st.weapon = this.m_wpn;   // the Griffin: 0 its LMGs, 1 its rocket pod
     st.secSelected = this.m_wpn == 1;
     st.secHeat = this.m_heat;
-    st.holdText = this.m_hold ? "GUNSHIP // HOLDING      [" + CMKeys.GunshipName(GetPlayer(this.m_game)) + "] RELEASE" : "";
+    let standoff = s.aimDist > 0.0 && IsDefined(this.m_flight) ? "   STANDOFF " + IntToString(RoundF(CMUDrone.Flat(this.m_flight.pos, s.aim))) + "M" : "";
+    st.holdText = this.m_hold ? "GUNSHIP // HOLDING" + standoff + "   [" + CMKeys.GunshipName(GetPlayer(this.m_game)) + "] RELEASE" : "";
     st.windText = this.WindText();
     if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 {
       let now = s.Now();
@@ -1884,11 +1888,18 @@ public class CMUDrone extends CMCUnit {
         t.tti = dist / closing;
       }
     }
+    this.ProjectRing(s, t, t.aim, t.blastR);
+  }
+
+  // a ring `r` round `at` on the ground, through the camera, into the track's ring (32
+  // points; ringOk when all of them are on or near the display)
+  private func ProjectRing(s: ref<CMCSession>, t: ref<CMDroneTrack>, at: Vector4, r: Float) -> Void {
+    ArrayClear(t.ring);
     let n = 0;
     let shown = 0;
     while n < 32 {
       let a = Deg2Rad(Cast<Float>(n) * 11.25);
-      let p = new Vector4(t.aim.X + CosF(a) * t.blastR, t.aim.Y + SinF(a) * t.blastR, t.aim.Z + 0.1, 1.0);
+      let p = new Vector4(at.X + CosF(a) * r, at.Y + SinF(a) * r, at.Z + 0.1, 1.0);
       let o = this.Screen(s, p);
       if AbsF(o.X) < 4000.0 && AbsF(o.Y) < 3000.0 {
         shown += 1;
@@ -1897,6 +1908,42 @@ public class CMUDrone extends CMCUnit {
       n += 1;
     }
     t.ringOk = shown == 32;
+  }
+
+  // the Octant's display (a50, Omar's mockup): the mortar's splash on the ground where it
+  // will land (when the mortar is selected and has a solution), and the sensor's footprint
+  // (the view's corners carried down to the ground under the reticle's point) for the map
+  private func OctantTrack(s: ref<CMCSession>, t: ref<CMDroneTrack>) -> Void {
+    let mortar = ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[8] > 0.0;
+    t.ringOk = false;
+    t.blastR = 0.0;
+    t.tof = this.m_tof;
+    if this.m_wpn == 0 && mortar && this.m_impactOk {
+      // the salvo's spread: where its shells come down round the spot (Burst's)
+      t.blastR = 3.0 + CMUDrone.Flat(this.m_flight.pos, this.m_impactAt) * 0.012;
+      this.ProjectRing(s, t, this.m_impactAt, t.blastR);
+    }
+    ArrayClear(t.foot);
+    t.footOk = false;
+    let e: EulerAngles;
+    e.Yaw = s.rig.yaw;
+    e.Pitch = s.rig.pitch;
+    let q = EulerAngles.ToQuat(e);
+    let ty = TanF(Deg2Rad(MaxF(1.0, s.rig.fov) * 0.5));
+    let tx = ty * 1920.0 / 1080.0;
+    let gz = t.aimOk ? t.aim.Z : this.m_flight.pos.Z - MaxF(0.0, this.m_ground);
+    let cam = s.rig.pos;
+    for c in [new Vector2(-1.0, 1.0), new Vector2(1.0, 1.0), new Vector2(1.0, -1.0), new Vector2(-1.0, -1.0)] {
+      let d = CMFlight.QRot(q, new Vector4(c.X * tx, 1.0, c.Y * ty, 0.0));
+      let dist = 160.0;
+      if d.Z < -0.01 {
+        dist = MinF(160.0, (gz - cam.Z) / d.Z);
+      }
+      let p = cam + Vector4.Normalize(d) * (dist * Vector4.Length(d));
+      p.W = 1.0;
+      ArrayPush(t.foot, p);
+    }
+    t.footOk = true;
   }
 
   public static func PayloadName(i: Int32) -> String {

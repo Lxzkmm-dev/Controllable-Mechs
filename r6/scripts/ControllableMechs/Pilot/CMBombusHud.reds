@@ -52,6 +52,7 @@ public class CMBombusHud extends CMDroneHud {
   private let m_fTgtD: ref<inkText>;
   private let m_fRingSegs: array<ref<inkRectangle>>;
   private let m_fRingT: ref<inkText>;
+  private let m_fRingFill: array<ref<inkRectangle>>;   // the blast zone, filled (a50)
   private let m_fStrip: array<ref<inkRectangle>>;
   private let m_fTti: ref<inkText>;
   private let m_fMotors: array<ref<inkRectangle>>;
@@ -304,7 +305,7 @@ public class CMBombusHud extends CMDroneHud {
     box.SetMargin(inkMargin(ax, ay, 0.0, 0.0));
     box.SetSize(Vector2(250.0, 220.0));
     box.Reparent(root);
-    CMPilotHud.Bar(box, 0.0, 0.0, 250.0, 220.0, this.Blk(), 0.35);
+    CMPilotHud.Bar(box, 0.0, 0.0, 250.0, 220.0, CMInk.Glass(), CMInk.GlassOp());
     this.Brackets(root, ax, ay, 250.0, 220.0);
     let bar = new inkCanvas();
     bar.SetMargin(inkMargin(25.0, 108.0, 0.0, 0.0));
@@ -320,7 +321,7 @@ public class CMBombusHud extends CMDroneHud {
     CMPilotHud.Bar(box, 122.0, 104.0, 6.0, 12.0, this.Ink(), 1.0);
     // the throttle gauge beside it
     let tx = ax + 290.0;
-    CMPilotHud.Bar(root, tx, ay, 40.0, 220.0, this.Blk(), 0.45);
+    CMPilotHud.Bar(root, tx, ay, 40.0, 220.0, CMInk.Glass(), CMInk.GlassOp());
     this.Brackets(root, tx - 6.0, ay - 6.0, 52.0, 232.0);
     this.m_fThr = CMPilotHud.Bar(root, tx + 6.0, ay + 6.0, 28.0, 208.0, this.Acc(), 0.9);
     this.m_fRec = CMPilotHud.Bar(root, x1 - 236.0, 274.0, 24.0, 24.0, CMPilotHud.Red(), 1.0);
@@ -345,6 +346,7 @@ public class CMBombusHud extends CMDroneHud {
     this.m_fTgtT.SetAnchorPoint(Vector2(0.5, 1.0));
     this.m_fTgtD = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 30, n"Semi-Bold", this.Ink());
     this.m_fTgtD.SetAnchorPoint(Vector2(0.5, 0.0));
+    this.m_fRingFill = CMInk.FillBars(root, 28, CMPilotHud.Caution(), 0.2);
     n = 0;
     while n < 32 {
       ArrayPush(this.m_fRingSegs, CMPilotHud.Bar(root, 0.0, 0.0, 1.0, 4.0, CMPilotHud.Caution(), 0.9));
@@ -365,7 +367,7 @@ public class CMBombusHud extends CMDroneHud {
     let m = 0;
     while m < 4 {
       let mx = tx + 80.0 + Cast<Float>(m) * 44.0;
-      CMPilotHud.Bar(root, mx, ay, 30.0, 220.0, this.Blk(), 0.45);
+      CMPilotHud.Bar(root, mx, ay, 30.0, 220.0, CMInk.Glass(), CMInk.GlassOp());
       ArrayPush(this.m_fMotors, CMPilotHud.Bar(root, mx + 5.0, ay + 6.0, 20.0, 208.0, this.Acc(), 0.9));
       let l = CMPilotHud.Label(root, inkEAnchor.TopLeft, mx + 15.0, ay - 36.0, "M" + IntToString(m + 1), 22, n"Semi-Bold", this.Ink());
       l.SetAnchorPoint(Vector2(0.5, 0.0));
@@ -442,6 +444,16 @@ public class CMBombusHud extends CMDroneHud {
         }
       }
       i += 1;
+    }
+    let fill: array<Vector2>;
+    if ring {
+      for o in t.ring {
+        ArrayPush(fill, Vector2(cx + o.X, cy + o.Y));
+      }
+    }
+    CMInk.FillPoly(this.m_fRingFill, fill);
+    for fb in this.m_fRingFill {
+      fb.SetTintColor(rc);
     }
     this.m_fRingT.SetVisible(ring);
     if ring {

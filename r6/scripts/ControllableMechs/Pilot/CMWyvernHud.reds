@@ -156,7 +156,7 @@ public class CMWyvernHud extends CMBombusHud {
     this.Osd(root, lx, 1080.0, 30, 0);                 // the guns (a45)
     this.Osd(root, lx, 1176.0, 22, 0);                 // their keys
     // the guns' heat
-    CMPilotHud.Bar(root, lx - 20.0, 1060.0, 600.0, 160.0, this.Blk(), 0.3);
+    CMPilotHud.Bar(root, lx - 20.0, 1060.0, 600.0, 160.0, CMInk.Glass(), CMInk.GlassOp());
     this.Brackets(root, lx - 20.0, 1060.0, 600.0, 160.0);
     let hp = 0;
     while hp < 10 {
@@ -196,13 +196,14 @@ public class CMWyvernHud extends CMBombusHud {
       b.SetVisible(false);
     }
     // the contacts log's panel
-    CMPilotHud.Bar(root, lx - 20.0, ly - 30.0, 600.0, 470.0, this.Blk(), 0.35);
+    CMPilotHud.Bar(root, lx - 20.0, ly - 30.0, 600.0, 470.0, CMInk.Glass(), CMInk.GlassOp());
     this.Brackets(root, lx - 20.0, ly - 30.0, 600.0, 470.0);
     // the radar: three rings, the cross, the sweep, the contacts, V
     let rx = this.RadarX();
     let ry = this.RadarY();
     let rr = this.WY_RADAR_R;
-    CMPilotHud.Bar(root, rx - rr, ry - rr, rr * 2.0, rr * 2.0, this.Blk(), 0.25);
+    // a dark disc under it (a50, the mockup's; a square read as a grey block)
+    CMInk.FillPoly(CMInk.FillBars(root, 60, CMInk.Glass(), CMInk.GlassOp()), CMInk.CirclePts(rx, ry, rr, 48));
     CMInk.Ring(root, rx, ry, rr, 72, 2.0, this.Acc(), 0.6);
     CMInk.Ring(root, rx, ry, rr * 0.66, 48, 2.0, this.Acc(), 0.45);
     CMInk.Ring(root, rx, ry, rr * 0.33, 32, 2.0, this.Acc(), 0.45);
