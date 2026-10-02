@@ -227,6 +227,16 @@ public class CMFlight {
     let pz = tz / (4.0 * p.kq);
     // front left, front right, back left, back right
     let cmd: array<Float> = [(base + px + py + pz) / p.thrust, (base + px - py - pz) / p.thrust, (base - px + py - pz) / p.thrust, (base - px - py + pz) / p.thrust];
+    // a damage-aware controller: a weakened rotor is asked for more, so the thrust it gives is
+    // what was wanted (up to its limit). Without it one lost Octant pod flipped the drone
+    // over at once (Omar's a31 video)
+    let ci = 0;
+    while ci < 4 {
+      if this.eff[ci] > 0.05 && this.eff[ci] < 1.0 {
+        cmd[ci] = cmd[ci] / this.eff[ci];
+      }
+      ci += 1;
+    }
     let lo = MinF(MinF(cmd[0], cmd[1]), MinF(cmd[2], cmd[3]));
     let hi = MaxF(MaxF(cmd[0], cmd[1]), MaxF(cmd[2], cmd[3]));
     let i = 0;
