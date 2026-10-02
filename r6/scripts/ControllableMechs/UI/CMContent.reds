@@ -101,6 +101,10 @@ public class CMContent extends TKContent {
         let why = CMNce.AirliftCallIn(unit, player.GetWorldPosition(), CMPilotRig.YawOf(player.GetWorldForward()));
         p.SetMessage(StrLen(why) == 0 ? "*AV INBOUND: THE UNIT DROPS NEAR YOU" : why);
         break;
+      case "spawnbombus":
+        cfg.SetBombusPayload(CMContent.Val(arg, 1));
+        p.SetMessage(link.SpawnTestDrone("bombus"));
+        break;
       case "spawndrone":
         p.SetMessage(link.SpawnTestDrone(CMContent.Str(arg)));
         break;
@@ -295,7 +299,8 @@ public class CMContent extends TKContent {
     } else {
       p.Buttons("SPAWN A MINOTAUR", "", "", "MILITECH|ARASAKA|NCPD|KURT'S", "spawntest|spawntest|spawntest|spawntest", "mch_003__minotaur_militech_01|mch_003__minotaur_arasaka_01|mch_003__minotaur_police_01|mch_003__minotaur_kurt");
       p.SetTip("Spawns one 46 ft in front of you and links it, in that livery.");
-      p.Buttons("SPAWN A DRONE (TEST)", "Drones fly as real PhysX bodies (the MNC Physics plugin): real collisions, they shove cars and props and are shoved back", "", "BOMBUS|GRIFFIN|WYVERN|OCTANT", "spawndrone|spawndrone|spawndrone|spawndrone", "bombus|griffin|wyvern|octant");
+      p.Buttons("SPAWN A DRONE (TEST)", "Drones fly as real PhysX bodies (the MNC Physics plugin): real collisions, they shove cars and props and are shoved back", "", "GRIFFIN|WYVERN|OCTANT", "spawndrone|spawndrone|spawndrone", "griffin|wyvern|octant");
+      p.Buttons("SPAWN A BOMBUS (PAYLOAD)", "A kamikaze FPV drone with a payload: LMB releases it (the Bombus blows itself up), and it goes off if the Bombus is destroyed. Toxic gas lingers and poisons; shock is an EMP burst", "", "EXPLOSIVE|HIGH EXPLOSIVE|TOXIC GAS|SHOCK", "spawnbombus|spawnbombus|spawnbombus|spawnbombus", "1|2|3|4");
       if !CMPhysStep.Present() || !CMPhysColl.Present() {
         p.Item("DRONE FLIGHT", "Needs the MNC Physics plugin (red4ext\\plugins\\MNCPhysics, version 3.1); without it drones can be linked and ordered, not flown", "", "", "", "", false);
       }

@@ -147,6 +147,8 @@ public class CMUDrone extends CMCUnit {
     this.ApplyParts(false);   // the parts' state as the link kept it (the flight exists now)
     this.m_aiSyncAt = 0.0;
     this.m_aiOffAt = 0.0;
+    this.m_payload = Equals(this.m_kind, "bombus") ? cfg.BombusPayload() : 0;
+    this.m_detonated = false;
     this.Pacify(drone, true);
     // the game keeps running it as an AI NPC, whose hover and altitude logic would hold the
     // model up: its AI controller is off for the flight (PhysX and the entity transform move
@@ -162,11 +164,16 @@ public class CMUDrone extends CMCUnit {
   }
 
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
+    // a Bombus destroyed with its payload aboard sets it off
+    if !hard && this.m_payload > 0 && !this.m_detonated && IsDefined(this.m_drone) && !ScriptedPuppet.IsAlive(this.m_drone) {
+      this.Detonate(false);
+    }
     if ArraySize(this.m_partHp) > 0 && IsDefined(this.m_drone) {
       CMLinkSystem.Get(this.m_game).SetDroneParts(this.m_drone.GetEntityID(), this.m_partHp);
     }
     this.StopPartFx();
     this.UnhidePods();
+    this.JetsBack();
     this.DropShots();
     this.StopWash();
     this.StopPhys(this.m_drone);
@@ -997,9 +1004,28 @@ public class CMUDrone extends CMCUnit {
 
   // its own display (CMDroneHud), with the damage schematic of its type
   public func NewHud() -> ref<CMPilotHud> {
+    if Equals(this.m_kind, "bombus") {
+      // each drone's display befits its role (Omar): the Bombus's is a cheap FPV OSD
+      let b = new CMBombusHud();
+      b.SetKind(this.m_kind);
+      b.SetFaction(CMUDrone.Faction(this.m_drone));
+      return b;
+    }
     let h = new CMDroneHud();
     h.SetKind(this.m_kind);
     return h;
+  }
+
+  // the drone's affiliation, for its display's colour
+  public static func Faction(drone: ref<NPCPuppet>) -> String {
+    if !IsDefined(drone) {
+      return "";
+    }
+    let rec = TweakDBInterface.GetCharacterRecord(drone.GetRecordID());
+    if !IsDefined(rec) || !IsDefined(rec.Affiliation()) {
+      return "";
+    }
+    return StrLower(EnumValueToString("gamedataAffiliation", Cast<Int64>(EnumInt(rec.Affiliation().Type()))));
   }
 
   public func Hud(s: ref<CMCSession>, st: ref<CMPilotHudState>) -> Void {
@@ -1041,10 +1067,17 @@ public class CMUDrone extends CMCUnit {
       st.secText = "LMG x2         " + (!gun ? "LOST" : (this.m_overheat ? "OVERHEAT" : (this.m_offArc ? "OFF ARC" : "HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%")));
       st.terText = "ROCKETS  LSR   " + IntToString(this.m_rockets) + "/" + IntToString(pods * 2) + "     " + (pods == 0 ? "LOST" : (this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + "S"));
     } else {
+      if Equals(this.m_kind, "bombus") {
+        // the FPV OSD's lines (CMBombusHud): the payload, its arming, the flight mode
+        st.priText = "PAYLOAD // " + CMUDrone.PayloadName(this.m_payload);
+        st.secText = this.m_payload > 0 ? (this.m_detonated ? "RELEASED" : "ARMED") : "DISARMED";
+        st.terText = this.m_flight.level >= 0.8 ? "ANGLE" : (this.m_flight.level >= 0.3 ? "HORIZON" : "ACRO");
+      } else {
       st.weapon = 0;
       st.priText = "PRI  ----";
       st.secText = "SEC  ----";
       st.terText = "";
+      }
     }
     // the damage schematic: the body is the hull's health, then each part's
     ArrayClear(st.droneParts);
@@ -1141,6 +1174,11 @@ public class CMUDrone extends CMCUnit {
 
   private func Weapons(s: ref<CMCSession>, now: Float, dt: Float, hud: ref<CMDroneHud>) -> Void {
     this.Fly(s, dt);
+    // the Bombus: LMB releases its payload
+    if this.m_payload > 0 && !this.m_detonated && s.Key(CMCKey.Lmb()) {
+      this.Detonate(true);
+      return;
+    }
     if !Equals(this.m_kind, "octant") || ArraySize(this.m_partHp) < 6 {
       return;
     }
@@ -1644,7 +1682,14 @@ public class CMUDrone extends CMCUnit {
 
   // an area attack at `at`, V's (her kills, XP and heat), on those it hits the drone's
   private func Blast(at: Vector4, rec: TweakDBID, radius: Float, damage: Float) -> Void {
-    let player = GetPlayer(this.m_game);
+    CMUDrone.AreaAttack(this.m_game, at, rec, radius, damage, this.m_drone);
+  }
+
+  // an area attack at `at`, V's (her kills, XP and heat), blamed on `blame` (the drone) for
+  // its hits; the record's own status effects ride along (the gas's poison, the shock's
+  // EMP). The first record of `recs` the game has (FragGrenade if none).
+  public static func AreaAttack(game: GameInstance, at: Vector4, rec: TweakDBID, radius: Float, damage: Float, blame: wref<NPCPuppet>) -> Void {
+    let player = GetPlayer(game);
     if !IsDefined(player) {
       return;
     }
@@ -1673,11 +1718,86 @@ public class CMUDrone extends CMCUnit {
     EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attack, ToVariant(attack));
     EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.attackStatModList, ToVariant(statMods));
     EffectData.SetVariant(effect.GetSharedData(), GetAllBlackboardDefs().EffectSharedData.flags, ToVariant(flags));
-    let drone = this.m_drone;
-    if IsDefined(drone) {
-      CMCHits.Blame(drone, 0.6);
+    if IsDefined(blame) {
+      CMCHits.Blame(blame, 0.6);
     }
     attack.StartAttack();
+  }
+
+  // the first of these attack records the game has (the payloads' grenade records go by
+  // more than one name across versions), else FragGrenade
+  public static func FirstAttack(names: array<String>) -> TweakDBID {
+    for n in names {
+      let id = TDBID.Create(n);
+      if IsDefined(TweakDBInterface.GetAttackRecord(id)) {
+        return id;
+      }
+    }
+    return t"Attacks.FragGrenade";
+  }
+
+  // ---- the Bombus's payload (Omar, Phase 4): EXPLOSIVE, HIGH EXPLOSIVE, TOXIC GAS or SHOCK,
+  // chosen when it is spawned (MOTOR POOL). It goes off when the pilot releases it (LMB:
+  // the Bombus blows itself up with it) or when the Bombus is destroyed (rammed into an
+  // enemy, shot down, crashed). Each a grenade of the game's, bigger:
+  //   EXPLOSIVE       a frag blast, 5 m
+  //   HIGH EXPLOSIVE  a heavy blast, 9 m
+  //   TOXIC GAS       a biohazard cloud, 6 m, that lingers and keeps poisoning for 8 s
+  //   SHOCK           an EMP burst, 7 m (drones, mechs and cyberware short out)
+  private let m_payload: Int32;        // 0 none, 1 explosive, 2 high explosive, 3 toxic gas, 4 shock
+  private let m_detonated: Bool;
+
+  public static func PayloadName(i: Int32) -> String {
+    switch i {
+      case 1: return "EXPLOSIVE";
+      case 2: return "HIGH EXPLOSIVE";
+      case 3: return "TOXIC GAS";
+      case 4: return "SHOCK";
+    }
+    return "NONE";
+  }
+
+  // the payload goes off where the Bombus is; released, the Bombus goes with it
+  private func Detonate(released: Bool) -> Void {
+    if this.m_payload <= 0 || this.m_detonated {
+      return;
+    }
+    this.m_detonated = true;
+    let drone = this.m_drone;
+    let at = IsDefined(this.m_flight) ? this.m_flight.pos : (IsDefined(drone) ? drone.GetWorldPosition() : new Vector4(0.0, 0.0, 0.0, 1.0));
+    at.W = 1.0;
+    let up = new Vector4(0.0, 0.0, 1.0, 0.0);
+    let fx = GameInstance.GetFxSystem(this.m_game);
+    switch this.m_payload {
+      case 1:
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\frag_grenade\\w_explosives_001__frag_grenade_01.effect"), CMUMinotaur.At(at, up), true);
+        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.FragGrenade", 5.0, 350.0, drone);
+        break;
+      case 2:
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\ozob_grenade\\w_ozob_grenade.effect"), CMUMinotaur.At(at, up), true);
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\w_explosion_medium.effect"), CMUMinotaur.At(at, up), true);
+        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.FragGrenade", 9.0, 900.0, drone);
+        break;
+      case 3:
+        let gas = new CMGasCb();
+        gas.game = this.m_game;
+        gas.at = at;
+        gas.rec = CMUDrone.FirstAttack(["Attacks.BiohazardGrenade", "Attacks.ChemicalGrenade", "Attacks.PoisonGrenade"]);
+        gas.left = 8;
+        gas.Call();
+        CMCSession.Log("bombus: toxic gas with " + TDBID.ToStringDEBUG(gas.rec));
+        break;
+      default:
+        let rec = CMUDrone.FirstAttack(["Attacks.EMPGrenade", "Attacks.EMPExplosion", "Attacks.ElectricGrenade"]);
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\emp_grenade\\w_explosives_001_emp_grenade_01.effect"), CMUMinotaur.At(at, up), true);
+        CMUDrone.AreaAttack(this.m_game, at, rec, 7.0, 150.0, drone);
+        CMCSession.Log("bombus: shock with " + TDBID.ToStringDEBUG(rec));
+        break;
+    }
+    CMCSession.Log("bombus: " + CMUDrone.PayloadName(this.m_payload) + " payload " + (released ? "released" : "set off by its destruction") + " at " + CMCHits.V(at));
+    if released && IsDefined(drone) && ScriptedPuppet.IsAlive(drone) {
+      GameInstance.GetStatPoolsSystem(this.m_game).RequestChangingStatPoolValue(Cast<StatsObjectID>(drone.GetEntityID()), gamedataStatPoolType.Health, -100.0, null, false, true);
+    }
   }
 
   // ---- the physics body (MNC Physics, version 3 and up; every drone since 0.7.1-a13, when
@@ -2178,6 +2298,8 @@ public class CMUDrone extends CMCUnit {
   private let m_podHidden: array<wref<IComponent>>;
   private let m_podMasks: array<Uint64>;
   private let m_podLights: array<wref<IComponent>>;
+  private let m_jets: array<ref<FxInstance>>;  // each pod's own jet once one pod is lost
+  private let m_jetsOwn: Bool;                 // the entity's four-jet effect is off, ours on
 
   public static func OctantParts() -> Int32 = 10
 
@@ -2345,6 +2467,7 @@ public class CMUDrone extends CMCUnit {
       }
       p += 1;
     }
+    this.Jets();
     let link = CMLinkSystem.Get(this.m_game);
     link.SetDroneParts(this.m_drone.GetEntityID(), this.m_partHp);
   }
@@ -2389,11 +2512,115 @@ public class CMUDrone extends CMCUnit {
     }
   }
 
+  // The thruster jets. The entity's own (thrust_smoke: one effect, a particle track on each
+  // pod's bone) can't lose one jet, so a lost pod's jet went on burning where the pod had
+  // been (Omar, a34). Once a pod is lost, that effect is stopped and each pod still on gets
+  // its own one-jet copy (mnc\fx\octant_thruster_one.effect), on the pod's bone at the
+  // entity's own offsets (av_zetatech_octant.ent), moved with it every frame (JetsFollow).
+  private static func JetBone(i: Int32) -> CName {
+    switch i {
+      case 1: return n"l_front_01";
+      case 2: return n"r_front_02";
+      case 3: return n"l_back_01";
+    }
+    return n"r_back_01";
+  }
+  private static func JetOffset(i: Int32) -> Vector4 {
+    switch i {
+      case 1: return new Vector4(0.5, -1.1, -0.15, 0.0);
+      case 2: return new Vector4(-0.3, -1.0, -0.15, 0.0);
+      case 3: return new Vector4(0.33, -1.1, 0.0, 0.0);
+    }
+    return new Vector4(-0.33, -1.1, 0.0, 0.0);
+  }
+
+  private func Jets() -> Void {
+    let drone = this.m_drone;
+    if !IsDefined(drone) || ArraySize(this.m_partHp) < CMUDrone.OctantParts() {
+      return;
+    }
+    let lost = this.m_partHp[1] <= 0.0 || this.m_partHp[2] <= 0.0 || this.m_partHp[3] <= 0.0 || this.m_partHp[4] <= 0.0;
+    if !lost {
+      return;
+    }
+    if !this.m_jetsOwn {
+      GameObjectEffectHelper.BreakEffectLoopEvent(drone, n"thrust_smoke");
+      this.m_jetsOwn = true;
+      ArrayClear(this.m_jets);
+      let k = 0;
+      while k < 4 {
+        ArrayPush(this.m_jets, null);
+        k += 1;
+      }
+    }
+    let i = 1;
+    while i <= 4 {
+      let alive = this.m_partHp[i] > 0.0;
+      let fx = this.m_jets[i - 1];
+      if alive && !IsDefined(fx) {
+        this.m_jets[i - 1] = GameInstance.GetFxSystem(this.m_game).SpawnEffect(CMUMinotaur.Fx(r"mnc\\fx\\octant_thruster_one.effect"), this.JetAt(i), true);
+      }
+      if !alive && IsDefined(fx) {
+        fx.BreakLoop();
+        this.m_jets[i - 1] = null;
+      }
+      i += 1;
+    }
+  }
+
+  // where pod i's jet goes now: its bone (the model's Slot8842 slot of that name) and the
+  // entity's offset from it
+  private func JetAt(i: Int32) -> WorldTransform {
+    let wt: WorldTransform;
+    let drone = this.m_drone;
+    let sc = IsDefined(drone) ? drone.FindComponentByName(n"Slot8842") as SlotComponent : null;
+    let bone: WorldTransform;
+    if IsDefined(sc) && sc.GetSlotTransform(CMUDrone.JetBone(i), bone) {
+      let q = WorldTransform.GetOrientation(bone);
+      let p = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(bone)) + CMFlight.QRot(q, CMUDrone.JetOffset(i));
+      let wp: WorldPosition;
+      WorldPosition.SetVector4(wp, p);
+      WorldTransform.SetWorldPosition(wt, wp);
+      WorldTransform.SetOrientation(wt, q);
+      return wt;
+    }
+    return CMUMinotaur.At(this.PartPos(i), new Vector4(0.0, 0.0, -1.0, 0.0));
+  }
+
+  private func JetsFollow() -> Void {
+    if !this.m_jetsOwn {
+      return;
+    }
+    let i = 1;
+    while i <= 4 && i <= ArraySize(this.m_jets) {
+      let fx = this.m_jets[i - 1];
+      if IsDefined(fx) {
+        fx.UpdateTransform(this.JetAt(i));
+      }
+      i += 1;
+    }
+  }
+
+  // the entity's own jets back (the flight ends, the parts are restored)
+  private func JetsBack() -> Void {
+    for fx in this.m_jets {
+      if IsDefined(fx) {
+        fx.BreakLoop();
+      }
+    }
+    ArrayClear(this.m_jets);
+    if this.m_jetsOwn && IsDefined(this.m_drone) {
+      GameObjectEffectHelper.StartEffectEvent(this.m_drone, n"thrust_smoke");
+    }
+    this.m_jetsOwn = false;
+  }
+
   // the effects ride the parts every frame; the hull smokes under half, burns under a quarter
   private func PartFx() -> Void {
     if ArraySize(this.m_partHp) < CMUDrone.OctantParts() {
       return;
     }
+    this.JetsFollow();
     let drone = this.m_drone;
     let hullFrac = 1.0;
     if IsDefined(drone) {
@@ -2576,5 +2803,25 @@ public class CMWreckLogCb extends DelayCallback {
     }
     let p = d.GetWorldPosition();
     CMCSession.Log("drone: the wreck two seconds on is at " + CMCHits.V(p) + ", " + FloatToStringPrec(Vector4.Distance(p, this.fell), 1) + " m from where it went down");
+  }
+}
+
+// the Bombus's toxic gas: a cloud that lingers where it went off, poisoning what is in it
+// once a second (CMUDrone.Detonate)
+public class CMGasCb extends DelayCallback {
+  public let game: GameInstance;
+  public let at: Vector4;
+  public let rec: TweakDBID;
+  public let left: Int32;
+
+  public func Call() -> Void {
+    if this.left % 2 == 0 {
+      GameInstance.GetFxSystem(this.game).SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\biohazard_grenade\\w_explosives_001_biohazard_grenade_01.effect"), CMUMinotaur.At(this.at, new Vector4(0.0, 0.0, 1.0, 0.0)), true);
+    }
+    CMUDrone.AreaAttack(this.game, this.at, this.rec, 6.0, 25.0, null);
+    this.left -= 1;
+    if this.left > 0 {
+      GameInstance.GetDelaySystem(this.game).DelayCallback(this, 1.0, false);
+    }
   }
 }

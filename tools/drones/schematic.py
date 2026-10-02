@@ -65,6 +65,17 @@ def octant_part(mesh, c, sub="", bones=()):
     return "body"
 
 
+def bombus_part(mesh, c, sub="", bones=()):
+    # the Bombus is a tricopter: its body, three arms (each with its propeller: the
+    # l/r/back_wing bones) and the payload unit at its nose (the weapon meshes)
+    if mesh.startswith("av_zetatech_bombus__weapon"):
+        return "payload"
+    for side, name in (("l_wing", "arm_l"), ("r_wing", "arm_r"), ("back_wing", "arm_back")):
+        if any(b.startswith(side) for b in bones):
+            return name
+    return "body"
+
+
 # rigid meshes in their slot's frame: where each slot sits in the rest pose (rig bones
 # composed with Slot8842's slot offsets, all unturned): av_zetatech_octant.rig / .ent
 PLACED = {
@@ -76,12 +87,14 @@ PLACED = {
 
 
 DRONES = {
+    "bombus": ("raw_bombus", ["av_zetatech_bombus__ext01_surveillance", "av_zetatech_bombus__ext01_propellers", "av_zetatech_bombus__weapon"],
+               bombus_part, ["body", "arm_l", "arm_r", "arm_back", "payload"], 360),
     "octant": ("raw_octant", ["av_zetatech_octant__ext01_body_01", "av_zetatech_octant__ext01_gun_02", "av_zetatech_octant__ext01_thruster_"],
-               octant_part, ["body", "thruster_fl", "thruster_fr", "thruster_bl", "thruster_br", "gun", "rocket_l", "rocket_r", "mortar", "sensor"]),
+               octant_part, ["body", "thruster_fl", "thruster_fr", "thruster_bl", "thruster_br", "gun", "rocket_l", "rocket_r", "mortar", "sensor"], 560),
 }
 
 
-def render(tris, parts):
+def render(tris, parts, H=H):
     # tris: (p0, p1, p2, part index); top-down: screen x = X, screen y = -Y, depth = -Z
     xs = [p[0] for t in tris for p in t[:3]]
     ys = [p[1] for t in tris for p in t[:3]]
@@ -167,7 +180,7 @@ def main():
     os.makedirs(raw, exist_ok=True)
     layout = {}
     images = []
-    for kind, (folder, prefixes, part_of, parts) in DRONES.items():
+    for kind, (folder, prefixes, part_of, parts, H) in DRONES.items():
         tris = []
         for f in sorted(os.listdir(os.path.join(src, folder))):
             if f.endswith(".glb") and any(f.startswith(p) for p in prefixes):
@@ -176,7 +189,7 @@ def main():
                     t = tuple(tuple(q[i] + off[i] for i in range(3)) for q in t)
                     c = tuple((t[0][i] + t[1][i] + t[2][i]) / 3 for i in range(3))
                     tris.append((t[0], t[1], t[2], parts.index(part_of(f, c, sub, bones))))
-        W, owner, line = render(tris, parts)
+        W, owner, line = render(tris, parts, H)
         comp = bytearray(W * H * 4)
         for pi, pname in enumerate(parts):
             idx = [i for i in range(W * H) if owner[i] == pi or line[pi][i] > 0]
