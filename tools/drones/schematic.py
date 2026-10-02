@@ -8,7 +8,33 @@
 # across and Y (forward) up.
 import json, math, os, sys
 sys.path.insert(0, os.path.dirname(__file__))
-from scan import read_glb, png  # noqa: E402
+from scan import read_glb, accessor, png  # noqa: E402
+import struct  # noqa: E402
+
+
+def read_glb_skinned(path):
+    # read_glb's triangles, each with the mesh it is in and the bones its corners follow
+    b = open(path, "rb").read()
+    n = struct.unpack("<I", b[12:16])[0]
+    j = json.loads(b[20:20 + n])
+    off = 20 + n
+    blen = struct.unpack("<I", b[off:off + 4])[0]
+    binc = b[off + 8:off + 8 + blen]
+    joints = j["skins"][0]["joints"] if j.get("skins") else []
+    out = []
+    for m in j["meshes"]:
+        if "LOD_1" not in m.get("name", "LOD_1"):
+            continue
+        for pr in m["primitives"]:
+            pos = accessor(j, binc, pr["attributes"]["POSITION"])
+            idx = accessor(j, binc, pr["indices"]) if "indices" in pr else list(range(len(pos)))
+            jw = accessor(j, binc, pr["attributes"]["JOINTS_0"]) if "JOINTS_0" in pr["attributes"] and joints else None
+            pts = [(q[0], -q[2], q[1]) for q in pos]
+            for i in range(0, len(idx) - 2, 3):
+                c = (idx[i], idx[i + 1], idx[i + 2])
+                bones = [j["nodes"][joints[jw[k][0]]]["name"] for k in c] if jw else []
+                out.append(((pts[c[0]], pts[c[1]], pts[c[2]]), m.get("name", ""), bones))
+    return out
 
 AW, AH = 1024, 1024
 H = 560          # the composite's height in pixels
@@ -16,14 +42,26 @@ LW = 2.0
 FILL = 0.14
 
 
-def octant_part(mesh, c):
-    # the four thruster pods are their own meshes, hung on Slot8842 slots (below); the side
-    # pipes of the body mesh count as body; the front gun is its own mesh
+def octant_part(mesh, c, sub="", bones=()):
+    # the four thruster pods are their own meshes, hung on Slot8842 slots (below); the front
+    # gun is its own mesh. In the body mesh (0.7.1-a34, Omar: wireframe scans of the game's
+    # asset only): the five tubes down each side follow the l/r_element bones (the rocket
+    # pods); the sensor is the nose lens (submesh_03) and the nose round it; the mortar is
+    # the block on top of the hull (the Octant has no mortar of its own: a region of the
+    # body's own lines). Everything else is the body.
     if mesh.startswith("av_zetatech_octant__ext01_gun"):
         return "gun"
     for side in ("fl", "fr", "bl", "br"):
         if mesh.startswith("av_zetatech_octant__ext01_thruster_" + side):
             return "thruster_" + side
+    if any(b.startswith("l_element") for b in bones):
+        return "rocket_l"
+    if any(b.startswith("r_element") for b in bones):
+        return "rocket_r"
+    if sub.startswith("submesh_03") or (c[1] > 1.2 and abs(c[0]) < 0.3 and c[2] > -0.15):
+        return "sensor"
+    if c[2] > 0.62 and abs(c[0]) < 0.75 and -0.9 < c[1] < 0.55:
+        return "mortar"
     return "body"
 
 
@@ -39,7 +77,7 @@ PLACED = {
 
 DRONES = {
     "octant": ("raw_octant", ["av_zetatech_octant__ext01_body_01", "av_zetatech_octant__ext01_gun_02", "av_zetatech_octant__ext01_thruster_"],
-               octant_part, ["body", "thruster_fl", "thruster_fr", "thruster_bl", "thruster_br", "gun"]),
+               octant_part, ["body", "thruster_fl", "thruster_fr", "thruster_bl", "thruster_br", "gun", "rocket_l", "rocket_r", "mortar", "sensor"]),
 }
 
 
@@ -134,10 +172,10 @@ def main():
         for f in sorted(os.listdir(os.path.join(src, folder))):
             if f.endswith(".glb") and any(f.startswith(p) for p in prefixes):
                 off = next((o for p, o in PLACED.items() if f.startswith(p)), (0.0, 0.0, 0.0))
-                for t in read_glb(os.path.join(src, folder, f)):
+                for t, sub, bones in read_glb_skinned(os.path.join(src, folder, f)):
                     t = tuple(tuple(q[i] + off[i] for i in range(3)) for q in t)
                     c = tuple((t[0][i] + t[1][i] + t[2][i]) / 3 for i in range(3))
-                    tris.append((t[0], t[1], t[2], parts.index(part_of(f, c))))
+                    tris.append((t[0], t[1], t[2], parts.index(part_of(f, c, sub, bones))))
         W, owner, line = render(tris, parts)
         comp = bytearray(W * H * 4)
         for pi, pname in enumerate(parts):
