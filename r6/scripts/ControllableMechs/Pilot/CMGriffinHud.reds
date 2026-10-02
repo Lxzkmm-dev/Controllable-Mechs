@@ -35,6 +35,8 @@ public class CMGriffinHud extends CMBombusHud {
   private let m_grLockT: ref<inkText>;
   private let m_grLockD: ref<inkText>;
   private let m_grLead: ref<inkCanvas>;
+  private let m_grHostBars: array<ref<inkRectangle>>;   // every hostile in view: 8 corner bars each (a51)
+  private let m_grHostD: array<ref<inkText>>;
   private let m_grLeadLine: ref<inkRectangle>;
   private let m_grHeatArc: array<ref<inkRectangle>>;   // both guns' lit arcs, 15 segments each
   private let m_grSpoolBar: array<ref<inkRectangle>>;
@@ -195,6 +197,22 @@ public class CMGriffinHud extends CMBombusHud {
     while n < 8 {
       ArrayPush(this.m_grLockBars, CMPilotHud.Bar(root, 0.0, 0.0, 4.0, 4.0, this.Hot(), 1.0));
       n += 1;
+    }
+    // the other hostiles in view: red corners round each, its distance under it (Omar, a51)
+    let hb = 0;
+    while hb < 12 * 8 {
+      let b = CMPilotHud.Bar(root, 0.0, 0.0, 4.0, 4.0, this.Hot(), 0.85);
+      b.SetVisible(false);
+      ArrayPush(this.m_grHostBars, b);
+      hb += 1;
+    }
+    hb = 0;
+    while hb < 12 {
+      let d = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 22, n"Medium", this.Hot());
+      d.SetAnchorPoint(Vector2(0.5, 0.0));
+      d.SetVisible(false);
+      ArrayPush(this.m_grHostD, d);
+      hb += 1;
     }
     this.m_grLockHpBg = CMPilotHud.Bar(root, 0.0, 0.0, 10.0, 10.0, this.Hot(), 0.25);
     this.m_grLockHp = CMPilotHud.Bar(root, 0.0, 0.0, 10.0, 10.0, this.Hot(), 0.95);
@@ -364,6 +382,7 @@ public class CMGriffinHud extends CMBombusHud {
     let hot = t.hostiles > 0;
     this.Tint(this.GR_BANNER, hot ? this.Hot() : this.Acc());
     this.SetT(this.GR_BANNER, hot ? "WEAPONS FREE" : "WEAPONS HOLD");
+    this.GrHostiles(t, cx, cy);
     let c = t.lock;
     if !IsDefined(c) || !c.OnScreen() {
       this.GrLockShow(false);
@@ -410,6 +429,52 @@ public class CMGriffinHud extends CMBombusHud {
       this.m_grLead.SetVisible(false);
       this.m_grLeadLine.SetVisible(false);
     }
+  }
+
+  // every hostile in view but the locked one: four red corners sized to it, its distance
+  private func GrHostiles(t: ref<CMDroneTrack>, cx: Float, cy: Float) -> Void {
+    let scale = 1080.0 / TanF(Deg2Rad(MaxF(1.0, t.fov) * 0.5));
+    let n = 0;
+    for c in t.contacts {
+      let isLock = IsDefined(t.lock) && Equals(c.id, t.lock.id);
+      if n < ArraySize(this.m_grHostD) && c.kind == 2 && !isLock && c.OnScreen() {
+        let hh = ClampF(1.9 / MaxF(1.0, c.dist) * scale, 50.0, 420.0);
+        let hw = MaxF(44.0, hh * 0.5);
+        let x = cx + c.scr.X - hw * 0.5;
+        let y = cy + c.scr.Y - hh * 0.5;
+        let L = MinF(26.0, hw * 0.35);
+        let b = n * 8;
+        this.HostBar(b, x, y, L, 3.0);
+        this.HostBar(b + 1, x, y, 3.0, L);
+        this.HostBar(b + 2, x + hw - L, y, L, 3.0);
+        this.HostBar(b + 3, x + hw - 3.0, y, 3.0, L);
+        this.HostBar(b + 4, x, y + hh - 3.0, L, 3.0);
+        this.HostBar(b + 5, x, y + hh - L, 3.0, L);
+        this.HostBar(b + 6, x + hw - L, y + hh - 3.0, L, 3.0);
+        this.HostBar(b + 7, x + hw - 3.0, y + hh - L, 3.0, L);
+        let d = this.m_grHostD[n];
+        d.SetVisible(true);
+        d.SetMargin(inkMargin(x + hw * 0.5, y + hh + 6.0, 0.0, 0.0));
+        d.SetText(IntToString(RoundF(c.dist)) + " M");
+        n += 1;
+      }
+    }
+    while n < ArraySize(this.m_grHostD) {
+      let k = 0;
+      while k < 8 {
+        this.m_grHostBars[n * 8 + k].SetVisible(false);
+        k += 1;
+      }
+      this.m_grHostD[n].SetVisible(false);
+      n += 1;
+    }
+  }
+
+  private func HostBar(i: Int32, x: Float, y: Float, w: Float, h: Float) -> Void {
+    let b = this.m_grHostBars[i];
+    b.SetVisible(true);
+    b.SetMargin(inkMargin(x, y, 0.0, 0.0));
+    b.SetSize(Vector2(w, h));
   }
 
   private func GrBar(i: Int32, x: Float, y: Float, w: Float, h: Float, c: HDRColor) -> Void {
