@@ -139,6 +139,13 @@ public class CMContent extends TKContent {
         cfg.ResetDrone(cfg.CfgProfile());
         p.SetMessage("*" + StrUpper(cfg.CfgProfile()) + " FLIGHT SETTINGS RESET");
         break;
+      case "podsbreak":
+        cfg.SetOctantPodsBreak(CMContent.Val(arg, 1) == 1);
+        break;
+      case "dronepart":
+        link.DevDronePart(CMContent.Val(arg, -1), CMUDrone.OctantParts());
+        p.SetMessage(CMContent.Val(arg, -1) < 0 ? "*OCTANT PARTS RESTORED (APPLIES ON THE NEXT FLIGHT)" : "*" + CMUDrone.OctantPartName(CMContent.Val(arg, -1)) + " DESTROYED (APPLIES ON THE NEXT FLIGHT)");
+        break;
       case "lmgarc":
         cfg.SetOctantLmgArc(CMContent.Val(arg, 0));
         break;
@@ -298,6 +305,13 @@ public class CMContent extends TKContent {
       p.Check("DAMAGE TEST", "Dev tool: shoot the linked mech to try part damage. It can't die and won't turn on you; each hit names the part it wore. Off when you close the link", CMCParts.Get(this.game).Testing(), "damagetest", "");
       p.Item("RESTORE MECH PARTS", "Dev tool: every part of the linked mech whole again, guns back on, hull full.", "", "RESTORE", "restoreparts", "", true);
       p.Buttons("BREAK A PART (TEST)", "", "", "MK.31 L|MK.31 R|SENSOR|LEG L|PODS", "breakpart|breakpart|breakpart|breakpart|breakpart", "2|3|0|4|6");
+    }
+    // the same for a linked Octant: its parts are kept by the link and apply on its next flight
+    if CMPilotSystem.Get(this.game).ShowDebug() && link.IsLinked() && Equals(link.UnitKind(), "DRONE") {
+      p.Item("RESTORE OCTANT PARTS", "Dev tool: every part of the linked Octant whole again (on its next flight).", "", "RESTORE", "dronepart", "-1", true);
+      p.Buttons("DESTROY A THRUSTER (TEST)", "On its next flight. A dead thruster gives no thrust: it flies lopsided, two on one side bring it down", "", "FRONT L|FRONT R|BACK L|BACK R", "dronepart|dronepart|dronepart|dronepart", "1|2|3|4");
+      p.Buttons("DESTROY A WEAPON / SENSOR (TEST)", "On its next flight", "", "LMG|ROCKET L|ROCKET R|MORTAR|SENSOR", "dronepart|dronepart|dronepart|dronepart|dronepart", "5|6|7|8|9");
+      p.Dropdown("OCTANT POD DESTROYED", "A destroyed thruster pod breaks off (its mesh gone, a burst) or burns on (fire and sparks)", CMPilotSystem.Get(this.game).OctantPodsBreak() ? "1" : "0", "BREAKS OFF|BURNS ON", "1|0", "podsbreak", "");
     }
   }
 

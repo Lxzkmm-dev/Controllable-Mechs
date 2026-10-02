@@ -493,6 +493,52 @@ public class CMLinkSystem extends ScriptableSystem {
 
   public func UnitKind() -> String = CMLinkSystem.KindName(this.Unit())
 
+  // A linked drone's parts (the Octant's, CMUDrone), kept between flights while it stays
+  // the linked unit; whole (1.0) for any other unit or a fresh link.
+  private let m_droneParts: array<Float>;
+  private let m_dronePartsOf: EntityID;
+
+  public func DroneParts(id: EntityID, n: Int32) -> array<Float> {
+    let out: array<Float>;
+    let keep = id == this.m_dronePartsOf && ArraySize(this.m_droneParts) == n;
+    let i = 0;
+    while i < n {
+      ArrayPush(out, keep ? this.m_droneParts[i] : 1.0);
+      i += 1;
+    }
+    return out;
+  }
+
+  public func SetDroneParts(id: EntityID, parts: array<Float>) -> Void {
+    this.m_dronePartsOf = id;
+    ArrayClear(this.m_droneParts);
+    for p in parts {
+      ArrayPush(this.m_droneParts, p);
+    }
+  }
+
+  // DIAGNOSTICS: one of the linked drone's parts destroyed (-1: all whole again); applies
+  // when it is next flown
+  public func DevDronePart(part: Int32, n: Int32) -> Void {
+    let unit = this.Unit();
+    if !IsDefined(unit) {
+      return;
+    }
+    let parts = this.DroneParts(unit.GetEntityID(), n);
+    let i = 0;
+    while i < n {
+      if part < 0 {
+        parts[i] = 1.0;
+      } else {
+        if i == part {
+          parts[i] = 0.0;
+        }
+      }
+      i += 1;
+    }
+    this.SetDroneParts(unit.GetEntityID(), parts);
+  }
+
   // ---------------------------------------------------------------------------
   // The 1s link check: only scheduled while a robot is linked
   // ---------------------------------------------------------------------------

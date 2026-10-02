@@ -142,6 +142,7 @@ public class CMUDrone extends CMCUnit {
     this.m_gait = n"";
     this.m_rockets = this.ROCKET_POD;
     this.m_podReady = 0.0;
+    this.ApplyParts(false);   // the parts' state as the link kept it (the flight exists now)
     this.Pacify(drone, true);
     // the game keeps running it as an AI NPC, whose hover and altitude logic would hold the
     // model up: its AI controller is off for the flight (PhysX and the entity transform move
@@ -157,6 +158,11 @@ public class CMUDrone extends CMCUnit {
   }
 
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
+    if ArraySize(this.m_partHp) > 0 && IsDefined(this.m_drone) {
+      CMLinkSystem.Get(this.m_game).SetDroneParts(this.m_drone.GetEntityID(), this.m_partHp);
+    }
+    this.StopPartFx();
+    this.UnhidePods();
     this.DropShots();
     this.StopWash();
     this.StopPhys(this.m_drone);
@@ -422,6 +428,7 @@ public class CMUDrone extends CMCUnit {
     }
     this.Weapons(s, now, dt, hud);
     this.Downwash(now);
+    this.PartFx();
     this.Lean(drone, dt);
     if now >= this.m_logAt {
       this.m_logAt = now + 1.0;
@@ -580,6 +587,7 @@ public class CMUDrone extends CMCUnit {
     let cfg = CMPilotSystem.Get(this.m_game);
     this.m_hideInSight = cfg.DroneHideInSight(this.m_kind);
     this.m_lmgArc = Cast<Float>(cfg.OctantLmgArc());
+    this.m_podsBreak = cfg.OctantPodsBreak();
     this.m_sensUp = Cast<Float>(cfg.DroneCamUpCm(this.m_kind)) / 100.0;
     this.m_sensFwd = Cast<Float>(cfg.DroneCamFwdCm(this.m_kind)) / 100.0;
     this.m_windK = Cast<Float>(cfg.WindPct()) / 100.0;
@@ -1004,9 +1012,11 @@ public class CMUDrone extends CMCUnit {
     if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 {
       let now = s.Now();
       let gun = this.m_partHp[5] > 0.0;
-      st.priText = "MORTAR   x" + IntToString(this.MORTAR_SHELLS) + "  UNLTD   " + (!gun ? "LOST" : (now >= this.m_mortarReady ? (this.m_impactOk ? "RDY" : "NO SOLN") : "RLD " + FloatToStringPrec(this.m_mortarReady - now, 1) + "S"));
+      let mortar = this.m_partHp[8] > 0.0;
+      let pods = this.RocketPods();
+      st.priText = "MORTAR   x" + IntToString(this.MORTAR_SHELLS) + "  UNLTD   " + (!mortar ? "LOST" : (now >= this.m_mortarReady ? (this.m_impactOk ? "RDY" : "NO SOLN") : "RLD " + FloatToStringPrec(this.m_mortarReady - now, 1) + "S"));
       st.secText = "LMG x2         " + (!gun ? "LOST" : (this.m_overheat ? "OVERHEAT" : (this.m_offArc ? "OFF ARC" : "HEAT " + IntToString(RoundF(this.m_heat * 100.0)) + "%")));
-      st.terText = "ROCKETS  LSR   " + IntToString(this.m_rockets) + "/" + IntToString(this.ROCKET_POD) + "     " + (!gun ? "LOST" : (this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + "S"));
+      st.terText = "ROCKETS  LSR   " + IntToString(this.m_rockets) + "/" + IntToString(pods * 2) + "     " + (pods == 0 ? "LOST" : (this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + "S"));
     } else {
       st.weapon = 0;
       st.priText = "PRI  ----";
@@ -1017,15 +1027,21 @@ public class CMUDrone extends CMCUnit {
     for hp in this.m_partHp {
       ArrayPush(st.droneParts, hp);
     }
-    let lost = 0;
-    let i = 0;
-    while i < 4 && i < ArraySize(this.m_partHp) {
-      if this.m_partHp[i + 1] <= 0.0 {
-        lost += 1;
+    // the damaged and lost parts, worst first
+    let lostT = "";
+    let dmgT = "";
+    let i = 1;
+    while i < ArraySize(this.m_partHp) {
+      if this.m_partHp[i] <= 0.0 {
+        lostT += (StrLen(lostT) > 0 ? "  " : "") + CMUDrone.OctantPartName(i);
+      } else {
+        if this.m_partHp[i] < 0.5 {
+          dmgT += (StrLen(dmgT) > 0 ? "  " : "") + CMUDrone.OctantPartName(i);
+        }
       }
       i += 1;
     }
-    st.warning = lost > 0 ? IntToString(lost) + " THRUSTER" + (lost > 1 ? "S" : "") + " LOST" : "";
+    st.warning = (StrLen(lostT) > 0 ? "LOST: " + lostT : "") + (StrLen(lostT) > 0 && StrLen(dmgT) > 0 ? "   " : "") + (StrLen(dmgT) > 0 ? "DMG: " + dmgT : "");
   }
 
   public static func Role(kind: String) -> String {
@@ -1115,6 +1131,7 @@ public class CMUDrone extends CMCUnit {
     }
     let drone = this.m_drone;
     let gun = this.m_partHp[5] > 0.0;
+    let mortar = this.m_partHp[8] > 0.0;
     // the guns cool
     this.m_heat = MaxF(0.0, this.m_heat - this.LMG_COOL * dt);
     if this.m_overheat && this.m_heat < 0.33 {
@@ -1123,7 +1140,7 @@ public class CMUDrone extends CMCUnit {
     }
     // the rocket pod reloads once it is empty
     if this.m_rockets <= 0 && this.m_podReady > 0.0 && now >= this.m_podReady {
-      this.m_rockets = this.ROCKET_POD;
+      this.m_rockets = this.RocketPods() * 2;
       this.m_podReady = 0.0;
       GameObject.PlaySoundEvent(drone, n"w_gun_hmg_militech_overheat_close");
     }
@@ -1134,14 +1151,18 @@ public class CMUDrone extends CMCUnit {
       hud.SetImpact(gun && this.m_wpn == 0 && this.m_impactOk && AbsF(o.X) < 1900.0 && AbsF(o.Y) < 1050.0, o.X, o.Y, this.m_tof);
     }
     let firing = false;
-    if s.Key(CMCKey.Lmb()) && gun {
+    if s.Key(CMCKey.Lmb()) {
       if this.m_wpn == 1 {
-        firing = this.FireLmg(s, now);
+        if gun {
+          firing = this.FireLmg(s, now);
+        }
       } else {
         if this.m_wpn == 2 {
           this.FireMissile(s, now);
         } else {
-          this.FireMortar(s, now);
+          if mortar {
+            this.FireMortar(s, now);
+          }
         }
       }
     }
@@ -1163,7 +1184,7 @@ public class CMUDrone extends CMCUnit {
 
   // G: a missile, whatever is selected
   public func Secondary(s: ref<CMCSession>) -> Void {
-    if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 && this.m_partHp[5] > 0.0 {
+    if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 {
       this.FireMissile(s, s.Now());
     }
   }
@@ -1263,7 +1284,8 @@ public class CMUDrone extends CMCUnit {
   // apart (held or pressed), from the left and right wing pods in turn; an empty pod
   // reloads in ROCKET_RELOAD. Each still flies at what the reticle is on.
   private func FireMissile(s: ref<CMCSession>, now: Float) -> Void {
-    if now < this.m_missileReady || this.m_rockets <= 0 {
+    let pods = this.RocketPods();
+    if now < this.m_missileReady || this.m_rockets <= 0 || pods == 0 {
       return;
     }
     this.m_missileReady = now + this.ROCKET_GAP;
@@ -1272,6 +1294,10 @@ public class CMUDrone extends CMCUnit {
       this.m_podReady = now + this.ROCKET_RELOAD;
     }
     this.m_rocketSide = !this.m_rocketSide;
+    // a lost pod's side fires nothing: the other pod's
+    if ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && pods == 1 {
+      this.m_rocketSide = this.m_partHp[6] > 0.0;
+    }
     let m = new CMDroneShot();
     m.kind = 2;
     m.pos = this.SlotPos(this.m_rocketSide ? n"Wing1" : n"Wing2", this.Muzzle(this.m_rocketSide ? -0.6 : 0.6));
@@ -1407,7 +1433,8 @@ public class CMUDrone extends CMCUnit {
       let muzzle = this.SlotPos(this.m_lmgLeft ? n"front_weapon_l_barrel" : n"front_weapon_r_barrel", this.Muzzle(this.m_lmgLeft ? -0.12 : 0.12));
       let aim = s.aim;
       let dist = Vector4.Distance(muzzle, aim);
-      let spread = dist * 0.006;
+      let worn = ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5;
+      let spread = dist * (worn ? 0.014 : 0.006);
       aim += new Vector4(RandRangeF(-spread, spread), RandRangeF(-spread, spread), RandRangeF(-spread, spread), 0.0);
       let dir = Vector4.Normalize(aim - muzzle);
       let fx = GameInstance.GetFxSystem(this.m_game);
@@ -1481,7 +1508,7 @@ public class CMUDrone extends CMCUnit {
         this.m_lmgHits += 1;
         this.m_lmgLast = NameToString(target.GetClassName());
       }
-      this.m_heat += this.LMG_HEAT;
+      this.m_heat += this.LMG_HEAT * (ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5 ? 1.5 : 1.0);
       fired = true;
       if this.m_heat >= 1.0 {
         this.m_heat = 1.0;
@@ -2080,39 +2107,175 @@ public class CMUDrone extends CMCUnit {
     return Vector2(d.X / d.Y * scale, -d.Z / d.Y * scale);
   }
 
-  // ---- part damage (the Octant first): body, the four thrusters, the gun ---------------
-  // Each hit lands on the part nearest to where it struck, in the drawn body's frame: the
-  // thrusters' pods hang off its sides (rig: front pods at x +-0.88, y 0.59; back at
-  // x +-0.88, y -0.57; their meshes reach 0.35 m further out), the gun under the nose. A
-  // part wears down by the hit's damage over its share of the hull; a thruster at nothing
-  // loses its thrust in the flight model (a quad with a dead rotor can't hold itself up).
+  // ---- part damage (the Octant): its hull and nine parts ----------------------------------
+  // 0 hull, 1-4 the thruster pods (front left, front right, back left, back right: the flight
+  // model's rotors 0-3), 5 the LMG turret under the nose, 6 and 7 the left and right rocket
+  // pods, 8 the mortar launcher on top, 9 the sensor. A hit lands on the part whose point on
+  // the drawn model (its entity's slots: Engine1-4, the barrels, Wing1/2, Perception; the
+  // mortar on top of the hull) is nearest, within that part's reach, else on the hull. A part
+  // wears down by the hit's damage over its share of the hull (OctantShare).
+  //   pods: thrust falls with damage (35% left just before it goes, nothing once destroyed),
+  //     smoke under half, fire and sparks when destroyed; destroyed, it either breaks off
+  //     (its mesh gone, a burst) or burns on (DIAGNOSTICS > OCTANT POD DESTROYED)
+  //   LMG: damaged, wider spread and quicker heat; destroyed, offline
+  //   rocket pods: each its half of the salvo; mortar: destroyed, no mortar
+  //   sensor: damaged, a warning; destroyed, no optics (as the Minotaur's)
+  //   hull: smoke under half its health, fire under a quarter
+  // The parts' state is kept by the link while the drone stays linked (CMLinkSystem), so
+  // DIAGNOSTICS can break or restore them between flights.
   private let m_partHp: array<Float>;
+  private let m_partFx: array<ref<FxInstance>>;   // each part's smoke or fire (looping)
+  private let m_partFx2: array<ref<FxInstance>>;  // each part's sparks (looping)
+  private let m_partLevel: array<Int32>;          // 0 whole, 1 smoking, 2 burning / gone
+  private let m_partSlot: array<wref<SlotComponent>>;
+  private let m_partSlotName: array<CName>;
+  private let m_podsBreak: Bool;                  // a destroyed pod breaks off (else it burns on)
+  private let m_podHidden: array<wref<IComponent>>;
+  private let m_podMasks: array<Uint64>;
 
-  private func ResetParts() -> Void {
-    ArrayClear(this.m_partHp);
-    let n = Equals(this.m_kind, "octant") ? 6 : 0;
-    let i = 0;
-    while i < n {
-      ArrayPush(this.m_partHp, 1.0);
-      i += 1;
+  public static func OctantParts() -> Int32 = 10
+
+  // the rocket pods still on (0-2)
+  private func RocketPods() -> Int32 {
+    if ArraySize(this.m_partHp) < CMUDrone.OctantParts() {
+      return 2;
     }
+    return (this.m_partHp[6] > 0.0 ? 1 : 0) + (this.m_partHp[7] > 0.0 ? 1 : 0);
   }
 
-  public static func OctantPartAt(p: Vector4) -> Int32 {
-    if p.Y > 1.0 && p.Z < 0.4 {
-      return 5;   // the gun
+  public static func OctantPartName(i: Int32) -> String {
+    switch i {
+      case 1: return "THR FL";
+      case 2: return "THR FR";
+      case 3: return "THR BL";
+      case 4: return "THR BR";
+      case 5: return "LMG";
+      case 6: return "RKT L";
+      case 7: return "RKT R";
+      case 8: return "MORTAR";
+      case 9: return "SENSOR";
     }
-    if AbsF(p.X) > 1.0 {
-      if p.Y > 0.0 {
-        return p.X < 0.0 ? 1 : 2;   // front left, front right
-      }
-      return p.X < 0.0 ? 3 : 4;     // back left, back right
-    }
-    return 0;
+    return "HULL";
   }
 
   // the parts' share of the hull: a hit worth that much of the hull's maximum destroys it
-  public static func OctantShare(i: Int32) -> Float = i == 0 ? 1.0 : (i == 5 ? 0.15 : 0.2)
+  public static func OctantShare(i: Int32) -> Float {
+    if i == 0 { return 1.0; }
+    if i <= 4 { return 0.2; }
+    if i == 5 || i == 8 { return 0.15; }
+    if i == 9 { return 0.1; }
+    return 0.12;
+  }
+
+  // the slot on the model each part is found by, and how far from it a hit still counts
+  private static func OctantSlot(i: Int32) -> CName {
+    switch i {
+      case 1: return n"Engine4";
+      case 2: return n"Engine2";
+      case 3: return n"Engine3";
+      case 4: return n"Engine1";
+      case 5: return n"gun_front";
+      case 6: return n"Wing1";
+      case 7: return n"Wing2";
+      case 9: return n"Perception";
+    }
+    return n"";
+  }
+  private static func OctantReach(i: Int32) -> Float = i <= 4 ? 1.0 : (i == 5 ? 0.9 : 0.7)
+
+  private func ResetParts() -> Void {
+    ArrayClear(this.m_partHp);
+    this.StopPartFx();
+    ArrayClear(this.m_partSlot);
+    ArrayClear(this.m_partSlotName);
+    ArrayClear(this.m_podHidden);
+    ArrayClear(this.m_podMasks);
+    if !Equals(this.m_kind, "octant") {
+      return;
+    }
+    let link = CMLinkSystem.Get(this.m_game);
+    let kept = link.DroneParts(this.m_drone.GetEntityID(), CMUDrone.OctantParts());
+    let i = 0;
+    while i < CMUDrone.OctantParts() {
+      ArrayPush(this.m_partHp, kept[i]);
+      ArrayPush(this.m_partLevel, 0);
+      ArrayPush(this.m_partFx, null);
+      ArrayPush(this.m_partFx2, null);
+      ArrayPush(this.m_partSlotName, CMUDrone.OctantSlot(i));
+      ArrayPush(this.m_partSlot, this.FindSlot(CMUDrone.OctantSlot(i)));
+      i += 1;
+    }
+    this.ApplyParts(false);
+  }
+
+  // the slot component that has `name` (looked up once, then read every frame)
+  private func FindSlot(name: CName) -> wref<SlotComponent> {
+    let drone = this.m_drone;
+    if !IsDefined(drone) || Equals(name, n"") {
+      return null;
+    }
+    for c in drone.GetComponents() {
+      let sc = c as SlotComponent;
+      let wt: WorldTransform;
+      if IsDefined(sc) && sc.GetSlotTransform(name, wt) {
+        return sc;
+      }
+    }
+    return null;
+  }
+
+  // where a part is on the drawn model now (world)
+  private func PartPos(i: Int32) -> Vector4 {
+    let fl = this.m_flight;
+    if i == 8 || i == 0 {
+      // the mortar on top of the hull, the hull at its centre
+      let p = fl.pos + CMFlight.QRot(fl.q, new Vector4(0.0, 0.0, i == 8 ? 0.7 : 0.0, 0.0));
+      p.W = 1.0;
+      return p;
+    }
+    if i < ArraySize(this.m_partSlot) {
+      let sc = this.m_partSlot[i];
+      let wt: WorldTransform;
+      if IsDefined(sc) && sc.GetSlotTransform(this.m_partSlotName[i], wt) {
+        let p = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
+        if Vector4.Distance(p, fl.pos) < 6.0 {
+          p.W = 1.0;
+          return p;
+        }
+      }
+    }
+    // no slot: the rig's places (pods at x +-0.88, y +-0.58; the gun under the nose)
+    let local = new Vector4(0.0, 1.45, -0.45, 0.0);
+    switch i {
+      case 1: local = new Vector4(-0.88, 0.59, 0.0, 0.0); break;
+      case 2: local = new Vector4(0.88, 0.59, 0.0, 0.0); break;
+      case 3: local = new Vector4(-0.88, -0.57, 0.0, 0.0); break;
+      case 4: local = new Vector4(0.88, -0.57, 0.0, 0.0); break;
+      case 6: local = new Vector4(-0.9, 0.0, 0.2, 0.0); break;
+      case 7: local = new Vector4(0.9, 0.0, 0.2, 0.0); break;
+      case 9: local = new Vector4(0.0, 1.6, 0.0, 0.0); break;
+      default: break;
+    }
+    let q = fl.pos + CMFlight.QRot(fl.q, local - this.m_c);
+    q.W = 1.0;
+    return q;
+  }
+
+  // the part a hit at `p` (world) landed on
+  private func PartAt(p: Vector4) -> Int32 {
+    let best = 0;
+    let bestD = 9999.0;
+    let i = 1;
+    while i < CMUDrone.OctantParts() {
+      let d = Vector4.Distance(p, this.PartPos(i));
+      if d < CMUDrone.OctantReach(i) && d < bestD {
+        best = i;
+        bestD = d;
+      }
+      i += 1;
+    }
+    return best;
+  }
 
   public func TakeHit(s: ref<CMCSession>, hit: ref<gameHitEvent>) -> Void {
     let drone = this.m_drone;
@@ -2126,24 +2289,170 @@ public class CMUDrone extends CMCUnit {
     if dmg <= 0.0 {
       return;
     }
-    let fl = this.m_flight;
-    // where it struck, in the drawn body's frame (from its origin)
-    let local = CMFlight.QInvRot(fl.q, hit.hitPosition - fl.pos) + this.m_c;
-    let part = CMUDrone.OctantPartAt(local);
+    let part = this.PartAt(hit.hitPosition);
     if part == 0 {
       return;   // the body is the hull
     }
+    this.DamagePart(part, dmg);
+  }
+
+  private func DamagePart(part: Int32, dmg: Float) -> Void {
+    let drone = this.m_drone;
     let hull = GameInstance.GetStatPoolsSystem(this.m_game).GetStatPoolMaxPointValue(Cast<StatsObjectID>(drone.GetEntityID()), gamedataStatPoolType.Health);
     let before = this.m_partHp[part];
     this.m_partHp[part] = MaxF(0.0, before - dmg / MaxF(1.0, hull * CMUDrone.OctantShare(part)));
-    if part >= 1 && part <= 4 {
-      // front left, front right, back left, back right: the flight model's rotors 0-3
-      fl.eff[part - 1] = this.m_partHp[part] > 0.0 ? 1.0 : 0.0;
-    }
     if before > 0.0 && this.m_partHp[part] <= 0.0 {
-      CMCSession.Log("drone: part " + IntToString(part) + " destroyed (hit " + CMUDrone.V2(local) + ")");
+      CMCSession.Log("drone: " + CMUDrone.OctantPartName(part) + " destroyed");
+    }
+    this.ApplyParts(true);
+  }
+
+  // what the parts' state does: the pods' thrust, the effects, the optics
+  private func ApplyParts(live: Bool) -> Void {
+    if ArraySize(this.m_partHp) < CMUDrone.OctantParts() || !IsDefined(this.m_flight) {
+      return;
+    }
+    let fl = this.m_flight;
+    let i = 1;
+    while i <= 4 {
+      let hp = this.m_partHp[i];
+      // a damaged pod pushes less; a destroyed one, nothing (the flight model's rotor i-1)
+      fl.eff[i - 1] = hp > 0.0 ? 0.35 + 0.65 * hp : 0.0;
+      i += 1;
+    }
+    // the rocket pods' load: two rockets for each pod still on
+    let pods = (this.m_partHp[6] > 0.0 ? 1 : 0) + (this.m_partHp[7] > 0.0 ? 1 : 0);
+    this.m_rockets = Min(this.m_rockets, pods * 2);
+    let p = 1;
+    while p < CMUDrone.OctantParts() {
+      let hp = this.m_partHp[p];
+      let level = hp <= 0.0 ? 2 : (hp < 0.5 ? 1 : 0);
+      if level != this.m_partLevel[p] {
+        this.PartLook(p, level, live);
+        this.m_partLevel[p] = level;
+      }
+      p += 1;
+    }
+    let link = CMLinkSystem.Get(this.m_game);
+    link.SetDroneParts(this.m_drone.GetEntityID(), this.m_partHp);
+  }
+
+  // a part's effects for its state: smoke when damaged; fire and sparks when destroyed, or
+  // for a pod set to break off, a burst and the pod's mesh gone
+  private func PartLook(p: Int32, level: Int32, live: Bool) -> Void {
+    let fx = GameInstance.GetFxSystem(this.m_game);
+    let at = CMUMinotaur.At(this.PartPos(p), new Vector4(0.0, 0.0, 1.0, 0.0));
+    if IsDefined(this.m_partFx[p]) {
+      this.m_partFx[p].BreakLoop();
+      this.m_partFx[p] = null;
+    }
+    if IsDefined(this.m_partFx2[p]) {
+      this.m_partFx2[p].BreakLoop();
+      this.m_partFx2[p] = null;
+    }
+    if level == 1 {
+      this.m_partFx[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\drone\\octant\\octant_damage_smoke.effect"), at, true);
+      return;
+    }
+    if level == 2 {
+      if live {
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\drone\\octant\\octant_explosion_engine.effect"), at, true);
+        GameObject.PlaySoundEvent(this.m_drone, n"dev_generic_impact_metal");
+      }
+      if p >= 1 && p <= 4 && this.m_podsBreak {
+        this.HidePod(p);
+        this.m_partFx[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\vehicles\\drone\\octant\\octant_damage_smoke.effect"), at, true);
+        return;
+      }
+      this.m_partFx[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\quest\\placeholders\\sq009_drone_fire.effect"), at, true);
+      this.m_partFx2[p] = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\quest\\placeholders\\sq009_drone_electric_short.effect"), at, true);
     }
   }
+
+  // the effects ride the parts every frame; the hull smokes under half, burns under a quarter
+  private func PartFx() -> Void {
+    if ArraySize(this.m_partHp) < CMUDrone.OctantParts() {
+      return;
+    }
+    let drone = this.m_drone;
+    let hullFrac = 1.0;
+    if IsDefined(drone) {
+      let pools = GameInstance.GetStatPoolsSystem(this.m_game);
+      let id = Cast<StatsObjectID>(drone.GetEntityID());
+      hullFrac = pools.GetStatPoolValue(id, gamedataStatPoolType.Health, false) / MaxF(1.0, pools.GetStatPoolMaxPointValue(id, gamedataStatPoolType.Health));
+    }
+    let hullLevel = hullFrac < 0.25 ? 2 : (hullFrac < 0.5 ? 1 : 0);
+    if hullLevel != this.m_partLevel[0] {
+      this.PartLook(0, hullLevel, false);
+      this.m_partLevel[0] = hullLevel;
+    }
+    let up = new Vector4(0.0, 0.0, 1.0, 0.0);
+    let i = 0;
+    while i < CMUDrone.OctantParts() {
+      if IsDefined(this.m_partFx[i]) || IsDefined(this.m_partFx2[i]) {
+        let at = CMUMinotaur.At(this.PartPos(i), up);
+        if IsDefined(this.m_partFx[i]) {
+          this.m_partFx[i].UpdateTransform(at);
+        }
+        if IsDefined(this.m_partFx2[i]) {
+          this.m_partFx2[i].UpdateTransform(at);
+        }
+      }
+      i += 1;
+    }
+  }
+
+  private func StopPartFx() -> Void {
+    for f in this.m_partFx {
+      if IsDefined(f) {
+        f.BreakLoop();
+      }
+    }
+    for f in this.m_partFx2 {
+      if IsDefined(f) {
+        f.BreakLoop();
+      }
+    }
+    ArrayClear(this.m_partFx);
+    ArrayClear(this.m_partFx2);
+    ArrayClear(this.m_partLevel);
+  }
+
+  // a pod broken off: its thruster and sticker meshes drawn with none of their chunks
+  private func HidePod(p: Int32) -> Void {
+    let drone = this.m_drone;
+    if !IsDefined(drone) {
+      return;
+    }
+    let code = p == 1 ? "fl" : (p == 2 ? "fr" : (p == 3 ? "bl" : "br"));
+    for c in drone.GetComponents() {
+      let n = NameToString(c.GetName());
+      if StrContains(n, "thruster_" + code) || StrContains(n, "sticker_" + code) || StrContains(n, "stickers_" + code) {
+        let m = c as MeshComponent;
+        if IsDefined(m) && m.chunkMask != 0ul {
+          ArrayPush(this.m_podHidden, c);
+          ArrayPush(this.m_podMasks, m.chunkMask);
+          m.chunkMask = 0ul;
+        }
+      }
+    }
+  }
+
+  // every hidden pod drawn again (restored parts; the end of the flight)
+  private func UnhidePods() -> Void {
+    let i = 0;
+    while i < ArraySize(this.m_podHidden) {
+      let m = this.m_podHidden[i] as MeshComponent;
+      if IsDefined(m) {
+        m.chunkMask = this.m_podMasks[i];
+      }
+      i += 1;
+    }
+    ArrayClear(this.m_podHidden);
+    ArrayClear(this.m_podMasks);
+  }
+
+  public func OpticsOnline() -> Bool = ArraySize(this.m_partHp) < CMUDrone.OctantParts() || this.m_partHp[9] > 0.0
 
   // its own AI kept out of the way while flown: the threat and state wraps (the piloted
   // flag), its reactions, senses and target tracking

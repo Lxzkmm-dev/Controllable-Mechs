@@ -214,6 +214,9 @@ public class CMPilotSystem extends ScriptableSystem {
   // a frame-by-frame log of a fast flight (DIAGNOSTICS): four seconds once over 8 m/s
   // a test (DIAGNOSTICS): the Octant's LMGs fire only this far off its nose (degrees either
   // side; 0 = anywhere, the default)
+  // the Octant's destroyed thruster pods: break off (true) or burn on (DIAGNOSTICS, a test)
+  public func OctantPodsBreak() -> Bool = this.Flag("octantPodsBreak", true)
+  public func SetOctantPodsBreak(on: Bool) -> Void { this.PutFlag("octantPodsBreak", on); }
   public func OctantLmgArc() -> Int32 = Clamp(this.Int("octantLmgArc", 0), 0, 90)   // 0, 17, 35 or 65
   public func SetOctantLmgArc(v: Int32) -> Void { this.PutInt("octantLmgArc", Clamp(v, 0, 90)); }
   public func DroneFrameLog() -> Bool = this.Flag("droneFrameLog", true)
