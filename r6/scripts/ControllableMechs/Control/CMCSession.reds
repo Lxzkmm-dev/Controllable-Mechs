@@ -984,6 +984,15 @@ public class CMCSession extends ScriptableSystem {
     }
     let down = !Equals(action, EInputAction.IACT_Release);
     let press = Equals(action, EInputAction.IACT_Press);
+    // the unit's hold mode (a drone's gunship hold): H by default, rebindable in Mod
+    // Settings (Omar: H is the game's quick-access menu key)
+    if Equals(event.GetKey(), CMKeys.Gunship(GetPlayer(this.GetGameInstance()))) {
+      if press && IsDefined(this.m_unit) {
+        this.m_unit.Hold(this);
+        this.m_slow = 1.0;
+      }
+      return;
+    }
     switch event.GetKey() {
       case EInputKey.IK_W: this.RawKey(CMCKey.W(), down); break;
       case EInputKey.IK_A: this.RawKey(CMCKey.A(), down); break;
@@ -1026,13 +1035,6 @@ public class CMCSession extends ScriptableSystem {
           }
           this.m_slow = 1.0;
           this.FlashTag(CMPilotHud.TagMode());
-        }
-        break;
-      case EInputKey.IK_H:
-        // the unit's hold mode (a drone's gunship hold)
-        if press && IsDefined(this.m_unit) {
-          this.m_unit.Hold(this);
-          this.m_slow = 1.0;
         }
         break;
       case EInputKey.IK_Backslash:

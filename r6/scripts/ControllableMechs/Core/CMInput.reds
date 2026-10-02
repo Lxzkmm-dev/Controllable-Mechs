@@ -109,6 +109,35 @@ public class CMKeybinds {
   @runtimeProperty("ModSettings.displayName", "Pilot the linked mech")
   @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
   public let cmPilot: EInputKey = EInputKey.IK_Backslash;
+
+  @runtimeProperty("ModSettings.mod", "Mechs of Night City")
+  @runtimeProperty("ModSettings.category", "UI-Settings-KeyBindings")
+  @runtimeProperty("ModSettings.displayName", "Drone gunship hold (while piloting)")
+  @runtimeProperty("ModSettings.description", "UI-Settings-Bind")
+  public let cmGunship: EInputKey = EInputKey.IK_H;
+}
+
+// the gunship hold's key, as bound in Mod Settings (H without it)
+@if(ModuleExists("ModSettingsModule"))
+public abstract class CMKeys {
+  // its name for the HUD ("H", "Y", "F1")
+  public static func GunshipName(player: ref<PlayerPuppet>) -> String {
+    let n = EnumValueToString("EInputKey", Cast<Int64>(EnumInt(CMKeys.Gunship(player))));
+    return StrBeginsWith(n, "IK_") ? StrUpper(StrAfterFirst(n, "IK_")) : StrUpper(n);
+  }
+
+  public static func Gunship(player: ref<PlayerPuppet>) -> EInputKey {
+    if IsDefined(player) && IsDefined(player.m_cmKeybinds) {
+      return player.m_cmKeybinds.cmGunship;
+    }
+    return EInputKey.IK_H;
+  }
+}
+
+@if(!ModuleExists("ModSettingsModule"))
+public abstract class CMKeys {
+  public static func Gunship(player: ref<PlayerPuppet>) -> EInputKey = EInputKey.IK_H
+  public static func GunshipName(player: ref<PlayerPuppet>) -> String = "H"
 }
 
 @if(ModuleExists("ModSettingsModule"))

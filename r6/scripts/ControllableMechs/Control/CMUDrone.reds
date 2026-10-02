@@ -976,7 +976,7 @@ public class CMUDrone extends CMCUnit {
     st.weapon = this.m_wpn;
     st.secSelected = this.m_wpn == 1;
     st.secHeat = this.m_heat;
-    st.holdText = this.m_hold ? "GUNSHIP // HOLDING      [H] RELEASE" : "";
+    st.holdText = this.m_hold ? "GUNSHIP // HOLDING      [" + CMKeys.GunshipName(GetPlayer(this.m_game)) + "] RELEASE" : "";
     st.windText = this.WindText();
     if Equals(this.m_kind, "octant") && ArraySize(this.m_partHp) >= 6 {
       let now = s.Now();
