@@ -75,6 +75,8 @@ public class CMUDrone extends CMCUnit {
   private let m_placed: Vector4;       // the flight's centre at the last placement
   private let m_heldWt: WorldTransform; // the hull's transform from the frame before (placed a frame late)
   private let m_heldOk: Bool;
+  private let m_aiSyncAt: Float;       // when its movement is next sent to where it is drawn
+  private let m_aiOffAt: Float;        // when its AI goes off again after that (0: off)
   private let m_groundFrom: String;    // what the last ground ray hit, and how far from its start (log)
   private let m_stickS: Float;
 
@@ -143,6 +145,8 @@ public class CMUDrone extends CMCUnit {
     this.m_rockets = this.ROCKET_POD;
     this.m_podReady = 0.0;
     this.ApplyParts(false);   // the parts' state as the link kept it (the flight exists now)
+    this.m_aiSyncAt = 0.0;
+    this.m_aiOffAt = 0.0;
     this.Pacify(drone, true);
     // the game keeps running it as an AI NPC, whose hover and altitude logic would hold the
     // model up: its AI controller is off for the flight (PhysX and the entity transform move
@@ -206,26 +210,15 @@ public class CMUDrone extends CMCUnit {
           ai.SendCommand(tp);
         }
       } else {
+        if IsDefined(ai) {
+          ai.Toggle(false);
+        }
         CMCSession.Log("drone: destroyed at " + CMCHits.V(here) + "; its AI stays off");
         let cb = new CMWreckLogCb();
         cb.drone = drone;
         cb.fell = here;
         GameInstance.GetDelaySystem(this.m_game).DelayCallback(cb, 2.0, false);
-        // its death snaps it back to where the flight began (a28 log: the wreck 64.6 m from
-        // where it went down, two seconds on): it is put back where it went down, every
-        // tenth of a second for a second and a half
-        let wt: WorldTransform;
-        let wp: WorldPosition;
-        WorldPosition.SetVector4(wp, here);
-        WorldTransform.SetWorldPosition(wt, wp);
-        WorldTransform.SetOrientation(wt, drone.GetWorldOrientation());
-        let fix = new CMWreckFixCb();
-        fix.drone = drone;
-        fix.game = this.m_game;
-        fix.at = wt;
-        fix.face = face;
-        fix.left = 15;
-        GameInstance.GetDelaySystem(this.m_game).DelayCallback(fix, 0.05, false);
+
       }
       this.Pacify(drone, false);
     }
@@ -873,6 +866,7 @@ public class CMUDrone extends CMCUnit {
     WorldTransform.SetWorldPosition(wt, world);
     WorldTransform.SetOrientation(wt, q);
     this.m_placed = fl.pos;
+    this.SyncMovement(drone, fl, now);
     // A frame late (a23, confirmed by Omar): the engine draws the pilot camera two frames
     // after it is set and the drone one frame after (a21/a22 frame logs: the engine's camera
     // 2 x v x dt behind where it was put, the drone 1 x v x dt), so the view trailed the
@@ -890,6 +884,35 @@ public class CMUDrone extends CMCUnit {
     }
     this.m_heldOk = false;
     drone.SetWorldTransform(wt);
+  }
+
+  // The game's own position for it (its movement), kept with where it is drawn: flown by its
+  // transform with its AI off, that stayed where the flight began, and a drone destroyed in
+  // flight was put back there by its death, in front of V (a28/a29 logs: the wreck 64-68 m
+  // from where it went down; moving the wreck after death, 15 times, didn't hold, nor did the
+  // teleport facility in flight). The AI's own teleport (the 6-DOF era's way: it moved it
+  // within centimetres) does: once a second its AI is on for a moment, sent there, and off.
+  private func SyncMovement(drone: ref<NPCPuppet>, fl: ref<CMFlight>, now: Float) -> Void {
+    let ai = drone.GetAIControllerComponent();
+    if !IsDefined(ai) || !this.m_proxyLive || !this.m_heldOk {
+      return;
+    }
+    if this.m_aiOffAt > 0.0 && now >= this.m_aiOffAt {
+      ai.Toggle(false);
+      this.m_aiOffAt = 0.0;
+      return;
+    }
+    if now < this.m_aiSyncAt || this.m_aiOffAt > 0.0 {
+      return;
+    }
+    this.m_aiSyncAt = now + 1.0;
+    ai.Toggle(true);
+    let tp = new AITeleportCommand();
+    tp.position = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(this.m_heldWt));
+    tp.rotation = fl.yaw;
+    tp.doNavTest = false;
+    ai.SendCommand(tp);
+    this.m_aiOffAt = now + 0.15;
   }
 
   private func Cancel(drone: ref<NPCPuppet>) -> Void {
@@ -2539,35 +2562,5 @@ public class CMWreckLogCb extends DelayCallback {
     }
     let p = d.GetWorldPosition();
     CMCSession.Log("drone: the wreck two seconds on is at " + CMCHits.V(p) + ", " + FloatToStringPrec(Vector4.Distance(p, this.fell), 1) + " m from where it went down");
-  }
-}
-
-// a destroyed drone's wreck put back where it went down while its death settles (each
-// time it has strayed more than 2 m)
-public class CMWreckFixCb extends DelayCallback {
-  public let drone: wref<NPCPuppet>;
-  public let game: GameInstance;
-  public let at: WorldTransform;
-  public let face: EulerAngles;
-  public let left: Int32;
-  public let moved: Int32;
-
-  public func Call() -> Void {
-    let d = this.drone;
-    if !IsDefined(d) {
-      return;
-    }
-    let want = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(this.at));
-    if Vector4.Distance(d.GetWorldPosition(), want) > 2.0 {
-      d.SetWorldTransform(this.at);
-      GameInstance.GetTeleportationFacility(this.game).Teleport(d, want, this.face);
-      this.moved += 1;
-    }
-    this.left -= 1;
-    if this.left > 0 {
-      GameInstance.GetDelaySystem(this.game).DelayCallback(this, 0.1, false);
-    } else {
-      CMCSession.Log("drone: the wreck was put back where it went down " + IntToString(this.moved) + " times");
-    }
   }
 }
