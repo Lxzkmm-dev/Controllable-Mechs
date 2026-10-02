@@ -7,8 +7,8 @@
 // recording dot top right, a small crosshair and a dashed horizon that tilts with the
 // drone, speed and height either side, the payload and its arming at the bottom, and the
 // Bombus itself bottom right (the scan of its own meshes: body, three rotor arms, the
-// payload unit) tinted by the hull. One accent colour, by the drone's affiliation
-// (CMBombusHud.Accent: Militech green, Arasaka red and so on).
+// payload unit) tinted by the hull. One accent colour (affiliation colours come later, with
+// hijacking enemy units: Omar).
 // It takes the same calls as CMDroneHud (which it extends) and draws none of that
 // display; no field shares a name with CMDroneHud's or CMPilotHud's (a49).
 // =============================================================================
@@ -22,7 +22,6 @@ public class CMBombusHud extends CMDroneHud {
   private let m_fHidden: array<wref<inkWidget>>;
   private let m_fHiddenOp: array<Float>;
   private let m_fW: Float;
-  private let m_fFaction: String;
   private let m_fTexts: array<ref<inkText>>;     // each OSD line, and its shadow beside it
   private let m_fShadows: array<ref<inkText>>;
   private let m_fHorizon: ref<inkCanvas>;
@@ -50,25 +49,8 @@ public class CMBombusHud extends CMDroneHud {
   private let T_REC: Int32 = 12;
   private let T_VS: Int32 = 13;
 
-  // the affiliation's accent (Omar: Militech green, Arasaka red, and so on)
-  public static func Accent(faction: String) -> HDRColor {
-    switch faction {
-      case "militech": return new HDRColor(0.34, 1.02, 0.46, 1.0);
-      case "arasaka": return new HDRColor(1.18, 0.26, 0.22, 1.0);
-      case "kangtao": return new HDRColor(1.10, 0.86, 0.22, 1.0);
-      case "ncpd": return new HDRColor(0.30, 0.62, 1.20, 1.0);
-      case "aldecaldos": return new HDRColor(1.12, 0.62, 0.26, 1.0);
-      case "zetatech": return new HDRColor(0.30, 1.00, 1.10, 1.0);
-    }
-    return new HDRColor(0.30, 1.00, 1.10, 1.0);
-  }
-
   private func Ink() -> HDRColor = new HDRColor(1.0, 1.0, 1.0, 1.0)
-  private func Acc() -> HDRColor = CMBombusHud.Accent(this.m_fFaction)
-
-  public func SetFaction(faction: String) -> Void {
-    this.m_fFaction = faction;
-  }
+  private func Acc() -> HDRColor = new HDRColor(0.30, 1.00, 1.10, 1.0)
 
   // ---------------------------------------------------------------------------
   public func Build() -> Bool {

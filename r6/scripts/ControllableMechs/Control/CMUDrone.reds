@@ -1008,7 +1008,6 @@ public class CMUDrone extends CMCUnit {
       // each drone's display befits its role (Omar): the Bombus's is a cheap FPV OSD
       let b = new CMBombusHud();
       b.SetKind(this.m_kind);
-      b.SetFaction(CMUDrone.Faction(this.m_drone));
       return b;
     }
     let h = new CMDroneHud();
@@ -1016,17 +1015,6 @@ public class CMUDrone extends CMCUnit {
     return h;
   }
 
-  // the drone's affiliation, for its display's colour
-  public static func Faction(drone: ref<NPCPuppet>) -> String {
-    if !IsDefined(drone) {
-      return "";
-    }
-    let rec = TweakDBInterface.GetCharacterRecord(drone.GetRecordID());
-    if !IsDefined(rec) || !IsDefined(rec.Affiliation()) {
-      return "";
-    }
-    return StrLower(EnumValueToString("gamedataAffiliation", Cast<Int64>(EnumInt(rec.Affiliation().Type()))));
-  }
 
   public func Hud(s: ref<CMCSession>, st: ref<CMPilotHudState>) -> Void {
     let drone = this.m_drone;
