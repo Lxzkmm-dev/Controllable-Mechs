@@ -1773,15 +1773,17 @@ public class CMUDrone extends CMCUnit {
     at.W = 1.0;
     let up = new Vector4(0.0, 0.0, 1.0, 0.0);
     let fx = GameInstance.GetFxSystem(this.m_game);
+    // CONFIG > BOMBUS PAYLOAD DAMAGE (a test multiplier)
+    let mult = Cast<Float>(CMPilotSystem.Get(this.m_game).PayloadDmgPct()) / 100.0;
     switch this.m_payload {
       case 1:
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\frag_grenade\\w_explosives_001__frag_grenade_01.effect"), CMUMinotaur.At(at, up), true);
-        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusFrag", 5.0, 350.0, drone);
+        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusFrag", 5.0, 350.0 * mult, drone);
         break;
       case 2:
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\ozob_grenade\\w_ozob_grenade.effect"), CMUMinotaur.At(at, up), true);
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\w_explosion_medium.effect"), CMUMinotaur.At(at, up), true);
-        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusHE", 9.0, 900.0, drone);
+        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusHE", 9.0, 900.0 * mult, drone);
         break;
       case 3:
         let gas = new CMGasCb();
@@ -1789,6 +1791,7 @@ public class CMUDrone extends CMCUnit {
         gas.at = at;
         gas.rec = CMUDrone.FirstAttack(["Attacks.BiohazardGrenade", "Attacks.ChemicalGrenade", "Attacks.PoisonGrenade"]);
         gas.left = 8;
+        gas.dmg = 25.0 * mult;
         gas.Call();
         CMCSession.Log("bombus: toxic gas with " + TDBID.ToStringDEBUG(gas.rec));
         break;
@@ -1796,7 +1799,7 @@ public class CMUDrone extends CMCUnit {
         let rec = CMUDrone.FirstAttack(["Attacks.EMPGrenade", "Attacks.EMPExplosion", "Attacks.ElectricGrenade"]);
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\emp_grenade\\w_explosives_001_emp_grenade_01.effect"), CMUMinotaur.At(at, up), true);
         CMUDrone.AreaAttack(this.m_game, at, rec, 7.0, 0.0, drone);                         // its EMP status
-        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusShock", 7.0, 200.0, drone);  // its damage
+        CMUDrone.AreaAttack(this.m_game, at, t"Attacks.CM_BombusShock", 7.0, 200.0 * mult, drone);  // its damage
         CMCSession.Log("bombus: shock with " + TDBID.ToStringDEBUG(rec));
         break;
     }
@@ -2819,12 +2822,13 @@ public class CMGasCb extends DelayCallback {
   public let at: Vector4;
   public let rec: TweakDBID;
   public let left: Int32;
+  public let dmg: Float;
 
   public func Call() -> Void {
     if this.left % 2 == 0 {
       GameInstance.GetFxSystem(this.game).SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\explosives\\biohazard_grenade\\w_explosives_001_biohazard_grenade_01.effect"), CMUMinotaur.At(this.at, new Vector4(0.0, 0.0, 1.0, 0.0)), true);
     }
-    CMUDrone.AreaAttack(this.game, this.at, this.rec, 6.0, 25.0, null);
+    CMUDrone.AreaAttack(this.game, this.at, this.rec, 6.0, this.dmg, null);
     this.left -= 1;
     if this.left > 0 {
       GameInstance.GetDelaySystem(this.game).DelayCallback(this, 1.0, false);

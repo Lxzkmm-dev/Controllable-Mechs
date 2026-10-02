@@ -179,6 +179,9 @@ public class CMContent extends TKContent {
       case "hull":
         session.SetHullMult(CMContent.Val(arg, 4));
         break;
+      case "paydmg":
+        cfg.SetPayloadDmgPct(CMContent.Val(arg, 200));
+        break;
       case "dropwhenhit":
         cfg.SetStayWhenHit(!Equals(CMContent.Str(arg), "1"));
         break;
@@ -380,6 +383,7 @@ public class CMContent extends TKContent {
     p.Check("HOLD FIRE UNTIL ON TARGET", "On: each gun waits until its barrel has swung onto the reticle. Off: the guns fire while they traverse; rounds go to the reticle either way (from the next link-in)", cfg.FireGate(), "gate", "");
     p.Slider("RECOIL", "How much the guns shake the view; it never moves the aim (from the next link-in)", "", "0|200|10|" + IntToString(cfg.RecoilPct()) + "|%", "recoil", "");
     p.Slider("HULL", "The mech's health while you pilot it, times its own (the Minotaur has about 1,000 on its own; from the next link-in)", "", "1|50|1|" + IntToString(RoundF(session.HullMult())) + "|x", "hull", "");
+    p.Slider("BOMBUS PAYLOAD DAMAGE", "The Bombus payloads' damage, times their own (a test: explosive 350, high explosive 900, shock 200, toxic gas 25 a second at 100%); applies at once", "", "100|1000|25|" + IntToString(cfg.PayloadDmgPct()) + "|%", "paydmg", "");
 
     p.Heading("CHASSIS");
     p.Slider("TURN SPEED", "How fast the view traverses and the chassis turns; 100% is the heavy baseline (from the next link-in)", "", "50|300|25|" + IntToString(cfg.TurnPct()) + "|%", "turn", "");

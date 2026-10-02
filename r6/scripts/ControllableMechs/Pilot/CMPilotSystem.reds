@@ -216,6 +216,10 @@ public class CMPilotSystem extends ScriptableSystem {
   // side; 0 = anywhere, the default)
   // the payload a spawned Bombus carries (MOTOR POOL): 1 explosive, 2 high explosive, 3 toxic
   // gas, 4 shock (CMUDrone.Detonate)
+  // the Bombus payloads' damage, times their own (a test slider, Omar: 'a bit more damage');
+  // 100-1000%, 200% by default
+  public func PayloadDmgPct() -> Int32 = Clamp(this.Int("payloadDmgPct", 200), 100, 1000)
+  public func SetPayloadDmgPct(v: Int32) -> Void { this.PutInt("payloadDmgPct", Clamp(v, 100, 1000)); }
   public func BombusPayload() -> Int32 = Clamp(this.Int("bombusPayload", 1), 1, 4)
   public func SetBombusPayload(v: Int32) -> Void { this.PutInt("bombusPayload", Clamp(v, 1, 4)); }
   // the Octant's destroyed thruster pods: break off (true) or burn on (DIAGNOSTICS, a test)
