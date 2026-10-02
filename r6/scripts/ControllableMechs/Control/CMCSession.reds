@@ -562,7 +562,7 @@ public class CMCSession extends ScriptableSystem {
             this.m_hud.Remove();
           }
           this.m_hud = null;
-          this.m_sigLost = CMSignalLost.Show(this.m_unit.Name());
+          this.m_sigLost = CMSignalLost.Show(this.m_unit.Name(), this.m_unit.CamProfile());
           let pl = GetPlayer(this.GetGameInstance());
           if IsDefined(pl) {
             GameObject.PlaySoundEvent(pl, n"ui_hacking_access_denied");

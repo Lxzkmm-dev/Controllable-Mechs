@@ -20,16 +20,21 @@ public class CMSignalLost {
   private let m_foot: ref<inkText>;
   private let m_t: Float;
   private let m_W: Float;
+  private let m_snowMax: Float;         // the brightest a band of static gets
 
   public static func SignalLostTime() -> Float = 1.5
 
-  public static func Show(name: String) -> ref<CMSignalLost> {
+  // each drone's feed dies in its own display's look (Omar, a48): the Bombus a cheap
+  // analogue feed snowing out, white OSD letters; the Octant the MQ-1's green, its C2
+  // datalink lost; the Wyvern its ISR feed's teal, the recording stopped; the Griffin its
+  // hunter's green with the words in red
+  public static func Show(name: String, kind: String) -> ref<CMSignalLost> {
     let s = new CMSignalLost();
-    s.Build(name);
+    s.Build(name, kind);
     return s;
   }
 
-  private func Build(name: String) -> Void {
+  private func Build(name: String, kind: String) -> Void {
     let layer = GameInstance.GetInkSystem().GetLayer(n"inkHUDLayer");
     if !IsDefined(layer) {
       return;
@@ -59,25 +64,77 @@ public class CMSignalLost {
     let W = this.m_W;
     let black = new HDRColor(0.0, 0.0, 0.0, 1.0);
     let white = new HDRColor(1.0, 1.0, 1.0, 1.0);
-    let red = CMPilotHud.Red();
-    CMPilotHud.Bar(root, 0.0, 0.0, W, 2160.0, black, 0.94);
+    // the look: the title's colour, the rule's, the static's, how dark the feed goes, how
+    // much static, the lines under the title
+    let title = CMPilotHud.Red();
+    let rule = CMPilotHud.Red();
+    let snow = white;
+    let dark = 0.94;
+    let bands = 48;
+    this.m_snowMax = 0.22;
+    let sub = name + "   //   LINK TERMINATED";
+    let foot = "RETURNING TO OPERATOR";
+    switch kind {
+      case "bombus":
+        // a cheap analogue feed: it snows out, grey, the OSD's white letters
+        title = white;
+        rule = white;
+        snow = new HDRColor(0.85, 0.85, 0.85, 1.0);
+        dark = 0.55;
+        bands = 140;
+        this.m_snowMax = 0.55;
+        sub = name + "   //   RSSI 0   LQ 0   //   VTX LOST";
+        foot = "NO VIDEO   //   RETURNING TO OPERATOR";
+        break;
+      case "octant":
+        title = CMPilotHud.Amber();
+        rule = CMPilotHud.Amber();
+        snow = CMPilotHud.Amber();
+        dark = 0.85;
+        bands = 36;
+        this.m_snowMax = 0.18;
+        sub = name + "   //   C2 DATALINK LOST";
+        foot = "LOST LINK PROCEDURE   //   RETURNING TO OPERATOR";
+        break;
+      case "wyvern":
+        title = new HDRColor(0.62, 1.05, 1.00, 1.0);
+        rule = CMPilotHud.Caution();
+        snow = new HDRColor(0.62, 1.05, 1.00, 1.0);
+        dark = 0.88;
+        bands = 40;
+        this.m_snowMax = 0.18;
+        sub = name + "   //   ISR FEED TERMINATED   //   REC STOPPED";
+        foot = "CONTACTS NOT RETAINED   //   RETURNING TO OPERATOR";
+        break;
+      case "griffin":
+        title = CMPilotHud.Red();
+        rule = new HDRColor(0.40, 1.05, 0.52, 1.0);
+        snow = new HDRColor(0.40, 1.05, 0.52, 1.0);
+        dark = 0.9;
+        bands = 44;
+        this.m_snowMax = 0.2;
+        sub = name + "   //   AIRFRAME LOST   //   WEAPONS SAFE";
+        foot = "RETURNING TO OPERATOR";
+        break;
+    }
+    CMPilotHud.Bar(root, 0.0, 0.0, W, 2160.0, black, dark);
     // static: thin bright bands, moved every frame
     let i = 0;
-    while i < 48 {
-      ArrayPush(this.m_static, CMPilotHud.Bar(root, 0.0, 0.0, W, 4.0, white, 0.1));
+    while i < bands {
+      ArrayPush(this.m_static, CMPilotHud.Bar(root, 0.0, 0.0, W, 4.0, snow, 0.1));
       i += 1;
     }
     // the words
     let cx = W * 0.5;
     let sh = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx + 6.0, 846.0, "SIGNAL LOST", 170, n"Semi-Bold", black);
     sh.SetAnchorPoint(Vector2(0.5, 0.0));
-    this.m_title = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 840.0, "SIGNAL LOST", 170, n"Semi-Bold", red);
+    this.m_title = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 840.0, "SIGNAL LOST", 170, n"Semi-Bold", title);
     this.m_title.SetAnchorPoint(Vector2(0.5, 0.0));
-    let sub = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 1060.0, name + "   //   LINK TERMINATED", 48, n"Semi-Bold", white);
-    sub.SetAnchorPoint(Vector2(0.5, 0.0));
-    sub.SetOpacity(0.85);
-    CMPilotHud.Bar(root, cx - 700.0, 1040.0, 1400.0, 4.0, red, 0.9);
-    this.m_foot = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 1180.0, "RETURNING TO OPERATOR", 36, n"Medium", white);
+    let st = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 1060.0, sub, 48, n"Semi-Bold", white);
+    st.SetAnchorPoint(Vector2(0.5, 0.0));
+    st.SetOpacity(0.85);
+    CMPilotHud.Bar(root, cx - 700.0, 1040.0, 1400.0, 4.0, rule, 0.9);
+    this.m_foot = CMPilotHud.Label(root, inkEAnchor.TopLeft, cx, 1180.0, foot, 36, n"Medium", white);
     this.m_foot.SetAnchorPoint(Vector2(0.5, 0.0));
     // the feed's last flash
     this.m_flash = CMPilotHud.Bar(root, 0.0, 0.0, W, 2160.0, white, 0.9);
@@ -94,7 +151,7 @@ public class CMSignalLost {
     for b in this.m_static {
       b.SetMargin(inkMargin(0.0, RandRangeF(0.0, 2160.0), 0.0, 0.0));
       b.SetSize(Vector2(this.m_W, RandRangeF(2.0, 14.0)));
-      b.SetOpacity(RandRangeF(0.03, 0.22));
+      b.SetOpacity(RandRangeF(0.03, this.m_snowMax));
     }
     this.m_title.SetOpacity(RandRangeF(0.0, 1.0) < 0.12 ? 0.35 : 1.0);
     let ph = this.m_t * 3.0;
