@@ -117,6 +117,18 @@ def wyvern_pose(q, bones):
 WYVERN_SPREAD = 50.0
 POSES = {"wyvern": wyvern_pose}
 
+# the view each drone is drawn from: top-down by default. The Wyvern is drawn from the front
+# (Omar, 0.7.1-a44): top-down its six long thrusters foreshorten to stubs beside the body;
+# from the front its unfolded wings show their length. Front: screen x = -X (its left on
+# the right, as faced), screen up = Z, nearer = forward (+Y).
+VIEWS = {"wyvern": "front"}
+
+
+def view(p, kind):
+    if VIEWS.get(kind) == "front":
+        return (-p[0], p[2], p[1])
+    return p
+
 
 # rigid meshes in their slot's frame: where each slot sits in the rest pose (rig bones
 # composed with Slot8842's slot offsets, all unturned): av_zetatech_octant.rig / .ent
@@ -238,6 +250,7 @@ def main():
                         t = tuple(POSES[kind](q, [b]) for q, b in zip(t, bones)) if bones else t
                     t = tuple(tuple(q[i] + off[i] for i in range(3)) for q in t)
                     c = tuple((t[0][i] + t[1][i] + t[2][i]) / 3 for i in range(3))
+                    t = tuple(view(q, kind) for q in t)
                     tris.append((t[0], t[1], t[2], parts.index(part_of(f, c, sub, bones))))
         W, owner, line = render(tris, parts, H, ANG)
         comp = bytearray(W * H * 4)

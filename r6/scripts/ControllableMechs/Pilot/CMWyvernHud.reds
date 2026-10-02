@@ -226,20 +226,22 @@ public class CMWyvernHud extends CMBombusHud {
     this.Brackets(root, cx + 740.0, 1020.0, 260.0, 120.0);
   }
 
-  // the Wyvern, scanned from its own meshes with its wings unfolded, bottom right
+  // the Wyvern, scanned from its own meshes from the front (a44, Omar: the long thrusters
+  // show), its wings unfolded as it flies; bottom right
   protected func BuildSprite(root: ref<inkCanvas>) -> Void {
     let x1 = this.FX0() + MinF(3840.0, this.FW());
-    let k = 300.0 / 360.0;
-    let bx = x1 - 335.0 - 207.0 * k * 0.5;
-    let by = 1640.0;
-    this.Brackets(root, bx - 30.0, by - 20.0, 207.0 * k + 60.0, 340.0);
+    let k = 280.0 / 360.0;
+    let bx = x1 - 335.0 - 407.0 * k * 0.5;
+    let by = 1650.0;
+    this.Brackets(root, bx - 30.0, by - 20.0, 407.0 * k + 60.0, 320.0);
     let box = new inkCanvas();
     box.SetMargin(inkMargin(bx, by, 0.0, 0.0));
-    box.SetSize(Vector2(207.0 * k, 300.0));
+    box.SetSize(Vector2(407.0 * k, 280.0));
     box.Reparent(root);
-    this.WyPart(box, k, n"wyvern_body", 56.0, 5.0, 96.0, 350.0);
-    this.WyPart(box, k, n"wyvern_arm_l", 5.0, 68.0, 62.0, 229.0);
-    this.WyPart(box, k, n"wyvern_arm_r", 139.0, 68.0, 64.0, 229.0);
+    this.WyPart(box, k, n"wyvern_body", 109.0, 5.0, 190.0, 350.0);
+    this.WyPart(box, k, n"wyvern_arm_l", 180.0, 75.0, 223.0, 214.0);
+    this.WyPart(box, k, n"wyvern_arm_r", 5.0, 75.0, 198.0, 214.0);
+    this.WyPart(box, k, n"wyvern_gun", 170.0, 274.0, 33.0, 81.0);
   }
 
   private func WyPart(box: ref<inkCanvas>, k: Float, name: CName, x: Float, y: Float, w: Float, h: Float) -> Void {
