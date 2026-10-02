@@ -62,4 +62,6 @@ public abstract class CMCUnit extends IScriptable {
   public func FrameLog(s: ref<CMCSession>, dt: Float) -> Void {}
 
   public func Name() -> String = "UNIT"
+  // destroyed, its feed shows SIGNAL LOST for a moment before the view goes back (drones)
+  public func SignalLost() -> Bool = false
 }

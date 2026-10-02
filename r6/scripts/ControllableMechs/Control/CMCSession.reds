@@ -53,7 +53,9 @@ public class CMCSession extends ScriptableSystem {
   public let rig: ref<CMPilotRig>;
   public let aim: Vector4;
   public let aimDist: Float;
-  public let aimEntity: wref<Entity>;   // what the reticle's dynamic ray hit (none on world geometry)
+  public let aimEntity: wref<Entity>;
+  private let m_sigLost: ref<CMSignalLost>;   // a destroyed drone's SIGNAL LOST screen (a47)
+  private let m_sigLostAt: Float;   // what the reticle's dynamic ray hit (none on world geometry)
   public let zoom: Bool;
 
   private let m_keys: array<Bool>;
@@ -473,6 +475,10 @@ public class CMCSession extends ScriptableSystem {
       this.m_hud.Remove();
     }
     this.m_hud = null;
+    if IsDefined(this.m_sigLost) {
+      this.m_sigLost.Remove();
+    }
+    this.m_sigLost = null;
     if IsDefined(player) && this.m_restricted {
       this.Restrict(player, false);
     }
@@ -547,6 +553,28 @@ public class CMCSession extends ScriptableSystem {
     let dt = ClampF(this.m_dtSmooth + (this.m_clockReal - this.m_clockUsed) * 0.1, 0.002, 0.1);
     this.m_clockUsed += dt;
     if !this.m_unit.IsAlive() {
+      // a drone's feed dies on screen first (Omar): SIGNAL LOST for a moment, the view held
+      // where it was, then back to V
+      if this.m_unit.SignalLost() {
+        if !IsDefined(this.m_sigLost) {
+          this.m_sigLostAt = now;
+          if IsDefined(this.m_hud) {
+            this.m_hud.Remove();
+          }
+          this.m_hud = null;
+          this.m_sigLost = CMSignalLost.Show(this.m_unit.Name());
+          let pl = GetPlayer(this.GetGameInstance());
+          if IsDefined(pl) {
+            GameObject.PlaySoundEvent(pl, n"ui_hacking_access_denied");
+          }
+          CMCSession.Log("signal lost: " + this.m_unit.Name());
+        }
+        this.m_sigLost.Tick(dt);
+        if now - this.m_sigLostAt < CMSignalLost.SignalLostTime() {
+          this.ScheduleFrame();
+          return;
+        }
+      }
       this.End(this.m_unit.LostReason(), false);
       return;
     }

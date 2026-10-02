@@ -354,6 +354,7 @@ public class CMUDrone extends CMCUnit {
   }
 
   public func TickFirst() -> Bool = true
+  public func SignalLost() -> Bool = true
   public func Facing() -> Float = IsDefined(this.m_flight) ? this.m_flight.yaw : 0.0
   // the sight view's sensor mount (CONFIG > the drone > OPTICS // SENSOR MOUNT), from the
   // drawn body's origin; by default at its nose, at its centre's height (the mesh scan)
