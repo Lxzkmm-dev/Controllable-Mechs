@@ -139,6 +139,20 @@ public abstract class CMKeys {
     return EInputKey.IK_H;
   }
 
+  // the pilot key, as bound (the SIGNAL LOST screen names it)
+  public static func Pilot(player: ref<PlayerPuppet>) -> EInputKey {
+    if IsDefined(player) && IsDefined(player.m_cmKeybinds) {
+      return player.m_cmKeybinds.cmPilot;
+    }
+    return EInputKey.IK_Backslash;
+  }
+
+  public static func PilotName(player: ref<PlayerPuppet>) -> String {
+    let n = EnumValueToString("EInputKey", Cast<Int64>(EnumInt(CMKeys.Pilot(player))));
+    let s = StrBeginsWith(n, "IK_") ? StrAfterFirst(n, "IK_") : n;
+    return Equals(s, "Backslash") ? "\\" : StrUpper(s);
+  }
+
   // the declutter key (a55, Omar: the Bombus blast ring off for those who want less on screen)
   public static func Declutter(player: ref<PlayerPuppet>) -> EInputKey {
     if IsDefined(player) && IsDefined(player.m_cmKeybinds) {
@@ -159,6 +173,8 @@ public abstract class CMKeys {
   public static func GunshipName(player: ref<PlayerPuppet>) -> String = "H"
   public static func Declutter(player: ref<PlayerPuppet>) -> EInputKey = EInputKey.IK_X
   public static func DeclutterName(player: ref<PlayerPuppet>) -> String = "X"
+  public static func Pilot(player: ref<PlayerPuppet>) -> EInputKey = EInputKey.IK_Backslash
+  public static func PilotName(player: ref<PlayerPuppet>) -> String = "\\"
 }
 
 @if(ModuleExists("ModSettingsModule"))

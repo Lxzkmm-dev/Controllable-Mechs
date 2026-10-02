@@ -3,8 +3,8 @@
 //
 // When a drone is destroyed (the Bombus going off too), its feed dies on screen for a
 // moment before the view goes back to V (Omar): the feed flashes, cuts to black and static,
-// SIGNAL LOST over it, the drone's name and LINK TERMINATED under it, RETURNING TO OPERATOR
-// blinking at the bottom. CMCSession holds it SignalLostTime() and then ends the link.
+// SIGNAL LOST over it, the drone's name and LINK TERMINATED under it, PRESS [the pilot key]
+// blinking at the bottom. CMCSession holds it until that key ends the link (a56, Omar).
 // Drawn on the HUD layer over everything, on the same 2160-high design space as the HUDs.
 // =============================================================================
 module ControllableMechs
@@ -73,7 +73,9 @@ public class CMSignalLost {
     let bands = 48;
     this.m_snowMax = 0.22;
     let sub = name + "   //   LINK TERMINATED";
-    let foot = "RETURNING TO OPERATOR";
+    // it stays until the pilot key ends the link (a56, Omar), and says so
+    let back = "PRESS [" + CMKeys.PilotName(GetPlayer(GetGameInstance())) + "] TO RETURN TO OPERATOR";
+    let foot = back;
     switch kind {
       case "bombus":
         // a cheap analogue feed: it snows out, grey, the OSD's white letters
@@ -84,7 +86,7 @@ public class CMSignalLost {
         bands = 140;
         this.m_snowMax = 0.55;
         sub = name + "   //   RSSI 0   LQ 0   //   VTX LOST";
-        foot = "NO VIDEO   //   RETURNING TO OPERATOR";
+        foot = "NO VIDEO   //   " + back;
         break;
       case "octant":
         title = CMPilotHud.Amber();
@@ -94,7 +96,7 @@ public class CMSignalLost {
         bands = 36;
         this.m_snowMax = 0.18;
         sub = name + "   //   C2 DATALINK LOST";
-        foot = "LOST LINK PROCEDURE   //   RETURNING TO OPERATOR";
+        foot = "LOST LINK PROCEDURE   //   " + back;
         break;
       case "wyvern":
         title = new HDRColor(0.62, 1.05, 1.00, 1.0);
@@ -104,7 +106,7 @@ public class CMSignalLost {
         bands = 40;
         this.m_snowMax = 0.18;
         sub = name + "   //   ISR FEED TERMINATED   //   REC STOPPED";
-        foot = "CONTACTS NOT RETAINED   //   RETURNING TO OPERATOR";
+        foot = "CONTACTS NOT RETAINED   //   " + back;
         break;
       case "griffin":
         title = CMPilotHud.Red();
@@ -114,7 +116,7 @@ public class CMSignalLost {
         bands = 44;
         this.m_snowMax = 0.2;
         sub = name + "   //   AIRFRAME LOST   //   WEAPONS SAFE";
-        foot = "RETURNING TO OPERATOR";
+        foot = back;
         break;
     }
     CMPilotHud.Bar(root, 0.0, 0.0, W, 2160.0, black, dark);

@@ -569,11 +569,15 @@ public class CMCSession extends ScriptableSystem {
           }
           CMCSession.Log("signal lost: " + this.m_unit.Name());
         }
-        this.m_sigLost.Tick(dt);
-        if now - this.m_sigLostAt < CMSignalLost.SignalLostTime() {
-          this.ScheduleFrame();
+        // it stays until the pilot key ends the link (a56, Omar); V going down ends it too
+        let op = GetPlayer(this.GetGameInstance());
+        if !IsDefined(op) || op.IsDead() {
+          this.End("!OPERATOR DOWN", false);
           return;
         }
+        this.m_sigLost.Tick(dt);
+        this.ScheduleFrame();
+        return;
       }
       this.End(this.m_unit.LostReason(), false);
       return;
@@ -1011,6 +1015,10 @@ public class CMCSession extends ScriptableSystem {
       return;
     }
     let down = !Equals(action, EInputAction.IACT_Release);
+    // the feed is dead (SIGNAL LOST): only the keys that end the link do anything
+    if IsDefined(this.m_sigLost) && !Equals(event.GetKey(), EInputKey.IK_Backslash) && !Equals(event.GetKey(), CMKeys.Pilot(GetPlayer(this.GetGameInstance()))) {
+      return;
+    }
     let press = Equals(action, EInputAction.IACT_Press);
     // the unit's hold mode (a drone's gunship hold): H by default, rebindable in Mod
     // Settings (Omar: H is the game's quick-access menu key)
