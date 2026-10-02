@@ -391,7 +391,7 @@ public class CMDroneHud extends CMPilotHud {
       this.Part(box, k, n"octant_gun", 242.0, 5.0, 53.0, 56.0);
       this.Part(box, k, n"octant_rocket_l", 43.0, 225.0, 81.0, 109.0);
       this.Part(box, k, n"octant_rocket_r", 413.0, 225.0, 81.0, 109.0);
-      this.Part(box, k, n"octant_mortar", 206.0, 348.0, 156.0, 143.0);
+      this.Part(box, k, n"octant_mortar", 206.0, 348.0, 162.0, 202.0);
       this.Part(box, k, n"octant_sensor", 191.0, 15.0, 156.0, 102.0);
     }
     this.m_hullT = this.Txt(root, x0, 1960.0, "HULL 100%", 30, false);

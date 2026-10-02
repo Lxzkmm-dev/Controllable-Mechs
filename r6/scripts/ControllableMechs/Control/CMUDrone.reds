@@ -1123,6 +1123,8 @@ public class CMUDrone extends CMCUnit {
   private let MISSILE_DAMAGE: Float = 900.0;
   private let MISSILE_LIFE: Float = 7.0;
   private let LMG_RATE: Float = 0.075;
+  private let BULLET_SPEED: Float = 320.0;   // m/s, an LMG round's flight
+  private let ROUND_STREAK: Float = 9.0;     // m, its tracer streak
   private let LMG_DAMAGE: Float = 60.0;
   private let LMG_SHARE: Float = 0.05;
   private let LMG_CAP: Float = 400.0;
@@ -1342,6 +1344,8 @@ public class CMUDrone extends CMCUnit {
       let done = false;
       if sh.kind == 2 {
         done = this.FlyMissile(s, sh, dt);
+      } else if sh.kind == 3 {
+        done = this.FlyRound(s, sh);
       } else {
         if sh.age >= 0.0 {
           let u = ClampF(sh.age / sh.life, 0.0, 1.0);
@@ -1451,12 +1455,11 @@ public class CMUDrone extends CMCUnit {
       aim += new Vector4(RandRangeF(-spread, spread), RandRangeF(-spread, spread), RandRangeF(-spread, spread), 0.0);
       let dir = Vector4.Normalize(aim - muzzle);
       let fx = GameInstance.GetFxSystem(this.m_game);
-      // the flash: the HMG's first-person flash through the sensor (the third-person one
-      // is too small to see from the nose), its third-person one from the chase view
+      // the flash: the HMG's big third-person flash every round, and its first-person one on
+      // top through the sensor (a35: heft, Omar)
+      fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
       if s.SightView() {
         fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle.effect"), CMUMinotaur.At(muzzle, dir), true);
-      } else {
-        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_muzzle_tpp.effect"), CMUMinotaur.At(muzzle, dir), true);
       }
       // the round: what's on its line takes it
       let hit: TraceResult;
@@ -1485,42 +1488,22 @@ public class CMUDrone extends CMCUnit {
         end.W = 1.0;
         struck = true;
       }
-      // the tracer: a trail stretched from the barrel to where the round ends (a52-a55 gave
-      // it no end, so it was drawn zero long: no tracers)
-      // the player's HMG trail (heavier and quicker to read than the NPC one, Omar: larger
-      // and faster rounds), the Minotaur's treatment
-      let tracer = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg.effect"), CMUMinotaur.At(muzzle, dir), true);
-      if IsDefined(tracer) {
-        let wp: WorldPosition;
-        WorldPosition.SetVector4(wp, end);
-        tracer.UpdateTargetPosition(wp);
-      }
+      // The round flies: a tracer streak from the barrel at BULLET_SPEED, and what it struck
+      // takes the hit when it gets there (FlyRound). a29-a34 drew the whole line at once and
+      // hit at once: it read as a laser, not a bullet (Omar).
+      let round = new CMDroneShot();
+      round.kind = 3;
+      round.from = muzzle;
+      round.to = end;
+      round.pos = muzzle;
+      round.vel = dir;
+      round.life = MaxF(0.02, Vector4.Distance(muzzle, end) / this.BULLET_SPEED);
+      round.struck = struck;
+      round.hit = target;
+      ArrayPush(this.m_shots, round);
       this.m_lmgRounds += 1;
-      if struck {
-        // the MK.31's explosive-bullet impact every other strike (a look only), else a plain one
-        this.m_lmgImpact = !this.m_lmgImpact;
-        if this.m_lmgImpact {
-          fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_explosive_bullet.effect"), CMUMinotaur.At(end, -dir), true);
-        } else {
-          fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\impacts\\default\\imp_default_norm.effect"), CMUMinotaur.At(end, -dir), true);
-        }
-      }
-      s.rig.Recoil(0.12);
-      let drone = this.m_drone;
-      if IsDefined(target) && (!IsDefined(drone) || target.GetEntityID() != drone.GetEntityID()) {
-        // The round's damage straight onto what it struck, V the instigator. a55-a27 sent it
-        // as a small area attack: its record's 0.6 m reach left nothing for a target a metre
-        // from the area's centre, and its explosion effect went off on every round (Omar).
-        let pools = GameInstance.GetStatPoolsSystem(this.m_game);
-        let tid = Cast<StatsObjectID>(target.GetEntityID());
-        let wasAlive = pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) > 0.0;
-        pools.RequestChangingStatPoolValue(tid, gamedataStatPoolType.Health, -this.RoundDamage(target), GetPlayer(this.m_game), false, false);
-        // the hit marker (the damage pipeline's hook, which shows it for the mech, never
-        // sees a direct hit), a kill when this round finished it
-        s.RoundHit(wasAlive && pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) <= 0.0);
-        this.m_lmgHits += 1;
-        this.m_lmgLast = NameToString(target.GetClassName());
-      }
+      // the kick: a heavy gun (a35: twice a29's, and a jolt down the frame)
+      s.rig.Recoil(0.26);
       this.m_heat += this.LMG_HEAT * (ArraySize(this.m_partHp) >= CMUDrone.OctantParts() && this.m_partHp[5] < 0.5 ? 1.5 : 1.0);
       fired = true;
       if this.m_heat >= 1.0 {
@@ -1532,6 +1515,57 @@ public class CMUDrone extends CMCUnit {
       }
     }
     return fired || now < this.m_lmgNext;
+  }
+
+  // An LMG round a frame on: the streak's head moves BULLET_SPEED along its line and its
+  // tail trails ROUND_STREAK behind; at the end, the impact, and the hit on what it struck.
+  private func FlyRound(s: ref<CMCSession>, r: ref<CMDroneShot>) -> Bool {
+    let u = ClampF(r.age / r.life, 0.0, 1.0);
+    let head = r.from + (r.to - r.from) * u;
+    head.W = 1.0;
+    let back = MinF(this.ROUND_STREAK, Vector4.Distance(r.from, head));
+    let tail = head - r.vel * back;
+    tail.W = 1.0;
+    let fx = GameInstance.GetFxSystem(this.m_game);
+    if !IsDefined(r.fx) {
+      r.fx = fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\trails\\power\\w_trail_power_hmg.effect"), CMUMinotaur.At(tail, r.vel), true);
+    }
+    if IsDefined(r.fx) {
+      r.fx.UpdateTransform(CMUMinotaur.At(tail, r.vel));
+      let wp: WorldPosition;
+      WorldPosition.SetVector4(wp, head);
+      r.fx.UpdateTargetPosition(wp);
+    }
+    if u < 1.0 {
+      return false;
+    }
+    let end = r.to;
+    let dir = r.vel;
+    if r.struck {
+      // the MK.31's explosive-bullet impact every other strike (a look only), else a plain one
+      this.m_lmgImpact = !this.m_lmgImpact;
+      if this.m_lmgImpact {
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\firearms\\special\\militech_hmg\\w_special_hmg_explosive_bullet.effect"), CMUMinotaur.At(end, -dir), true);
+      } else {
+        fx.SpawnEffect(CMUMinotaur.Fx(r"base\\fx\\weapons\\impacts\\default\\imp_default_norm.effect"), CMUMinotaur.At(end, -dir), true);
+      }
+    }
+    let target = r.hit;
+    let drone = this.m_drone;
+    if IsDefined(target) && (!IsDefined(drone) || target.GetEntityID() != drone.GetEntityID()) {
+      // the round's damage straight onto what it struck, V the instigator (a28: an area
+      // attack did nothing and exploded on every round)
+      let pools = GameInstance.GetStatPoolsSystem(this.m_game);
+      let tid = Cast<StatsObjectID>(target.GetEntityID());
+      let wasAlive = pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) > 0.0;
+      pools.RequestChangingStatPoolValue(tid, gamedataStatPoolType.Health, -this.RoundDamage(target), GetPlayer(this.m_game), false, false);
+      // the hit marker (the damage pipeline's hook never sees a direct hit), a kill when
+      // this round finished it
+      s.RoundHit(wasAlive && pools.GetStatPoolValue(tid, gamedataStatPoolType.Health, false) <= 0.0);
+      this.m_lmgHits += 1;
+      this.m_lmgLast = NameToString(target.GetClassName());
+    }
+    return true;
   }
 
   // a round's damage on what it struck: a share of its health, within limits (flat damage
@@ -2215,7 +2249,7 @@ public class CMUDrone extends CMCUnit {
       case 5: return new Vector4(0.0, 1.38, 0.14, 0.0);     // the gun
       case 6: return new Vector4(-1.11, 0.01, 0.56, 0.0);   // the side tubes (rocket pods)
       case 7: return new Vector4(1.11, 0.01, 0.56, 0.0);
-      case 8: return new Vector4(0.25, -0.86, 0.55, 0.0);   // the mortar: the rear block, right
+      case 8: return new Vector4(0.25, -1.05, 0.45, 0.0);   // the mortar: the rear block, right
       case 9: return new Vector4(0.0, 1.48, 0.05, 0.0);     // the sensor: the nose lens
     }
     return new Vector4(0.0, -0.02, 0.5, 0.0);               // the hull, on top
@@ -2514,7 +2548,7 @@ public class CMUDrone extends CMCUnit {
 
 // a shell or a missile in the air (CMUDrone.Fly)
 public class CMDroneShot {
-  public let kind: Int32;        // 0 the mortar's carrier, 1 a mortar round, 2 a missile
+  public let kind: Int32;        // 0 the mortar's carrier, 1 a mortar round, 2 a missile, 3 an LMG round
   public let from: Vector4;      // carrier and rounds: their path's start, bend and end
   public let via: Vector4;
   public let to: Vector4;
@@ -2524,6 +2558,8 @@ public class CMDroneShot {
   public let age: Float;         // s in the air (a round below zero waits its turn)
   public let life: Float;        // s: the carrier's and a round's flight, the missile's fuel
   public let fx: ref<FxInstance>;
+  public let struck: Bool;       // an LMG round (kind 3): it ends on something, and what
+  public let hit: wref<GameObject>;
 }
 
 // where a destroyed drone's wreck is two seconds on, against where it went down (the wreck

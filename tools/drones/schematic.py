@@ -60,7 +60,7 @@ def octant_part(mesh, c, sub="", bones=()):
         return "rocket_r"
     if sub.startswith("submesh_03") or (c[1] > 1.2 and abs(c[0]) < 0.3 and c[2] > -0.15):
         return "sensor"
-    if -1.15 < c[1] < -0.6 and 0.02 < c[0] < 0.47 and c[2] > 0.0:
+    if -1.62 < c[1] < -0.6 and 0.02 < c[0] < 0.47 and c[2] > -0.1:
         return "mortar"
     return "body"
 
