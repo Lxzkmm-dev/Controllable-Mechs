@@ -80,17 +80,21 @@ public class CMWyvernHud extends CMBombusHud {
   private let WY_RADAR_R: Float = 250.0;
   private let WY_RADAR_M: Float = 100.0;   // the radar's reach, m
 
+  // the whole screen's width, edge to edge (a52, Omar: not the Bombus's 16:9 goggle area)
+  private func WyL() -> Float = 40.0
+  private func WyR() -> Float = this.FW() - 40.0
+
   protected func Acc() -> HDRColor = new HDRColor(0.62, 1.05, 1.00, 1.0)
   private func Amb() -> HDRColor = CMPilotHud.Caution()
 
   // the radar's middle and the scan ring's (design units)
-  private func RadarX() -> Float = this.FX0() + 470.0
+  private func RadarX() -> Float = this.WyL() + 470.0
   private func RadarY() -> Float = 1700.0
 
   // a clean digital feed graded cold, a viewfinder's corners round the 16:9 area
   protected func BuildFeed(root: ref<inkCanvas>) -> Void {
-    let x0 = this.FX0();
-    let w = MinF(3840.0, this.FW());
+    let x0 = this.WyL();
+    let w = this.WyR() - x0;
     CMPilotHud.Bar(root, x0, 0.0, w, 2160.0, new HDRColor(0.08, 0.16, 0.20, 1.0), 0.15);
     let e = 0;
     while e < 3 {
@@ -116,8 +120,8 @@ public class CMWyvernHud extends CMBombusHud {
   }
 
   protected func BuildOsd(root: ref<inkCanvas>) -> Void {
-    let x0 = this.FX0();
-    let x1 = x0 + MinF(3840.0, this.FW());
+    let x0 = this.WyL();
+    let x1 = this.WyR();
     let cx = this.FW() * 0.5;
     let cy = 1080.0;
     let lx = x0 + 200.0;
@@ -247,7 +251,7 @@ public class CMWyvernHud extends CMBombusHud {
   // its wings stacked, two of six showed), from ahead, to its right and above, its wings
   // unfolded as it flies; bottom right
   protected func BuildSprite(root: ref<inkCanvas>) -> Void {
-    let x1 = this.FX0() + MinF(3840.0, this.FW());
+    let x1 = this.WyR();
     let k = 290.0 / 360.0;
     let bx = x1 - 335.0 - 273.0 * k * 0.5;
     let by = 1640.0;
@@ -335,7 +339,7 @@ public class CMWyvernHud extends CMBombusHud {
     let fovLine = "FOV " + FloatToStringPrec(t.fov, 1);
     this.SetT(this.WY_GRID, "NC GRID " + FloatToStringPrec(t.pos.X, 1) + " / " + FloatToStringPrec(t.pos.Y, 1));
     let zi = ClampF((zoom - 1.0) / 8.0, 0.0, 1.0);
-    this.m_wyZoomMark.SetMargin(inkMargin(this.FX0() + MinF(3840.0, this.FW()) - 246.0, 560.0 + (1.0 - zi) * 720.0, 0.0, 0.0));
+    this.m_wyZoomMark.SetMargin(inkMargin(this.WyR() - 246.0, 560.0 + (1.0 - zi) * 720.0, 0.0, 0.0));
     this.m_wyZoomMark.SetText("> X" + FloatToStringPrec(zoom, 1));
     // the scan ring
     let lit = t.scan < 0.0 ? 0 : RoundF(t.scan * Cast<Float>(this.WY_RING_N));

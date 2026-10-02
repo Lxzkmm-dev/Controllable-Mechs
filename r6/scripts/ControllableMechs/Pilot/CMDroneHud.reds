@@ -93,6 +93,7 @@ public class CMDroneHud extends CMPilotHud {
   private let m_ocDots: array<ref<inkRectangle>>;
   private let m_ocSelf: ref<inkCanvas>;
   private let m_ocFoot: array<ref<inkRectangle>>;
+  private let m_ocFootEdge: array<ref<inkRectangle>>;
   private let m_ocOrbit: array<ref<inkRectangle>>;
   private let m_ocTgtMark: ref<inkCanvas>;
   private let m_ocTgtLbl: ref<inkText>;
@@ -206,6 +207,7 @@ public class CMDroneHud extends CMPilotHud {
     ArrayClear(this.m_ocSplash);
     ArrayClear(this.m_ocLeader);
     ArrayClear(this.m_ocFoot);
+    ArrayClear(this.m_ocFootEdge);
     ArrayClear(this.m_ocOrbit);
   }
 
@@ -457,7 +459,7 @@ public class CMDroneHud extends CMPilotHud {
   // ---- the sensor block, top left ----------------------------------------------------
   private func BuildSensor(root: ref<inkCanvas>) -> Void {
     let x = 60.0;
-    let y = 30.0;
+    let y = 90.0;   // (a52: clear of the top edge on Omar's ultrawide)
     this.OcPanel(root, x, y, 820.0, 250.0);
     this.m_name = this.TxtC(root, x + 22.0, y + 10.0, "DRONE", 40, this.Hi());
     let r1 = y + 70.0;
@@ -488,7 +490,7 @@ public class CMDroneHud extends CMPilotHud {
   // ---- the target block, top right --------------------------------------------------
   private func BuildTarget(root: ref<inkCanvas>) -> Void {
     let x = this.m_W - 60.0 - 680.0;
-    let y = 30.0;
+    let y = 90.0;
     this.OcPanel(root, x, y, 680.0, 250.0);
     this.TxtC(root, x + 22.0, y + 10.0, "TARGET", 36, this.Hi());
     this.m_ocTgtTag = this.OcRight(root, x + 660.0, y + 14.0, "", 28, CMPilotHud.Caution());
@@ -513,9 +515,9 @@ public class CMDroneHud extends CMPilotHud {
   // ---- the situation map, left ------------------------------------------------------
   private func BuildMap(root: ref<inkCanvas>) -> Void {
     let x = 40.0;
-    let y = 1150.0;
+    let y = 1080.0;
     let w = 650.0;
-    let h = 540.0;
+    let h = 500.0;
     this.OcPanel(root, x, y, w, h);
     this.TxtC(root, x + 18.0, y + 10.0, "SITUATION", 26, this.Lbl());
     this.OcRight(root, x + w - 18.0, y + 10.0, "N UP   100 M", 26, this.Lbl());
@@ -530,7 +532,15 @@ public class CMDroneHud extends CMPilotHud {
     this.Line(m, c - 1.0, 0.0, 2.0, c * 2.0, 0.15);
     this.Line(m, 0.0, c - 1.0, c * 2.0, 2.0, 0.15);
     // the sensor's footprint, filled
-    this.m_ocFoot = CMInk.FillBars(m, 24, this.G(), 0.45);
+    // (a52: fine strips and its two edges drawn over them: 24 strips read as stairs)
+    this.m_ocFoot = CMInk.FillBars(m, 110, this.G(), 0.32);
+    let fe = 0;
+    while fe < 3 {
+      let b = CMPilotHud.Bar(m, 0.0, 0.0, 1.0, 3.0, this.G(), 0.95);
+      b.SetVisible(false);
+      ArrayPush(this.m_ocFootEdge, b);
+      fe += 1;
+    }
     // the orbit round the target at the standoff: dashed amber
     let n = 0;
     while n < 32 {
@@ -568,9 +578,9 @@ public class CMDroneHud extends CMPilotHud {
   // ---- the stores page, bottom left -------------------------------------------------
   private func BuildStores(root: ref<inkCanvas>) -> Void {
     let x = 40.0;
-    let y = 1720.0;
+    let y = 1600.0;
     let w = 650.0;
-    this.OcPanel(root, x, y, w, 400.0);
+    this.OcPanel(root, x, y, w, 390.0);
     this.TxtC(root, x + 18.0, y + 10.0, "STORES", 26, this.Lbl());
     this.m_ocArm = this.OcRight(root, x + w - 18.0, y + 10.0, "MASTER ARM ON", 26, CMPilotHud.Caution());
     let names = ["MORTAR", "LMG X2", "ROCKETS"];
@@ -587,7 +597,7 @@ public class CMDroneHud extends CMPilotHud {
     }
     this.TxtC(root, x + 18.0, y + 350.0, "[B] STA   [LMB] FIRE   [G] MISSILE   [" + CMKeys.GunshipName(GetPlayer(GetGameInstance())) + "] HOLD   [RMB] ZOOM   [T] SENSOR", 22, this.Lbl());
     // the BDA, bottom centre
-    this.m_ocBda = this.Txt(root, this.m_W * 0.5, 2060.0, "", 28, true);
+    this.m_ocBda = this.Txt(root, this.m_W * 0.5, 1990.0, "", 28, true);
     this.m_ocBda.SetOpacity(0.8);
   }
 
@@ -597,16 +607,16 @@ public class CMDroneHud extends CMPilotHud {
     let W = this.m_W;
     let pw = 500.0;
     let px = W - 40.0 - pw;
-    let py = 1560.0;
-    this.OcPanel(root, px, py, pw, 560.0);
+    let py = 1480.0;
+    this.OcPanel(root, px, py, pw, 510.0);
     this.TxtC(root, px + 18.0, py + 10.0, "AIRFRAME", 26, this.Lbl());
-    let k = 400.0 / 560.0;
+    let k = 380.0 / 560.0;
     let x0 = px + (pw - 537.0 * k) * 0.5;
     let y0 = py + 56.0;
     if Equals(this.m_kind, "octant") {
       let box = new inkCanvas();
       box.SetMargin(inkMargin(x0, y0, 0.0, 0.0));
-      box.SetSize(Vector2(537.0 * k, 400.0));
+      box.SetSize(Vector2(537.0 * k, 380.0));
       box.Reparent(root);
       // the ten layers of the scan, in CMUDrone's part order
       this.Part(box, k, n"octant_body", 100.0, 16.0, 335.0, 539.0);
@@ -620,8 +630,8 @@ public class CMDroneHud extends CMPilotHud {
       this.Part(box, k, n"octant_mortar", 206.0, 348.0, 162.0, 202.0);
       this.Part(box, k, n"octant_sensor", 191.0, 15.0, 156.0, 102.0);
     }
-    this.m_hullT = this.TxtC(root, px + 22.0, py + 508.0, "HULL 100%", 30, this.Hi());
-    this.m_ocThr = this.TxtC(root, px + 260.0, py + 508.0, "THR 4/4", 30, this.Hi());
+    this.m_hullT = this.TxtC(root, px + 22.0, py + 456.0, "HULL 100%", 30, this.Hi());
+    this.m_ocThr = this.TxtC(root, px + 260.0, py + 456.0, "THR 4/4", 30, this.Hi());
   }
 
   private func Part(box: ref<inkCanvas>, k: Float, name: CName, x: Float, y: Float, w: Float, h: Float) -> Void {
@@ -823,6 +833,17 @@ public class CMDroneHud extends CMPilotHud {
       }
     }
     CMInk.FillPoly(this.m_ocFoot, fp);
+    let ei = 0;
+    while ei < ArraySize(this.m_ocFootEdge) {
+      let eb = this.m_ocFootEdge[ei];
+      eb.SetVisible(ArraySize(fp) == 3);
+      if ArraySize(fp) == 3 {
+        let p0 = fp[ei];
+        let p1 = fp[(ei + 1) % 3];
+        CMInk.Seg(eb, p0.X, p0.Y, p1.X, p1.Y, 3.0);
+      }
+      ei += 1;
+    }
     // the sensor block's MTS line: its mode and field of view
     this.m_ocMts.SetText(this.m_ocSensor + "   " + (this.m_ocZoomed ? "NFOV " : "WFOV ") + FloatToStringPrec(t.fov, 1));
     // the target, and the orbit at the standoff round it

@@ -78,10 +78,14 @@ public class CMGriffinHud extends CMBombusHud {
 
   private let GR_GAUGE_R: Float = 120.0;
 
+  // the whole screen's width, edge to edge (a52, Omar: not the Bombus's 16:9 goggle area)
+  private func GrL() -> Float = 40.0
+  private func GrR() -> Float = this.FW() - 40.0
+
   protected func Acc() -> HDRColor = new HDRColor(0.40, 1.05, 0.52, 1.0)
   private func Hot() -> HDRColor = CMPilotHud.Red()
 
-  private func GaugeX() -> Float = this.FX0() + 330.0
+  private func GaugeX() -> Float = this.GrL() + 330.0
   private func GaugeY() -> Float = 1760.0
 
   // a clean digital feed: only the edges a little darker
@@ -96,8 +100,8 @@ public class CMGriffinHud extends CMBombusHud {
   }
 
   protected func BuildOsd(root: ref<inkCanvas>) -> Void {
-    let x0 = this.FX0();
-    let x1 = x0 + MinF(3840.0, this.FW());
+    let x0 = this.GrL();
+    let x1 = this.GrR();
     let cx = this.FW() * 0.5;
     let cy = 1080.0;
     // the banner: an angled plate, chevrons either side
@@ -256,7 +260,7 @@ public class CMGriffinHud extends CMBombusHud {
 
   // the Griffin, scanned from its own meshes, bottom right
   protected func BuildSprite(root: ref<inkCanvas>) -> Void {
-    let x1 = this.FX0() + MinF(3840.0, this.FW());
+    let x1 = this.GrR();
     let k = 300.0 / 360.0;
     let bx = x1 - 335.0 - 311.0 * k * 0.5;
     let by = 1640.0;

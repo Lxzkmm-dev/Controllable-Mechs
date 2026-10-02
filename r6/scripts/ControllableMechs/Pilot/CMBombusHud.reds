@@ -346,7 +346,7 @@ public class CMBombusHud extends CMDroneHud {
     this.m_fTgtT.SetAnchorPoint(Vector2(0.5, 1.0));
     this.m_fTgtD = CMPilotHud.Label(root, inkEAnchor.TopLeft, 0.0, 0.0, "", 30, n"Semi-Bold", this.Ink());
     this.m_fTgtD.SetAnchorPoint(Vector2(0.5, 0.0));
-    this.m_fRingFill = CMInk.FillBars(root, 28, CMPilotHud.Caution(), 0.2);
+    this.m_fRingFill = CMInk.FillBars(root, 64, CMPilotHud.Caution(), 0.2);
     n = 0;
     while n < 32 {
       ArrayPush(this.m_fRingSegs, CMPilotHud.Bar(root, 0.0, 0.0, 1.0, 4.0, CMPilotHud.Caution(), 0.9));
