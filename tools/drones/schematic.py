@@ -76,6 +76,26 @@ def bombus_part(mesh, c, sub="", bones=()):
     return "body"
 
 
+def griffin_part(mesh, c, sub="", bones=()):
+    # the Griffin: its body and the two wing pods with their guns (their own meshes)
+    if mesh.startswith("av_militech_griffin_wing_l"):
+        return "wing_l"
+    if mesh.startswith("av_militech_griffin_wing_r"):
+        return "wing_r"
+    return "body"
+
+
+def wyvern_part(mesh, c, sub="", bones=()):
+    # the Wyvern: its body, the rotor arms either side (left/right_wing bones) and its gun
+    if mesh.startswith("av_militech_wyvern_01_weapon"):
+        return "gun"
+    if any(b.startswith("left_wing") for b in bones):
+        return "arm_l"
+    if any(b.startswith("right_wing") for b in bones):
+        return "arm_r"
+    return "body"
+
+
 # rigid meshes in their slot's frame: where each slot sits in the rest pose (rig bones
 # composed with Slot8842's slot offsets, all unturned): av_zetatech_octant.rig / .ent
 PLACED = {
@@ -88,13 +108,17 @@ PLACED = {
 
 DRONES = {
     "bombus": ("raw_bombus", ["av_zetatech_bombus__ext01_surveillance", "av_zetatech_bombus__ext01_propellers", "av_zetatech_bombus__weapon"],
-               bombus_part, ["body", "arm_l", "arm_r", "arm_back", "payload"], 360),
+               bombus_part, ["body", "arm_l", "arm_r", "arm_back", "payload"], 360, 18),
+    "griffin": ("raw_griffin", ["av_militech_griffin_body_01", "av_militech_griffin_wing_l_01", "av_militech_griffin_wing_r_01"],
+                griffin_part, ["body", "wing_l", "wing_r"], 360, 30),
+    "wyvern": ("raw_wyvern", ["av_militech_wyvern_01"],
+               wyvern_part, ["body", "arm_l", "arm_r", "gun"], 360, 30),
     "octant": ("raw_octant", ["av_zetatech_octant__ext01_body_01", "av_zetatech_octant__ext01_gun_02", "av_zetatech_octant__ext01_thruster_"],
-               octant_part, ["body", "thruster_fl", "thruster_fr", "thruster_bl", "thruster_br", "gun", "rocket_l", "rocket_r", "mortar", "sensor"], 560),
+               octant_part, ["body", "thruster_fl", "thruster_fr", "thruster_bl", "thruster_br", "gun", "rocket_l", "rocket_r", "mortar", "sensor"], 560, 40),
 }
 
 
-def render(tris, parts, H=H):
+def render(tris, parts, H=H, ANG=40):
     # tris: (p0, p1, p2, part index); top-down: screen x = X, screen y = -Y, depth = -Z
     xs = [p[0] for t in tris for p in t[:3]]
     ys = [p[1] for t in tris for p in t[:3]]
@@ -143,7 +167,9 @@ def render(tris, parts, H=H):
             ka, kb = key(pa), key(pb)
             e = (ka, kb) if ka < kb else (kb, ka)
             edges.setdefault(e, [pa, pb, []])[2].append(ti)
-    ang = math.cos(math.radians(40))
+    # the feature edges: creases sharper than ANG degrees (a lower ANG draws gentle curves
+    # too: the Bombus's rounded shell read boxy at 40, Omar)
+    ang = math.cos(math.radians(ANG))
     line = [[0.0] * (W * H) for _ in parts]
     for pa, pb, fs in edges.values():
         part = tris[fs[0]][3]
@@ -180,7 +206,7 @@ def main():
     os.makedirs(raw, exist_ok=True)
     layout = {}
     images = []
-    for kind, (folder, prefixes, part_of, parts, H) in DRONES.items():
+    for kind, (folder, prefixes, part_of, parts, H, ANG) in DRONES.items():
         tris = []
         for f in sorted(os.listdir(os.path.join(src, folder))):
             if f.endswith(".glb") and any(f.startswith(p) for p in prefixes):
@@ -189,7 +215,7 @@ def main():
                     t = tuple(tuple(q[i] + off[i] for i in range(3)) for q in t)
                     c = tuple((t[0][i] + t[1][i] + t[2][i]) / 3 for i in range(3))
                     tris.append((t[0], t[1], t[2], parts.index(part_of(f, c, sub, bones))))
-        W, owner, line = render(tris, parts, H)
+        W, owner, line = render(tris, parts, H, ANG)
         comp = bytearray(W * H * 4)
         for pi, pname in enumerate(parts):
             idx = [i for i in range(W * H) if owner[i] == pi or line[pi][i] > 0]

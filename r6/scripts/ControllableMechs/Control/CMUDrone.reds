@@ -1004,11 +1004,22 @@ public class CMUDrone extends CMCUnit {
 
   // its own display (CMDroneHud), with the damage schematic of its type
   public func NewHud() -> ref<CMPilotHud> {
+    // each drone's display befits its role (Omar): the Bombus's a cheap FPV OSD, the
+    // Griffin's a strike HUD, the Wyvern's an escort's; the Octant keeps the MQ-1 style
     if Equals(this.m_kind, "bombus") {
-      // each drone's display befits its role (Omar): the Bombus's is a cheap FPV OSD
       let b = new CMBombusHud();
       b.SetKind(this.m_kind);
       return b;
+    }
+    if Equals(this.m_kind, "griffin") {
+      let g = new CMGriffinHud();
+      g.SetKind(this.m_kind);
+      return g;
+    }
+    if Equals(this.m_kind, "wyvern") {
+      let w = new CMWyvernHud();
+      w.SetKind(this.m_kind);
+      return w;
     }
     let h = new CMDroneHud();
     h.SetKind(this.m_kind);
@@ -1039,6 +1050,12 @@ public class CMUDrone extends CMCUnit {
       st.roll = fl.roll;
       st.spool = fl.Spool();
     }
+    // where V (the operator) is, off the view: the displays' home / escort arrow
+    st.home = 999.0;
+    let pl = GetPlayer(this.m_game);
+    if IsDefined(pl) && IsDefined(this.m_flight) {
+      st.home = CMPilotRig.Wrap(s.rig.yaw - CMPilotRig.YawOf(pl.GetWorldPosition() - this.m_flight.pos));
+    }
     // weapons (the Octant's: the mortar, unlimited; the two machine guns, on heat; the
     // missile), the selected one bright
     st.weapon = this.m_wpn;
@@ -1056,12 +1073,6 @@ public class CMUDrone extends CMCUnit {
       st.terText = "ROCKETS  LSR   " + IntToString(this.m_rockets) + "/" + IntToString(pods * 2) + "     " + (pods == 0 ? "LOST" : (this.m_rockets > 0 ? "RDY" : "RLD " + FloatToStringPrec(MaxF(0.0, this.m_podReady - now), 1) + "S"));
     } else {
       if Equals(this.m_kind, "bombus") {
-        // the FPV OSD's home arrow: where V is, off the view
-        st.home = 999.0;
-        let pl = GetPlayer(this.m_game);
-        if IsDefined(pl) {
-          st.home = CMPilotRig.Wrap(s.rig.yaw - CMPilotRig.YawOf(pl.GetWorldPosition() - this.m_flight.pos));
-        }
         // the FPV OSD's lines (CMBombusHud): the payload, its arming, the flight mode
         st.priText = "PAYLOAD // " + CMUDrone.PayloadName(this.m_payload);
         st.secText = this.m_payload > 0 ? (this.m_detonated ? "RELEASED" : "ARMED") : "DISARMED";

@@ -69,9 +69,15 @@ public class CMBombusHud extends CMDroneHud {
   private let T_HULL: Int32 = 19;
   private let T_PIT: Int32 = 20;
 
-  private func Ink() -> HDRColor = new HDRColor(1.0, 1.0, 1.0, 1.0)
-  private func Acc() -> HDRColor = new HDRColor(0.30, 1.00, 1.10, 1.0)
-  private func Blk() -> HDRColor = new HDRColor(0.0, 0.0, 0.0, 1.0)
+  protected func Ink() -> HDRColor = new HDRColor(1.0, 1.0, 1.0, 1.0)
+  protected func Acc() -> HDRColor = new HDRColor(0.30, 1.00, 1.10, 1.0)
+  protected func Blk() -> HDRColor = new HDRColor(0.0, 0.0, 0.0, 1.0)
+
+  // for the other drones' displays built on this one (CMGriffinHud, CMWyvernHud): the
+  // design width, and the 16:9 area's left edge
+  protected func FW() -> Float = this.m_fW
+  protected func FX0() -> Float = this.m_fX0
+  protected func FRoot() -> ref<inkCanvas> = this.m_fRoot
 
   // ---------------------------------------------------------------------------
   public func Build() -> Bool {
@@ -147,7 +153,7 @@ public class CMBombusHud extends CMDroneHud {
 
   // the cheap analog feed: scanlines over everything, the edges darkened, a band of
   // interference rolling down
-  private func BuildFeed(root: ref<inkCanvas>) -> Void {
+  protected func BuildFeed(root: ref<inkCanvas>) -> Void {
     let y = 0.0;
     while y < 2160.0 {
       CMPilotHud.Bar(root, 0.0, y, this.m_fW, 2.0, this.Blk(), 0.10);
@@ -166,7 +172,7 @@ public class CMBombusHud extends CMDroneHud {
   }
 
   // a line of OSD text with its black shadow (align 0 left, 1 centred, 2 right)
-  private func Osd(root: ref<inkCanvas>, x: Float, y: Float, size: Int32, align: Int32) -> Void {
+  protected func Osd(root: ref<inkCanvas>, x: Float, y: Float, size: Int32, align: Int32) -> Void {
     let sh = CMPilotHud.Label(root, inkEAnchor.TopLeft, x + 3.0, y + 3.0, "", size, n"Semi-Bold", this.Blk());
     let t = CMPilotHud.Label(root, inkEAnchor.TopLeft, x, y, "", size, n"Semi-Bold", this.Ink());
     sh.SetOpacity(0.85);
@@ -179,21 +185,21 @@ public class CMBombusHud extends CMDroneHud {
     ArrayPush(this.m_fShadows, sh);
   }
 
-  private func SetT(i: Int32, text: String) -> Void {
+  protected func SetT(i: Int32, text: String) -> Void {
     if i < ArraySize(this.m_fTexts) {
       this.m_fTexts[i].SetText(text);
       this.m_fShadows[i].SetText(text);
     }
   }
 
-  private func Tint(i: Int32, c: HDRColor) -> Void {
+  protected func Tint(i: Int32, c: HDRColor) -> Void {
     if i < ArraySize(this.m_fTexts) {
       this.m_fTexts[i].SetTintColor(c);
     }
   }
 
   // a thin bracket frame: the four corners of a box
-  private func Brackets(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float) -> Void {
+  protected func Brackets(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float) -> Void {
     let L = 26.0;
     let c = this.Acc();
     CMPilotHud.Bar(root, x, y, L, 3.0, c, 0.8);
@@ -206,7 +212,7 @@ public class CMBombusHud extends CMDroneHud {
     CMPilotHud.Bar(root, x + w - 3.0, y + h - L, 3.0, L, c, 0.8);
   }
 
-  private func BuildOsd(root: ref<inkCanvas>) -> Void {
+  protected func BuildOsd(root: ref<inkCanvas>) -> Void {
     let x0 = this.m_fX0;
     let x1 = x0 + MinF(3840.0, this.m_fW);
     let cx = this.m_fW * 0.5;
@@ -312,7 +318,7 @@ public class CMBombusHud extends CMDroneHud {
   }
 
   // the airframe, scanned from the Bombus's own meshes, bottom right
-  private func BuildSprite(root: ref<inkCanvas>) -> Void {
+  protected func BuildSprite(root: ref<inkCanvas>) -> Void {
     let x1 = this.m_fX0 + MinF(3840.0, this.m_fW);
     let k = 260.0 / 360.0;
     let bx = x1 - 200.0 - 360.0 * k;
@@ -329,7 +335,7 @@ public class CMBombusHud extends CMDroneHud {
     this.Layer(box, k, n"bombus_payload", 123.0, 5.0, 110.0, 80.0);
   }
 
-  private func Layer(box: ref<inkCanvas>, k: Float, name: CName, x: Float, y: Float, w: Float, h: Float) -> Void {
+  protected func Layer(box: ref<inkCanvas>, k: Float, name: CName, x: Float, y: Float, w: Float, h: Float) -> Void {
     let img = new inkImage();
     img.SetAtlasResource(CMDroneHud.Atlas());
     img.SetTexturePart(name);
