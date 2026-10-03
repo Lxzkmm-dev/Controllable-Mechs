@@ -58,9 +58,6 @@ public abstract class CMCUnit extends IScriptable {
   public func TickFirst() -> Bool = false
   // the display it is flown with (the mech's by default)
   public func NewHud() -> ref<CMPilotHud> = new CMPilotHud()
-  // after the camera is placed each frame (diagnostics)
-  public func FrameLog(s: ref<CMCSession>, dt: Float) -> Void {}
-
   public func Name() -> String = "UNIT"
   // destroyed, its feed shows SIGNAL LOST for a moment before the view goes back (drones)
   public func SignalLost() -> Bool = false

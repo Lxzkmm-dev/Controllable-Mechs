@@ -108,12 +108,7 @@ public class CMWind extends ScriptableSystem {
     return this.m_weather;
   }
 
-  // the mean wind at 10 m (m/s), and the heading it blows toward (deg, the mod's yaw)
-  public func Mean() -> Float {
-    this.Update();
-    return this.m_speed;
-  }
-
+  // the heading the wind blows toward (deg, the mod's yaw)
   public func Heading() -> Float {
     let t = this.Clock();
     let s = this.m_seed;

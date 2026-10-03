@@ -117,7 +117,6 @@ public class CMDroneHud extends CMPilotHud {
   private let m_ocHeading: Float;
 
   private let HDG_PX: Float = 6.0;       // px per degree on the heading tape
-  private let SCHEM_H: Float = 430.0;    // the damage schematic's height on screen
   private let OC_MAP_R: Float = 200.0;   // the map's radius on screen (100 m)
   private let OC_MPX: Float = 2.0;       // its px per m
   private let OC_DEP_R: Float = 150.0;   // the look-down arc's radius
@@ -231,18 +230,6 @@ public class CMDroneHud extends CMPilotHud {
     let t = this.TxtC(root, x, y, text, size, c);
     t.SetAnchorPoint(Vector2(1.0, 0.0));
     return t;
-  }
-  // an outlined box
-  private func Frame(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float, op: Float) -> ref<inkCanvas> {
-    let c = new inkCanvas();
-    c.SetMargin(inkMargin(x, y, 0.0, 0.0));
-    c.SetSize(Vector2(w, h));
-    c.Reparent(root);
-    this.Line(c, 0.0, 0.0, w, 2.0, op);
-    this.Line(c, 0.0, h - 2.0, w, 2.0, op);
-    this.Line(c, 0.0, 0.0, 2.0, h, op);
-    this.Line(c, w - 2.0, 0.0, 2.0, h, op);
-    return c;
   }
   // a panel: dark glass inside a thin border (the mockup's)
   private func OcPanel(root: ref<inkCanvas>, x: Float, y: Float, w: Float, h: Float) -> Void {

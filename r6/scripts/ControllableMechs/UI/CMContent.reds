@@ -156,9 +156,6 @@ public class CMContent extends TKContent {
       case "lmgarc":
         cfg.SetOctantLmgArc(CMContent.Val(arg, 0));
         break;
-      case "dronefl":
-        cfg.SetDroneFrameLog(Equals(CMContent.Str(arg), "1"));
-        break;
       case "despawntest":
         link.DespawnTestMech();
         p.SetMessage("TEST MECH REMOVED");
@@ -416,7 +413,6 @@ public class CMContent extends TKContent {
     p.Check("DIAGNOSTICS", "Traces hits and session events to the game log (for bug reports); off in normal play", cfg.ShowDebug(), "debug", "");
     if cfg.ShowDebug() {
       p.Dropdown("OCTANT LMG ARC (TEST)", "The Octant's LMGs only fire when the reticle is within this many degrees of its nose (either side); OFF fires anywhere", IntToString(cfg.OctantLmgArc()), "OFF|17.5 DEG (35 TOTAL)|35 DEG (70 TOTAL)|65 DEG (130 TOTAL)", "0|17|35|65", "lmgarc", "");
-      p.Check("DRONE FRAME LOG", "Logs every frame for four seconds the first time a flown drone passes 8 m/s (where the flight, the drone and the camera each are), to find the chase-view jitter", cfg.DroneFrameLog(), "dronefl", "");
     }
   }
 

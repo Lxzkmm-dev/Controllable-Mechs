@@ -22,8 +22,6 @@ public class CMSignalLost {
   private let m_W: Float;
   private let m_snowMax: Float;         // the brightest a band of static gets
 
-  public static func SignalLostTime() -> Float = 1.5
-
   // each drone's feed dies in its own display's look (Omar, a48): the Bombus a cheap
   // analogue feed snowing out, white OSD letters; the Octant the MQ-1's green, its C2
   // datalink lost; the Wyvern its ISR feed's teal, the recording stopped; the Griffin its

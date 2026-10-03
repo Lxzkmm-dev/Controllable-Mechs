@@ -58,14 +58,7 @@ public class CMUDrone extends CMCUnit {
   private let m_hidden: Bool;          // its model hidden (the sight view, CONFIG)
   private let m_sight: Bool;           // the sight view is on (from the session, each tick)
   private let m_rigYaw: Float;         // the view's heading, this tick
-  private let m_flBodyPrev: Vector4;   // the frame log: the body's place the frame before
-  private let m_flLeft: Int32;         // frame-log lines left (-1 = not started)
   private let m_selfHits: Int32;       // rays that passed through the drone's own body (log)
-  private let m_flOn: Bool;
-  private let m_flT: Float;
-  private let m_lastRoot: Vector4;     // where the entity was put last frame
-  private let m_boneRel: Vector4;      // the body bone less the flight centre when the pose was held (log)
-  private let m_seenAtTick: Vector4;   // where the engine had it at the start of this tick
   private let m_hideInSight: Bool;
   private let m_sensUp: Float;         // the sight-view sensor mount (m), from CONFIG
   private let m_sensFwd: Float;
@@ -131,9 +124,6 @@ public class CMUDrone extends CMCUnit {
     this.m_tt = new Vector4(0.0, 0.0, 0.0, 0.0);
     this.m_poseOk = false;
     this.m_poseFrames = 0;
-    this.m_flLeft = -1;
-    this.m_flOn = cfg.DroneFrameLog();
-    this.m_flT = 0.0;
     this.MeasurePose(drone, 1.0);
     this.UpdateHull();
     this.LoadSensor();
@@ -295,68 +285,6 @@ public class CMUDrone extends CMCUnit {
     return a;
   }
 
-  // DIAGNOSTICS > DRONE FRAME LOG: every frame for four seconds, the first time the drone
-  // passes 8 m/s. Per frame: its length; the flight's centre; how far the engine had the
-  // entity from where it was put the frame before (anything else moving it); where it was
-  // put now; the camera's position relative to the drawn origin, and its heading against
-  // the drone's. A jitter shows as whichever of these jumps from frame to frame.
-  public func FrameLog(s: ref<CMCSession>, dt: Float) -> Void {
-    let drone = this.m_drone;
-    if !this.m_flOn || !IsDefined(drone) || !IsDefined(this.m_flight) {
-      return;
-    }
-    let fl = this.m_flight;
-    if this.m_flLeft < 0 {
-      if Vector4.Length(fl.vel) < 8.0 {
-        this.m_lastRoot = this.Root();
-        this.m_flBodyPrev = fl.pos;
-        return;
-      }
-      this.m_flLeft = 240;
-      CMCSession.Log("frame log: dt ms | speed | engine had it vs put last frame (m) | cam - origin (fwd, side, up m) | cam heading vs drone heading | drawn pitch roll | body bone - where the flight wants it (fwd, side, up m) | cam - body bone (fwd, side, up m) | body moved this frame vs its velocity x dt (m; 0 vs >0 = a stale read)");
-    }
-    if this.m_flLeft == 0 {
-      return;
-    }
-    this.m_flLeft -= 1;
-    this.m_flT += dt;
-    let root = this.Root();
-    let drift = this.m_seenAtTick - this.m_lastRoot;
-    drift.W = 0.0;
-    this.m_lastRoot = root;
-    let a = this.Ground();
-    let rel = s.rig.pos - a;
-    let moved = Vector4.Length(fl.pos - this.m_flBodyPrev);
-    this.m_flBodyPrev = fl.pos;
-    let yr = Deg2Rad(this.m_flight.yaw);
-    let fwd = new Vector4(-SinF(yr), CosF(yr), 0.0, 0.0);
-    let right = new Vector4(CosF(yr), SinF(yr), 0.0, 0.0);
-    let shown = Quaternion.ToEulerAngles(fl.Shown(this.m_show));
-    // the drawn body: its skeleton-bound body bone, against where the flight puts the body
-    // (the flight's centre less the hull's centre, plus the bone's rest place) and against
-    // the camera, in the drone's heading frame
-    let bone = "n/a";
-    let camBone = "n/a";
-    let sc = drone.FindComponentByName(Equals(this.m_kind, "octant") ? n"Slot8842" : n"Item_Attachment_Slot") as SlotComponent;
-    let wt: WorldTransform;
-    if IsDefined(sc) && sc.GetSlotTransform(Equals(this.m_kind, "octant") ? n"l_front_01" : n"Center", wt) {
-      let b = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt));
-      let off = (b - fl.pos) - this.m_boneRel;
-      let cb = s.rig.pos - b;
-      bone = FloatToStringPrec(Vector4.Dot(off, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(off, right), 3) + " " + FloatToStringPrec(off.Z, 3);
-      camBone = FloatToStringPrec(Vector4.Dot(cb, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(cb, right), 3) + " " + FloatToStringPrec(cb.Z, 3);
-    }
-    CMCSession.Log("frame " + FloatToStringPrec(this.m_flT, 3) + " | " + FloatToStringPrec(dt * 1000.0, 1) + " | " + FloatToStringPrec(Vector4.Length(fl.vel), 1)
-      + " | " + FloatToStringPrec(Vector4.Length(drift), 3)
-      + " | " + FloatToStringPrec(Vector4.Dot(rel, fwd), 3) + " " + FloatToStringPrec(Vector4.Dot(rel, right), 3) + " " + FloatToStringPrec(rel.Z, 3)
-      + " | " + FloatToStringPrec(CMPilotRig.Wrap(s.rig.yaw - fl.yaw), 2)
-      + " | " + FloatToStringPrec(shown.Pitch, 2) + " " + FloatToStringPrec(shown.Roll, 2) + " | " + bone + " | " + camBone
-      + " | " + FloatToStringPrec(moved, 3) + " vs " + FloatToStringPrec(Vector4.Length(fl.vel) * dt, 3));
-    if this.m_flLeft == 0 {
-      CMCSession.Log("frame log: done");
-    }
-  }
-
   public func TickFirst() -> Bool = true
   public func SignalLost() -> Bool = true
   public func Facing() -> Float = IsDefined(this.m_flight) ? this.m_flight.yaw : 0.0
@@ -389,7 +317,6 @@ public class CMUDrone extends CMCUnit {
     this.m_frames += 1;
     let actual = drone.GetWorldPosition();
     this.m_seen = actual;
-    this.m_seenAtTick = actual;
     // the drawn pose: measured over the first half second (settling from the drone's own
     // hover into ours), then held. Re-measured every frame (a33) it carried the hover
     // animation's sway and a frame's lag at speed into the placement: the jitter.
@@ -397,9 +324,6 @@ public class CMUDrone extends CMCUnit {
       this.m_poseFrames += 1;
       this.MeasurePose(drone, 0.2);
       this.UpdateHull();
-      if this.m_poseFrames == 30 {
-        this.m_boneRel = this.m_bone - this.m_placed;   // at rest: the bone's place on the body
-      }
     }
     // keys are on or off; a stick isn't: each key ramps the stick in over the type's ramp
     // time, and expo softens the start of its travel, so W eases the drone over instead

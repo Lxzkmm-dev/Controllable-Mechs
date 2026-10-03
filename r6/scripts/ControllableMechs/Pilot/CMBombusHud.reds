@@ -33,6 +33,7 @@ public class CMBombusHud extends CMDroneHud {
   private let m_fX0: Float;             // the feed's left edge (16:9 in the middle)
   private let m_fTexts: array<ref<inkText>>;     // each OSD line, and its shadow
   private let m_fShadows: array<ref<inkText>>;
+  private let m_fSet: array<String>;   // each line's text as last set (unchanged lines aren't set again)
   private let m_fAhi: ref<inkCanvas>;   // the boxed horizon's bar
   private let m_fHome: ref<inkCanvas>;  // the home arrow
   private let m_fSprite: array<ref<inkImage>>;
@@ -86,9 +87,8 @@ public class CMBombusHud extends CMDroneHud {
   protected func Blk() -> HDRColor = new HDRColor(0.0, 0.0, 0.0, 1.0)
 
   // for the other drones' displays built on this one (CMGriffinHud, CMWyvernHud): the
-  // design width, and the 16:9 area's left edge
+  // design width
   protected func FW() -> Float = this.m_fW
-  protected func FX0() -> Float = this.m_fX0
   protected func FRoot() -> ref<inkCanvas> = this.m_fRoot
 
   // ---------------------------------------------------------------------------
@@ -158,6 +158,7 @@ public class CMBombusHud extends CMDroneHud {
     ArrayClear(this.m_fHiddenOp);
     ArrayClear(this.m_fTexts);
     ArrayClear(this.m_fShadows);
+    ArrayClear(this.m_fSet);
     ArrayClear(this.m_fSprite);
     ArrayClear(this.m_fCells);
     ArrayClear(this.m_fBars);
@@ -191,10 +192,12 @@ public class CMBombusHud extends CMDroneHud {
     }
     ArrayPush(this.m_fTexts, t);
     ArrayPush(this.m_fShadows, sh);
+    ArrayPush(this.m_fSet, "");
   }
 
   protected func SetT(i: Int32, text: String) -> Void {
-    if i < ArraySize(this.m_fTexts) {
+    if i < ArraySize(this.m_fTexts) && NotEquals(this.m_fSet[i], text) {
+      this.m_fSet[i] = text;
       this.m_fTexts[i].SetText(text);
       this.m_fShadows[i].SetText(text);
     }

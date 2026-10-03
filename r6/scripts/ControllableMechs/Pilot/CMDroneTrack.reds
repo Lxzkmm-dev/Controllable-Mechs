@@ -159,19 +159,6 @@ public abstract class CMInk {
     }
   }
 
-  // a circle's points (for a filled disc)
-  public static func CirclePts(cx: Float, cy: Float, r: Float, n: Int32) -> array<Vector2> {
-    let out: array<Vector2>;
-    let i = 0;
-    while i < n {
-      let a = Deg2Rad(Cast<Float>(i) / Cast<Float>(n) * 360.0);
-      ArrayPush(out, Vector2(cx + SinF(a) * r, cy - CosF(a) * r));
-      i += 1;
-    }
-    return out;
-  }
-
-  // a ring of short bars, each tangent to the circle; the first at the top, clockwise
   // a ring of short strokes (round-capped kit pills, a52: smooth), each tangent to the
   // circle; the first at the top, clockwise. For arcs that fill or hide by segment; a whole
   // static circle is Circle's (one image)

@@ -232,8 +232,6 @@ public class CMPilotSystem extends ScriptableSystem {
   public func SetOctantPodsBreak(on: Bool) -> Void { this.PutFlag("octantPodsBreak", on); }
   public func OctantLmgArc() -> Int32 = Clamp(this.Int("octantLmgArc", 0), 0, 90)   // 0, 17, 35 or 65
   public func SetOctantLmgArc(v: Int32) -> Void { this.PutInt("octantLmgArc", Clamp(v, 0, 90)); }
-  public func DroneFrameLog() -> Bool = this.Flag("droneFrameLog", true)
-  public func SetDroneFrameLog(on: Bool) -> Void { this.PutFlag("droneFrameLog", on); }
 
   public func TurnPct() -> Int32 = this.Int("turnPct", 175)
   public func SetTurnPct(v: Int32) -> Void { this.PutInt("turnPct", Clamp(v, 50, 300)); }

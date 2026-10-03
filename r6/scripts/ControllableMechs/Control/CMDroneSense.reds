@@ -195,24 +195,14 @@ public class CMDroneSense {
     q.filterObjectByDistance = true;
     q.includeSecondaryTargets = false;
     q.ignoreInstigator = true;
+    // the search runs round V, out far enough to take in the drone's ground, and is kept to
+    // the drone's RANGE below (a55; a search with the drone as its instigator always came
+    // back empty in game, so it was dropped in 0.8.0)
     let parts: array<TS_TargetPartInfo>;
-    GameInstance.GetTargetingSystem(game).GetTargetParts(me, q, parts);
-    let fromDrone = ArraySize(parts);
-    // a55: in game the search round the drone found nobody (Omar: the contacts list, radar
-    // and ping empty), so V's search runs too, out far enough to take in the drone's ground;
-    // both are kept to the drone's RANGE below
-    let fromV = 0;
     if IsDefined(pl) {
-      let qv = q;
-      qv.maxDistance = MinF(400.0, this.RANGE + Vector4.Distance(pl.GetWorldPosition(), pos));
-      let vparts: array<TS_TargetPartInfo>;
-      GameInstance.GetTargetingSystem(game).GetTargetParts(pl, qv, vparts);
-      fromV = ArraySize(vparts);
-      for vp in vparts {
-        ArrayPush(parts, vp);
-      }
-    }
-    for p in parts {
+      q.maxDistance = MinF(400.0, this.RANGE + Vector4.Distance(pl.GetWorldPosition(), pos));
+      GameInstance.GetTargetingSystem(game).GetTargetParts(pl, q, parts);
+    }    for p in parts {
       let comp = TS_TargetPartInfo.GetComponent(p);
       let npc: ref<NPCPuppet>;
       if IsDefined(comp) {
@@ -224,7 +214,7 @@ public class CMDroneSense {
     }
     if now >= this.m_logAt {
       this.m_logAt = now + 5.0;
-      CMCSession.Log("sweep: " + IntToString(fromDrone) + " found round the drone, " + IntToString(fromV) + " round V; " + IntToString(ArraySize(t.contacts) - 1) + " contacts in range");
+      CMCSession.Log("sweep: " + IntToString(ArraySize(parts)) + " found round V; " + IntToString(ArraySize(t.contacts) - 1) + " contacts in range");
     }
     // the gone (not found this time) and the dead out; V stays
     let i = ArraySize(t.contacts) - 1;

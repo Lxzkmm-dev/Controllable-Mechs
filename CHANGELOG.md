@@ -1,6 +1,41 @@
 # Changelog
 
-## 0.7.0 Alpha (branch 0.7.0-alpha, in progress)
+## 0.8.0 (main)
+
+The 0.7.0 alpha line, released. Next: the 0.9.0 alpha branch.
+
+- **Drones you can fly:** the Bombus, Griffin, Wyvern and Octant, linked and piloted like the Minotaur.
+- **HOVERCORE flight physics:** every drone is a real PhysX rigid body, flown by MNC Physics (the mod's own RED4ext plugin), with:
+  - rotor-by-rotor thrust and spool
+  - ANGLE / HORIZON / ACRO modes
+  - rotor damage that limps or spins out
+  - real collisions and crash damage
+  - ground effect, downwash and weather wind
+  - the Octant's gunship station hold
+  - a frame-accurate camera with an optional STABILIZE gimbal
+- **A display for each drone's role**, drawn with a smooth anti-aliased shape kit (tools/hud/uikit.py), full width on any screen:
+  - **Bombus FPV OSD:** target brackets, blast ring (declutter key), arming strip with impact countdown, motor bars.
+  - **Octant gunship display:** sensor and target blocks, mortar spread on the ground, situation map, stores page, airframe panel.
+  - **Wyvern ISR feed:** contact tagging and ping, radar, signature and detection.
+  - **Griffin hunter HUD:** weapons free/hold, hostile brackets, lock with a lead pip, kills and streaks.
+- **Drone weapons:**
+  - Octant: LMGs, Hydra rocket pods and a mortar, with a part-damage model.
+  - Griffin: SMGs and a laser-guided rocket pod.
+  - Wyvern: SMGs.
+  - Bombus: four payloads.
+- **The world reacts:**
+  - A sensor sweep tracks the NPCs around the drone.
+  - Enemies notice drones by how loud they are, and turn on whatever shoots them.
+  - A destroyed drone's feed shows SIGNAL LOST until the pilot key returns you to V.
+- **Diagnostics:** MNC Physics 6 has a hang watchdog (%LOCALAPPDATA%\MNCPhysics\watchdog.log).
+- **0.8.0 cleanup:**
+  - The drone frame log, a debugging tool for a fixed camera bug, is removed.
+  - Dead helpers are gone.
+  - The sensor sweep runs one targeting search instead of two.
+  - The drone HUDs no longer re-set text that hasn't changed.
+
+The round-by-round log of the alpha follows.
+## 0.7.0 Alpha (the 0.8.0 release's development log)
 
 Plan: docs/ROADMAP_0.7.0.md.
 

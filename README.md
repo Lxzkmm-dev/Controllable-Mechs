@@ -2,7 +2,7 @@
 
 A Cyberpunk 2077 mod, written in redscript, that lets V take control of the game's robotic NPCs (mechs, androids, drones and spiderbots) through a Robot Link terminal built on TerminalKit, and pilot a Militech Minotaur directly: its sensor feed, its legs and both MK.31 HMGs. Quest NPCs are refused so a link can't break a story scene.
 
-**Version 0.5.0 Beta.** Formerly Controllable Mechs: the code, its modules and the folder keep that name, so saves and settings carry over. See CHANGELOG.md.
+**Version 0.8.0.** Formerly Controllable Mechs: the code, its modules and the folder keep that name, so saves and settings carry over. See CHANGELOG.md.
 
 ## Keys
 
