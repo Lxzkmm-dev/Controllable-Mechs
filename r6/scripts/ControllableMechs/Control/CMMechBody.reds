@@ -41,6 +41,10 @@ public class CMMechBody {
   public let knock: Float;           // a knock this frame: its change of velocity (m/s), else 0
   public let why: String;            // why the body leads
   public let failed: Bool;           // the body never came: the mech walks without one
+  public let blocked: Bool;          // something holds the body back: the walk must stop
+  public let blockDir: Vector4;      // the way it is held back from (the body to the mech)
+  public let blockAt: Vector4;       // where the mech's feet go (under the body)
+  private let m_heldT: Float;
   private let m_ledAt: Float;
   private let m_still: Float;        // seconds settled on its legs (hands back at SETTLE)
   private let m_air: Float;          // seconds its legs have been off the ground
@@ -206,8 +210,23 @@ public class CMMechBody {
     err.W = 0.0;
     let want = this.m_feetVel + err * this.W_FOLLOW;
     want.W = 0.0;
-    if Vector4.Length(want) > 12.0 {
-      want = Vector4.Normalize(want) * 12.0;
+    if Vector4.Length(want) > 4.0 {
+      want = Vector4.Normalize(want) * 4.0;   // (a2: a body far behind was driven hard into what held it)
+    }
+    // held back (a car it can't shove, a post): the mech mustn't walk on through it (a2: it
+    // walked through a parked car, the body pressed inside it, and the car threw it). Past
+    // 0.5 m for 0.15 s the unit stops the walk and sets the mech back under the body.
+    let off = new Vector4(err.X, err.Y, 0.0, 0.0);
+    this.blocked = false;
+    if Vector4.Length(off) > 0.5 {
+      this.m_heldT += dt;
+      if this.m_heldT >= 0.15 {
+        this.blocked = true;
+        this.blockDir = Vector4.Normalize(off) * -1.0;
+        this.blockAt = new Vector4(p.X, p.Y, feet.Z, 1.0);
+      }
+    } else {
+      this.m_heldT = 0.0;
     }
     CMPhysPlugin.SetVelocity(body, want);
     this.m_vel = want;

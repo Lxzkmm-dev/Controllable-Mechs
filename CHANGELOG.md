@@ -3,6 +3,9 @@
 ## 0.9.0 Alpha (branch 0.9.0-alpha, in progress)
 
 - Opened from 0.8.0.
+- **0.9.0-a4: the body blocks the walk** (Omar: the mech walked through a parked car, then got launched). With its own collisions off, nothing stopped the mech while the car held the box.
+  - If the body is held more than 0.5 m back for 0.15 s, the walk stops, the mech is set back under the body, and walking that way is refused for 0.6 s. Sideways and back still work.
+  - The follow speed is capped at 4 m/s, so a body that fell behind isn't driven hard into what holds it.
 - **0.9.0-a3: the mech body, steadier** (Omar's a2 test: brushing a parked car read as a 5.9 m/s ram; the body threw the mech over a barrier into the canal, landed at 15.7 m/s and fell through the floor to z -130).
   - Following now sets the body's velocity every frame instead of pulling with a force spring. It still shoves what it walks into, but contacts can't throw it.
   - Knocks and blockages no longer make the body lead. Only blasts, drops and falls do.

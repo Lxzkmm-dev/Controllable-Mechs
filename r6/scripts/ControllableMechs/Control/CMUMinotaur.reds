@@ -71,6 +71,8 @@ public class CMUMinotaur extends CMCUnit {
   private let m_bodyLed: Bool;        // the body led last frame
   private let m_edgeT: Float;         // seconds walked against a drop (steps off at 0.5)
   private let m_dropAhead: Bool;      // SafeReach stopped at a drop, not a wall
+  private let m_blockUntil: Float;    // the body was held back: no walking that way till then
+  private let m_blockDir: Vector4;
   private let TURN_RATE: Float = 35.0;       // deg/s, top speed at TURN SPEED 100% (the setting scales it)
   private let TURN_ACCEL: Float = 60.0;      // deg/s², how hard it spins up and brakes, likewise
   private let m_turnRate: Float;
@@ -1059,6 +1061,26 @@ public class CMUMinotaur extends CMCUnit {
       this.m_air = false;
     }
     this.m_bodyLed = led;
+    // the body is held back: the walk stops and the mech is set back under it
+    if this.m_body.blocked && !led {
+      if this.m_moving || now >= this.m_blockUntil {
+        this.CancelCmd(mech, this.m_moveCmd);
+        this.m_moveCmd = null;
+        this.m_moving = false;
+        let ai = mech.GetAIControllerComponent();
+        if IsDefined(ai) {
+          let tp = new AITeleportCommand();
+          tp.position = this.m_body.blockAt;
+          tp.rotation = CMPilotRig.YawOf(mech.GetWorldForward());
+          tp.doNavTest = false;
+          ai.SendCommand(tp);
+        }
+        CMCSession.Log("walk: stop (the body is held back " + CMCHits.V(this.m_body.blockDir) + ")");
+        s.rig.Nudge(this.STOP_ROCK, -0.25);
+      }
+      this.m_blockDir = this.m_body.blockDir;
+      this.m_blockUntil = now + 0.6;
+    }
     if this.m_body.knock > 0.0 {
       s.rig.Nudge(MinF(30.0, this.m_body.knock * 4.0), -MinF(2.0, this.m_body.knock * 0.3));
     }
@@ -1128,6 +1150,9 @@ public class CMUMinotaur extends CMCUnit {
       return;   // standing: TurnChassis turns the body and holds its heading, every frame
     }
     dir = Vector4.Normalize(dir);
+    if now < this.m_blockUntil && Vector4.Dot(dir, this.m_blockDir) > 0.3 {
+      return;   // the body was held back that way a moment ago
+    }
     if this.Limp(s, mech, now) {
       return;
     }
