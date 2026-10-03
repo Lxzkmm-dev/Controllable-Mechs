@@ -1,5 +1,5 @@
 // =============================================================================
-// MECHS OF NIGHT CITY - THE MECH'S PHYSICS BODY (0.9.0-a2)
+// MECHS OF NIGHT CITY - THE MECH'S PHYSICS BODY (0.9.0-a2, a3)
 //
 // What the drones got in 0.7.1 (MNC Physics), for the Minotaur (Omar, 2026-10-02: "create
 // a new Mech entity with a rigid body with physics"; the walk and the turning stay as they
@@ -8,13 +8,14 @@
 // round the hull, its bottom LIFT above the feet so kerbs and steps pass under it).
 // Two ways round:
 //   following   the mech walks and turns on its own legs (the AI's orders, unchanged), and
-//               the body is pulled onto it by a stiff spring every physics step: it shoves
-//               cars, props and bodies out of the way with six tonnes behind it
-//   leading     knocked (a sudden change of velocity: a car into it, a blast), walked off
-//               a drop, left hanging in the air, or held against something it can't shove:
-//               the body leads and the mech is placed on it every frame. It slides, falls
-//               for real and lands on spring legs (the landing is the unit's: camera, hull,
-//               legs), then hands back to the walk once it has settled.
+//               the body's velocity is set onto it every frame: it shoves cars, props and
+//               bodies out of the way with six tonnes behind it, and contacts never throw
+//               it (a3: in a2 a force spring let a parked car's contact launch the mech)
+//   leading     shoved by a blast, walked off a drop or left hanging in the air: the body
+//               leads and the mech is placed on it every frame. It slides, falls for real
+//               and lands on spring legs (the landing is the unit's: camera, hull, legs),
+//               then hands back to the walk once it has settled. Nothing under it for 0.6 s
+//               (through the floor): the mech goes back to where it last stood.
 // The body is kept upright with its facing, the mech's own; the mech's colliders and
 // physical meshes stop colliding while the body is there (they would shove it) and get it
 // back after.
@@ -46,7 +47,6 @@ public class CMMechBody {
   private let m_fallVz: Float;       // the fastest it fell in this air time
   private let m_stepDir: Vector4;
   private let m_stepUntil: Float;
-  private let m_blockT: Float;       // seconds the body has been held off the mech
   private let m_lastFeet: Vector4;
   private let m_feetVel: Vector4;
   private let m_vel: Vector4;
@@ -59,19 +59,17 @@ public class CMMechBody {
   private let m_logAt: Float;
   private let m_knockMax: Float;
   private let m_gap: Float;
+  private let m_safe: Vector4;       // where its feet last stood on something
+  private let m_noGround: Float;
 
   private let MASS: Float = 6000.0;
   private let HALF_Z: Float = 1.5;      // the box's half height (proxy_minotaur.ent)
   private let LIFT: Float = 0.6;        // its bottom above the feet
   private let G: Float = 9.81;
-  private let W_FOLLOW: Float = 10.0;   // the follow spring (rad/s, critically damped)
-  private let ACCEL_CAP: Float = 15.0;  // m/s², the most the follow spring pulls with
+  private let W_FOLLOW: Float = 8.0;    // 1/s, how fast the body closes a gap to the mech
   private let W_LEG: Float = 9.0;       // the legs' spring when the body leads (rad/s)
   private let LEG_DAMP: Float = 0.7;
   private let FRICTION: Float = 4.0;    // 1/s, its feet on the ground braking a slide
-  private let KNOCK_DV: Float = 2.5;    // m/s in a frame, sideways: knocked
-  private let BLOCK_GAP: Float = 1.2;   // m: held this far off the mech ...
-  private let BLOCK_TIME: Float = 0.4;  // ... this long: it can't get through
   private let SETTLE: Float = 0.45;     // s still on its legs before the walk has it back
   private let STEP_SPEED: Float = 3.5;  // m/s, stepping off a drop
   private let SPIN_K: Float = 8.0;      // 1/s, how hard it is held upright and to its facing
@@ -160,24 +158,19 @@ public class CMMechBody {
     let q = e.GetWorldOrientation();
     let v = CMPhysStep.Velocity(body);
     v.W = 0.0;
-    // a knock: its velocity changed sideways in one frame by more than the spring or the
-    // legs could (a car into it, a blast); landings are the legs'
+    // how much contacts changed its velocity in a frame (logged only: in a2 a parked car's
+    // contact read as a 5.9 m/s ram, and the body launched the mech over a barrier; only
+    // blasts, drops and falls make the body lead now)
     let dv = v - this.m_vel;
     dv.Z = 0.0;
-    let kick = Vector4.Length(dv);
-    this.m_vel = v;
-    this.m_knockMax = MaxF(this.m_knockMax, kick);
-    let settled = now - this.m_liveAt >= 0.5;
-    if kick > this.KNOCK_DV && settled {
-      this.knock = kick;
-      if !this.led {
-        this.Lead(mech, now, "knocked at " + FloatToStringPrec(kick, 1) + " m/s");
-      }
-    }
+    this.m_knockMax = MaxF(this.m_knockMax, Vector4.Length(dv));
     if this.led {
       this.Leading(mech, body, p, v, dt, now);
     } else {
       this.Following(mech, body, p, v, dt, now);
+    }
+    if !this.m_live {
+      return;   // (rescued: a new body is on its way)
     }
     this.Upright(body, q);
     CMPhysWind.IgnoreNear(7320, p, 3.5);
@@ -204,33 +197,39 @@ public class CMMechBody {
     }
     this.m_lastFeet = feet;
     this.m_lastFeet.W = 1.0;
+    this.m_safe = feet;
+    this.m_safe.W = 1.0;
+    // its velocity is set every frame: the mech's own, plus what closes the gap (a3; the a2
+    // force spring let contacts throw it). Gravity is held off by a constant force. It
+    // pushes what it walks into and nothing pushes it.
     let err = this.Target(feet) - p;
     err.W = 0.0;
-    let a = err * (this.W_FOLLOW * this.W_FOLLOW) + (this.m_feetVel - v) * (2.0 * this.W_FOLLOW);
-    a.W = 0.0;
-    if Vector4.Length(a) > this.ACCEL_CAP {
-      a = Vector4.Normalize(a) * this.ACCEL_CAP;
+    let want = this.m_feetVel + err * this.W_FOLLOW;
+    want.W = 0.0;
+    if Vector4.Length(want) > 12.0 {
+      want = Vector4.Normalize(want) * 12.0;
     }
-    a.Z += this.G;
-    CMPhysStep.SetForce(body, a * this.MASS, new Vector4(0.0, 0.0, 0.0, 0.0));
-    // held off the mech by something it can't shove (a wall the walk's ray missed, a pillar,
-    // V): the body leads, so the mech stops where the body is
-    let off = new Vector4(err.X, err.Y, 0.0, 0.0);
-    if Vector4.Length(off) > this.BLOCK_GAP {
-      this.m_blockT += dt;
-      if this.m_blockT >= this.BLOCK_TIME {
-        this.Lead(mech, now, "held " + FloatToStringPrec(Vector4.Length(off), 1) + " m off by something");
-      }
-    } else {
-      this.m_blockT = 0.0;
-    }
+    CMPhysPlugin.SetVelocity(body, want);
+    this.m_vel = want;
+    CMPhysStep.SetForce(body, new Vector4(0.0, 0.0, this.G * this.MASS, 0.0), new Vector4(0.0, 0.0, 0.0, 0.0));
   }
 
   // the body leads: legs, a slide braked by its feet, or a step off a drop; the mech on it
   private func Leading(mech: ref<NPCPuppet>, body: ref<PhysicalBodyInterface>, p: Vector4, v: Vector4, dt: Float, now: Float) -> Void {
     let bottom = p.Z - this.HALF_Z;
     let hit: TraceResult;
-    let ground = CMGround.Down(this.m_game, p, new Vector4(p.X, p.Y, p.Z - 40.0, 1.0), hit);
+    let ground = CMGround.Down(this.m_game, new Vector4(p.X, p.Y, p.Z + this.HALF_Z, 1.0), new Vector4(p.X, p.Y, p.Z - 120.0, 1.0), hit);
+    // nothing under it for most of a second (it went through the floor: a2 fell 140 m under
+    // the canal): back where it last stood, and a new body
+    if ground {
+      this.m_noGround = 0.0;
+    } else {
+      this.m_noGround += dt;
+      if this.m_noGround >= 0.6 {
+        this.Rescue(mech, now);
+        return;
+      }
+    }
     let gz = ground ? Cast<Vector4>(hit.position).Z : -100000.0;
     let gap = bottom - gz;
     this.m_gap = ground ? gap : -1.0;
@@ -260,10 +259,12 @@ public class CMMechBody {
       }
       this.m_air = 0.0;
       this.m_fallVz = 0.0;
+      this.m_safe = new Vector4(p.X, p.Y, gz, 1.0);
     } else {
       this.m_air += dt;
       this.m_fallVz = MinF(this.m_fallVz, v.Z);
     }
+    this.m_vel = v;
     // the mech on the body: its feet LIFT under the box, never under the ground
     let feet = new Vector4(p.X, p.Y, bottom - this.LIFT, 1.0);
     if ground && feet.Z < gz {
@@ -349,7 +350,6 @@ public class CMMechBody {
     this.m_still = 0.0;
     this.m_air = 0.0;
     this.m_fallVz = 0.0;
-    this.m_blockT = 0.0;
     this.m_snaps = 0;
     this.m_placed = new Vector4(0.0, 0.0, 0.0, 0.0);
     this.m_heldQ = mech.GetWorldOrientation();
@@ -388,12 +388,31 @@ public class CMMechBody {
     this.Lead(mech, now, "nothing under it (" + FloatToStringPrec(gap, 1) + " m)");
   }
 
+  // through the floor: the mech set back where it last stood, the body asked for again
+  private func Rescue(mech: ref<NPCPuppet>, now: Float) -> Void {
+    CMCSession.Log("mech body: nothing under the body for 0.6 s (through the floor?); the mech back at " + CMCHits.V(this.m_safe) + ", a new body");
+    this.m_placed = this.m_safe.W > 0.5 ? this.m_safe : this.m_placed;
+    this.HandBack(mech, "rescued");
+    let e = GameInstance.GetDynamicEntitySystem().GetEntity(this.m_id);
+    if IsDefined(e) {
+      let body = this.Body(e);
+      if IsDefined(body) {
+        CMPhysStep.Release(body);
+      }
+    }
+    GameInstance.GetDynamicEntitySystem().DeleteEntity(this.m_id);
+    this.m_live = false;
+    this.m_spawned = false;
+    this.m_body = null;
+    this.m_askedAt = now;
+    this.m_noGround = 0.0;
+  }
+
   // the walk has it back, where the body put it
   private func HandBack(mech: ref<NPCPuppet>, reason: String) -> Void {
     this.led = false;
     this.m_stepUntil = 0.0;
     this.m_still = 0.0;
-    this.m_blockT = 0.0;
     let ai = mech.GetAIControllerComponent();
     if IsDefined(ai) {
       if this.m_aiIsOff {

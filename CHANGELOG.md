@@ -3,6 +3,11 @@
 ## 0.9.0 Alpha (branch 0.9.0-alpha, in progress)
 
 - Opened from 0.8.0.
+- **0.9.0-a3: the mech body, steadier** (Omar's a2 test: brushing a parked car read as a 5.9 m/s ram; the body threw the mech over a barrier into the canal, landed at 15.7 m/s and fell through the floor to z -130).
+  - Following now sets the body's velocity every frame instead of pulling with a force spring. It still shoves what it walks into, but contacts can't throw it.
+  - Knocks and blockages no longer make the body lead. Only blasts, drops and falls do.
+  - The leading body's ground ray starts at the box top, so a hard landing that sinks it still finds the floor.
+  - Nothing under it for 0.6 s: the mech goes back to where it last stood, and the body is asked for again.
 - **0.9.0-a2: the Minotaur on a physics body** (CONFIG > CHASSIS > MECH PHYSICS, on by default; needs MNC Physics; the body is mnc\physics\proxy_minotaur.ent in archive\pc\mod\MechsOfNightCity_MechPhysics.archive).
   - A 6 t PhysX box rides with the mech, its bottom 0.6 m above the feet so kerbs and steps pass under it. The mech's own colliders and physical meshes are off while it's there.
   - **Following:** the walk and the turning are unchanged (the same AI orders and turn values). A stiff spring pulls the body onto the mech every physics step, so it shoves cars, props and bodies aside.
