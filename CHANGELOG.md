@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 Alpha (branch 0.9.0-alpha, in progress)
+
+- Opened from 0.8.0.
+
 ## 0.8.0 (main)
 
 The 0.7.0 alpha line, released. Next: the 0.9.0 alpha branch.
