@@ -2296,7 +2296,7 @@ public class CMUDrone extends CMCUnit {
   }
 
   // a physical skinned mesh's body (body 0), through Reflection; none if it won't give one
-  private static func SkinnedBody(c: ref<IComponent>) -> ref<PhysicalBodyInterface> {
+  public static func SkinnedBody(c: ref<IComponent>) -> ref<PhysicalBodyInterface> {
     let cls = Reflection.GetClass(n"entPhysicalSkinnedMeshComponent");
     let fn = IsDefined(cls) ? cls.GetFunction(n"CreatePhysicalBodyInterface") : null;
     if !IsDefined(fn) {
@@ -2321,7 +2321,7 @@ public class CMUDrone extends CMCUnit {
 
   // PhysicalMeshComponent.ToggleCollision: in the engine's type info with its parameter, but
   // not declared to scripts; called through Codeware's Reflection
-  private static func MeshCollision(c: ref<IComponent>, on: Bool) -> Bool {
+  public static func MeshCollision(c: ref<IComponent>, on: Bool) -> Bool {
     let cls = Reflection.GetClass(n"entPhysicalMeshComponent");
     let fn = IsDefined(cls) ? cls.GetFunction(n"ToggleCollision") : null;
     if !IsDefined(fn) {

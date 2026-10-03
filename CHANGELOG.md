@@ -3,6 +3,18 @@
 ## 0.9.0 Alpha (branch 0.9.0-alpha, in progress)
 
 - Opened from 0.8.0.
+- **0.9.0-a2: the Minotaur on a physics body** (CONFIG > CHASSIS > MECH PHYSICS, on by default; needs MNC Physics and the new archive with mnc\physics\proxy_minotaur.ent).
+  - A 6 t PhysX box rides with the mech, its bottom 0.6 m above the feet so kerbs and steps pass under it. The mech's own colliders and physical meshes are off while it's there.
+  - **Following:** the walk and the turning are unchanged (the same AI orders and turn values). A stiff spring pulls the body onto the mech every physics step, so it shoves cars, props and bodies aside.
+  - **Leading:** the body takes over and the mech is placed on it every frame when it's:
+    - knocked (more than 2.5 m/s sideways in one frame: a ram)
+    - shoved by a blast within 12 m
+    - held more than 1.2 m off by something it can't push
+    - left with nothing under its feet (a real fall now, instead of the old set-down)
+    - walked into a drop for half a second (it steps off)
+  - It falls under gravity and lands on spring legs. A landing shakes the view; past 7 m/s it costs hull, and past 12 m/s it wears the legs too. Once settled for 0.45 s it hands back to the walk (an AI teleport to where the body put it).
+  - HUD: AIRBORNE - BRACE / STAGGERED - STABILIZING / HARD LANDING.
+  - If its own movement keeps pulling it off the body, its AI goes off while the body leads (the drones' way). No body within 10 s: the mech walks without one and gets its collisions back.
 
 ## 0.8.0 (main)
 

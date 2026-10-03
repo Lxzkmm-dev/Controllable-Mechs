@@ -226,6 +226,9 @@ public class CMContent extends TKContent {
       case "parts":
         cfg.SetPartDamage(Equals(CMContent.Str(arg), "1"));
         break;
+      case "mechphys":
+        cfg.SetMechPhysics(Equals(CMContent.Str(arg), "1"));
+        break;
       case "restoreparts":
         if !IsDefined(link.Unit()) {
           p.SetMessage("!NO UNIT ON UPLINK");
@@ -389,6 +392,7 @@ public class CMContent extends TKContent {
     p.Heading("CHASSIS");
     p.Slider("TURN SPEED", "How fast the view traverses and the chassis turns; 100% is the heavy baseline (from the next link-in)", "", "50|300|25|" + IntToString(cfg.TurnPct()) + "|%", "turn", "");
     p.Check("PART DAMAGE", "Hits wear down the part they land on: guns can be shot off, the sensor, legs and missile pods knocked out. Off: only the hull (from the next link-in)", cfg.PartDamage(), "parts", "");
+    p.Check("MECH PHYSICS", "A six-tonne rigid body rides with the mech: it shoves cars and props, is knocked by rams and blasts, falls off ledges for real and lands hard. Off: the old walk with no body. Needs MNC Physics (from the next link-in)", cfg.MechPhysics(), "mechphys", "");
 
     p.Heading("OPTICS // SENSOR MOUNT");
     p.Slider("HEIGHT", "Sensor view: above the mech's feet", "", "40|177|1|" + IntToString(CMContent.CmToIn(cfg.CamUpCm())) + "| in", "camup", "");

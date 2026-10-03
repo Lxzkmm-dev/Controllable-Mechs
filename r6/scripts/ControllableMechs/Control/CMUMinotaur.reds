@@ -67,6 +67,10 @@ public class CMUMinotaur extends CMCUnit {
   private let m_lookMiss: Int32;     // slow ticks the guns have been off with the body on
   private let m_lookSent: Float;
   private let m_turning: Bool;
+  private let m_body: ref<CMMechBody>;   // the physics body (0.9.0-a2, CONFIG > MECH PHYSICS)
+  private let m_bodyLed: Bool;        // the body led last frame
+  private let m_edgeT: Float;         // seconds walked against a drop (steps off at 0.5)
+  private let m_dropAhead: Bool;      // SafeReach stopped at a drop, not a wall
   private let TURN_RATE: Float = 35.0;       // deg/s, top speed at TURN SPEED 100% (the setting scales it)
   private let TURN_ACCEL: Float = 60.0;      // deg/s², how hard it spins up and brakes, likewise
   private let m_turnRate: Float;
@@ -210,6 +214,17 @@ public class CMUMinotaur extends CMCUnit {
     this.m_critFx = false;
     this.ApplyParts(s, mech);
     CMCSession.Log("rounds: " + this.m_guns.SpeedUp(this.m_game, this.ROUND_SPEED));
+    this.m_body = null;
+    this.m_bodyLed = false;
+    this.m_edgeT = 0.0;
+    if cfg.MechPhysics() {
+      if CMPhysStep.Present() {
+        this.m_body = CMMechBody.Make(this.m_game);
+        this.m_body.Start(mech, s.Now());
+      } else {
+        CMCSession.Log("mech body: MECH PHYSICS is on but MNC Physics (version 3 or up) isn't loaded; the mech walks without a body");
+      }
+    }
     return "";
   }
 
@@ -359,6 +374,10 @@ public class CMUMinotaur extends CMCUnit {
 
   public func End(s: ref<CMCSession>, hard: Bool) -> Void {
     let mech = this.Mech();
+    if IsDefined(this.m_body) {
+      this.m_body.Stop(mech);
+      this.m_body = null;
+    }
     this.StopServo(mech);
     this.StopFireLoop(mech);
     if IsDefined(mech) {
@@ -428,6 +447,7 @@ public class CMUMinotaur extends CMCUnit {
   public func Tick(s: ref<CMCSession>, dt: Float, now: Float) -> Void {
     let mech = this.Mech();
     this.MoveMarker(s.aim);
+    this.BodyTick(s, mech, dt, now);
     this.TurnChassis(s, mech, dt);
     let split = s.FireMode() == CMFireMode.Split();
     let trigger = s.Key(CMCKey.Lmb()) || (split && s.Key(CMCKey.Rmb()));
@@ -887,7 +907,11 @@ public class CMUMinotaur extends CMCUnit {
     this.WatchLookAts(s, mech, now);
     this.ReadHull(mech);
     this.IntegrityAlarm(mech, now);
-    this.m_air = this.Airborne(s, mech);
+    if IsDefined(this.m_body) && this.m_body.Live() {
+      this.m_air = this.m_body.led || this.BodyFall(mech, now);
+    } else {
+      this.m_air = this.Airborne(s, mech);
+    }
     if !this.m_air {
       this.Drive(s, mech, now);
       this.Gait(mech);
@@ -949,7 +973,7 @@ public class CMUMinotaur extends CMCUnit {
   // kerbs and banks pass (the first version, at 1.5 m either way, stopped walks that went
   // nowhere near an edge). Only when a walk order is about to go out.
   private func SafeReach(pos: Vector4, dir: Vector4, reach: Float) -> Float {
-    let sq = GameInstance.GetSpatialQueriesSystem(this.m_game);
+    this.m_dropAhead = false;
     let d = 3.0;
     while d <= reach {
       let p = pos + dir * d;
@@ -957,6 +981,7 @@ public class CMUMinotaur extends CMCUnit {
       let ground = CMGround.Down(this.m_game, new Vector4(p.X, p.Y, pos.Z + 3.0, 1.0), new Vector4(p.X, p.Y, pos.Z - 6.0, 1.0), hit);
       let dz = ground ? Cast<Vector4>(hit.position).Z - pos.Z : -10.0;
       if dz < -2.5 || dz > 2.0 {
+        this.m_dropAhead = dz < -2.5;
         return d - 1.0;
       }
       d += 1.5;
@@ -1004,6 +1029,87 @@ public class CMUMinotaur extends CMCUnit {
     return true;
   }
 
+  // ---- the physics body (CMMechBody): every frame it follows the walk or leads it; when it
+  // takes the lead the walk and turn orders are dropped, and its landings and knocks are felt
+  private func BodyTick(s: ref<CMCSession>, mech: ref<NPCPuppet>, dt: Float, now: Float) -> Void {
+    if !IsDefined(this.m_body) {
+      return;
+    }
+    this.m_body.Tick(mech, dt, now);
+    if this.m_body.failed {
+      this.m_body = null;
+      return;
+    }
+    let led = this.m_body.led;
+    if led && !this.m_bodyLed {
+      this.CancelCmd(mech, this.m_moveCmd);
+      this.CancelCmd(mech, this.m_turnCmd);
+      this.m_moveCmd = null;
+      this.m_turnCmd = null;
+      this.m_moving = false;
+      this.m_air = true;
+    }
+    if !led && this.m_bodyLed {
+      // back on its legs: the turn starts from where it faces now
+      this.m_bodyYaw = CMPilotRig.YawOf(mech.GetWorldForward());
+      this.m_turnVel = 0.0;
+      this.m_turning = false;
+      this.m_sentOpen = false;
+      this.m_stoodAt = now;
+      this.m_air = false;
+    }
+    this.m_bodyLed = led;
+    if this.m_body.knock > 0.0 {
+      s.rig.Nudge(MinF(30.0, this.m_body.knock * 4.0), -MinF(2.0, this.m_body.knock * 0.3));
+    }
+    if this.m_body.landing > 0.0 {
+      this.Land(s, mech, this.m_body.landing);
+    }
+  }
+
+  // ten times a second, with a body: nothing under its feet, it falls (the game has no fall
+  // for the Minotaur; the body has)
+  private func BodyFall(mech: ref<NPCPuppet>, now: Float) -> Bool {
+    let pos = mech.GetWorldPosition();
+    let hit: TraceResult;
+    if !CMGround.Down(this.m_game, new Vector4(pos.X, pos.Y, pos.Z + 0.5, 1.0), new Vector4(pos.X, pos.Y, pos.Z - 60.0, 1.0), hit) {
+      return false;   // no hit is not air (see Airborne)
+    }
+    let gap = pos.Z - Cast<Vector4>(hit.position).Z;
+    if gap < 1.2 {
+      return false;
+    }
+    this.m_body.Fall(mech, gap, now);
+    return this.m_body.led;
+  }
+
+  // A landing, felt: a heavy one shakes the view and costs hull, a hard one the legs too
+  private func Land(s: ref<CMCSession>, mech: ref<NPCPuppet>, speed: Float) -> Void {
+    s.rig.Nudge(MinF(40.0, 4.0 + speed * 2.5), -MinF(3.0, 0.4 + speed * 0.2));
+    GameObject.PlaySoundEvent(mech, n"nme_boss_smasher_lcm_servo_short");
+    if speed < 7.0 {
+      return;
+    }
+    let over = speed - 7.0;
+    let pct = MinF(60.0, over * over * 1.5);
+    GameInstance.GetStatPoolsSystem(this.m_game).RequestChangingStatPoolValue(Cast<StatsObjectID>(mech.GetEntityID()), gamedataStatPoolType.Health, -pct, null, false, true);
+    GameObject.PlaySoundEvent(mech, n"dev_generic_impact_metal");
+    this.m_partNote = speed >= 12.0 ? "HARD LANDING - LEG ACTUATORS DAMAGED" : "HARD LANDING";
+    this.m_partNoteUntil = s.Now() + 3.0;
+    if speed >= 12.0 && this.m_partsOn && IsDefined(this.m_parts) {
+      let wear = MinF(0.6, (speed - 12.0) * 0.06 + 0.15);
+      for leg in [CMPart.LegL(), CMPart.LegR()] {
+        if this.m_parts.hp[leg] > 0.0 {
+          this.m_parts.hp[leg] = MaxF(0.0, this.m_parts.hp[leg] - wear);
+          if this.m_parts.hp[leg] <= 0.0 {
+            this.BreakPart(s, mech, leg);
+          }
+        }
+      }
+    }
+    CMCSession.Log("landing: " + FloatToStringPrec(speed, 1) + " m/s, " + FloatToStringPrec(pct, 0) + "% of its health" + (speed >= 12.0 ? ", legs worn" : ""));
+  }
+
   // WASD relative to where the view looks; the mech walks there on its own legs
   private func Drive(s: ref<CMCSession>, mech: ref<NPCPuppet>, now: Float) -> Void {
     let f = (s.Key(CMCKey.W()) ? 1.0 : 0.0) - (s.Key(CMCKey.S()) ? 1.0 : 0.0);
@@ -1011,6 +1117,7 @@ public class CMUMinotaur extends CMCUnit {
     let dir = CMPilotRig.Dir(s.rig.yaw, 0.0) * f + CMPilotRig.Dir(s.rig.yaw - 90.0, 0.0) * side;
     let pos = mech.GetWorldPosition();
     if Vector4.Length(dir) < 0.1 {
+      this.m_edgeT = 0.0;
       if this.m_moving {
         this.CancelCmd(mech, this.m_moveCmd);
         this.m_moveCmd = null;
@@ -1043,6 +1150,20 @@ public class CMUMinotaur extends CMCUnit {
     // Minotaur, so one walked off an edge hangs in the air (see Airborne)
     let wall = reach;
     reach = this.SafeReach(pos, dir, reach);
+    if reach < 1.5 && this.m_dropAhead && IsDefined(this.m_body) && this.m_body.Live() {
+      // with a body it can go over: held against the drop for half a second, it steps off
+      this.m_edgeT += 0.1;
+      if this.m_edgeT >= 0.5 {
+        this.m_edgeT = 0.0;
+        this.CancelCmd(mech, this.m_moveCmd);
+        this.m_moveCmd = null;
+        this.m_moving = false;
+        this.m_body.StepOff(mech, dir, now);
+        return;
+      }
+    } else {
+      this.m_edgeT = 0.0;
+    }
     if reach < 1.5 {
       if this.m_moving {
         this.CancelCmd(mech, this.m_moveCmd);
@@ -1148,6 +1269,7 @@ public class CMUMinotaur extends CMCUnit {
       this.ApplyParts(s, mech);   // restored or broken from the terminal
       return;
     }
+    this.Blast(s, mech, hit);
     if !this.m_partsOn {
       return;
     }
@@ -1221,6 +1343,31 @@ public class CMUMinotaur extends CMCUnit {
     }
     return this.m_limpHalt;
   }
+  // A blast near it shoves the body (away from the blast, a little up): the nearer, the
+  // harder; past KNOCK it staggers
+  private func Blast(s: ref<CMCSession>, mech: ref<NPCPuppet>, hit: ref<gameHitEvent>) -> Void {
+    if !IsDefined(this.m_body) || !this.m_body.Live() || !IsDefined(hit.attackData) {
+      return;
+    }
+    if NotEquals(hit.attackData.GetAttackType(), gamedataAttackType.Explosion) {
+      return;
+    }
+    let from = hit.attackData.GetAttackPosition();
+    let away = mech.GetWorldPosition() - from;
+    away.Z = 0.0;
+    away.W = 0.0;
+    let dist = Vector4.Length(away);
+    if dist > 12.0 {
+      return;
+    }
+    let dir = dist > 0.2 ? away * (1.0 / dist) : mech.GetWorldForward() * -1.0;
+    let k = ClampF(1.0 - dist / 12.0, 0.25, 1.0);
+    let dv = dir * (4.5 * k) + new Vector4(0.0, 0.0, 1.2 * k, 0.0);
+    this.m_body.Push(mech, dv, s.Now(), "a blast " + FloatToStringPrec(dist, 1) + " m away");
+    s.rig.Nudge(MinF(30.0, 18.0 * k), -1.5 * k);
+    CMCSession.Log("blast: " + FloatToStringPrec(dist, 1) + " m away, the body shoved at " + FloatToStringPrec(Vector4.Length(dv), 1) + " m/s");
+  }
+
   // A part has just broken: on the model, in how the mech works, and on the HUD.
   private func BreakPart(s: ref<CMCSession>, mech: ref<NPCPuppet>, part: Int32) -> Void {
     if (part == CMPart.ArmL() || part == CMPart.ArmR()) && !this.m_parts.killed[part] {
@@ -1281,6 +1428,8 @@ public class CMUMinotaur extends CMCUnit {
     }
     if StrLen(this.m_partNote) > 0 && s.Now() < this.m_partNoteUntil {
       st.warning = this.m_partNote;
+    } else if IsDefined(this.m_body) && this.m_body.led {
+      st.warning = this.m_body.Gap() > 1.0 ? "AIRBORNE - BRACE" : "STAGGERED - STABILIZING";
     } else if !st.hasL && !st.hasR {
       st.warning = "NO WEAPONS - MK.31 OFFLINE";
     } else if st.integrity < 0.3 {

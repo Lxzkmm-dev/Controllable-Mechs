@@ -18,6 +18,8 @@ real drone NPC is the visible part, placed on the body every frame) and the box 
 the entity's origin (the flight's centre of mass):
   proxy_octant.ent  --mass 180 --half 1.35 1.70 0.95 --no-mesh --centre
   proxy_wyvern.ent  --mass 40  --half 0.30 0.50 0.30 --no-mesh --centre
+The Minotaur's (CMMechBody, 0.9.0-a2), centred LIFT + 1.5 m above its feet:
+  proxy_minotaur.ent --mass 6000 --half 1.30 1.50 1.50 --no-mesh --centre
 """
 import copy
 import json

@@ -156,6 +156,9 @@ public class CMPilotSystem extends ScriptableSystem {
   // parts of the mech damaged and shot off (docs/DAMAGE_DESIGN.md): on unless turned off
   public func PartDamage() -> Bool = this.Flag("partDamage", true)
   public func SetPartDamage(on: Bool) -> Void { this.PutFlag("partDamage", on); }
+  // the mech on a physics body (CMMechBody, 0.9.0-a2; needs MNC Physics)
+  public func MechPhysics() -> Bool = this.Flag("mechPhysics", true)
+  public func SetMechPhysics(on: Bool) -> Void { this.PutFlag("mechPhysics", on); }
 
   public func RecoilPct() -> Int32 = this.Int("recoilPct", 100)
   public func SetRecoilPct(v: Int32) -> Void { this.PutInt("recoilPct", Clamp(v, 0, 200)); }
